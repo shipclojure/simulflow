@@ -2,17 +2,6 @@
 
 A Clojure framework for building real-time voice-enabled AI applications. voice-fn handles the orchestration of speech recognition, audio processing, and AI service integration with the elegance of functional programming.
 
-```clojure
-(ns my-app.core
-  (:require [voice-fn.core :as v]))
-
-;; Start a voice interaction pipeline with just a few lines
-(-> (v/create-pipeline)
-    (v/add-speech-recognition)
-    (v/add-llm :model "your-model")
-    (v/start!))
-```
-
 ## Features
 
 - Real-time speech recognition with configurable backends
@@ -29,15 +18,7 @@ voice-fn brings Clojure's functional elegance to voice AI applications. Rather t
 
 ## Status
 
-Early development - seeking contributors! While the core architecture is stable, we're actively expanding supported features and integrations.
-
-## Installation
-
-Add to your project.clj:
-
-```clojure
-[voice-fn "0.1.0"]
-```
+WIP
 
 ## Documentation
 
