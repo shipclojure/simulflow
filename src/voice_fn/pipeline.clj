@@ -1,6 +1,7 @@
 (ns voice-fn.pipeline
   (:require
-   [clojure.core.async :as a :refer [<! >! chan go-loop mult tap]]))
+   [clojure.core.async :as a :refer [<! >! chan go-loop mult tap]]
+   [taoensso.telemere :as t]))
 
 (defmulti process-frame
   "Process a frame from the pipeline.
@@ -15,21 +16,22 @@
 ;; Pipeline creation logic here
 (defn create-pipeline [processors-config]
   (let [main-ch (chan 1024)
-        main-mult (mult main-ch)
+        main-pub (a/pub main-ch :type)
         pipeline (atom {:main-ch main-ch
                         :processors-config processors-config
-                        :main-mult main-mult})]
+                        :main-pub main-pub})]
 
     ;; Start each processor
     (doseq [{:keys [type accepted-frames]} processors-config]
       (let [processor-ch (chan 1024)
             ;; Tap into main channel, filtering for accepted frame types
-            _ (tap main-mult processor-ch (comp accepted-frames :type))]
+            _ (a/sub main-pub processor-ch accepted-frames)]
         (swap! pipeline assoc-in [type :in-ch] processor-ch)))
     pipeline))
 
 (defn start-pipeline!
   [pipeline]
+  (t/log! :debug "Starting pipeline")
   (a/put! (:main-ch @pipeline) {:type :system/start})
   ;; Start each processor
   (doseq [{:keys [type] :as processor} (:processors-config pipeline)]
@@ -43,8 +45,11 @@
 
 (defn stop-pipeline!
   [pipeline]
+  (t/log! :debug "Starting pipeline")
   (a/put! (:main-ch @pipeline) {:type :system/stop}))
 
 (defn close-processor!
   [pipeline type]
+  (t/log! {:level :debug
+           :id type} "Closing processor")
   (a/close! (get-in @pipeline [type :in-ch])))
