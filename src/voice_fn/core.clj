@@ -21,6 +21,8 @@
   [_ _ _ frame]
   (t/log! :info ["Transcription" (:text frame)]))
 
+(t/set-min-level! :debug)
+
 (comment
   (def p (pipeline/create-pipeline pipeline-config))
 

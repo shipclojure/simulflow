@@ -45,7 +45,7 @@
 
 (defn stop-pipeline!
   [pipeline]
-  (t/log! :debug "Starting pipeline")
+  (t/log! :debug "Stopping pipeline")
   (a/put! (:main-ch @pipeline) {:type :system/stop}))
 
 (defn close-processor!
