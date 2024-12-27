@@ -1,12 +1,13 @@
 (ns voice-fn.transport.local.audio
   (:require
    [clojure.core.async :as a]
-   [taoensso.telemere :as t]
    [uncomplicate.clojure-sound.core :refer [open! read! start!]]
    [uncomplicate.clojure-sound.sampled :refer [audio-format line line-info]]
-   [voice-fn.frames :as frames])
+   [voice-fn.frames :as frames]
+   [voice-fn.pipeline :refer [process-frame]])
   (:import
-   (javax.sound.sampled AudioInputStream)))
+   (java.util Arrays)
+   (javax.sound.sampled AudioFormat AudioSystem DataLine$Info TargetDataLine)))
 
 (def audio-config-schema [:map [:audio-in/sample-rate :int
                                 :audio-in/channels :int
@@ -29,54 +30,84 @@
                      :audio-out/sample-size-bits 16
                      :audio-out/channels 1})
 
-;; What does a transport input need?
-;;
-;; - a channel to which to put the frames
-;; - an optional configuration for audio
-;; - a start & stop implementation
+(defn line-supported?
+  [^DataLine$Info info]
+  (AudioSystem/isLineSupported info))
+
+(defn open-microphone!
+  "Opens the microphone with specified format. Returns the TargetDataLine."
+  [^AudioFormat format]
+  (let [info (line-info :target format)
+        line (line info)]
+    (when-not (line-supported? info)
+      (throw (ex-info "Audio line not supported"
+                      {:format format})))
+    (open! line format)
+    (start! line)
+    line))
 
 (defn- frame-buffer-size
   "Get read buffer size based on the sample rate for input"
   [sample-rate]
   (* 2 (/ sample-rate 100)))
 
-(defn start-local-audio-input!
-  [state]
-  (let [{:audio-in/keys [sample-rate channels sample-size-bits]} (:config @state)
-        buffer-size (frame-buffer-size sample-rate)
-        buffer (byte-array buffer-size)
-        af (audio-format sample-rate sample-size-bits channels)
-        _ (t/log! :info ["AudioFormat" af])
-        li (line-info :target af)
-        target-line (line li)
-        _ (t/log! :info ["Line" target-line])
-        _ (open! target-line)
-        _ (start! target-line)
-        is (AudioInputStream. target-line)]
-    (a/go-loop []
-      (let [count (read! is buffer 0 buffer-size)]
-        (if-let  [ch (:audio-input-channel @state)]
-          (do
-            (when (pos? count)
-              (a/>! ch (frames/->raw-audio-input-frame
-                         (byte-array buffer)
-                         :sample-rate sample-rate
-                         :channels channels)))
-            (recur))
-          (t/log! {:level :info
-                   :id :transport/audio-local-input} "Exiting audio loop"))))))
+(defn start-audio-capture!
+  "Starts capturing audio from the microphone.
+   Returns a channel that will receive byte arrays of audio data.
 
-(comment
-  (def state (atom {:config default-config
-                    :audio-input-channel (a/chan 1096)}))
+   Options:
+   :sample-rate - The sample rate in Hz (default: 16000)
+   :channels - Number of audio channels (default: 1)
+   :buffer-size - Size of the buffer in bytes (default: 4096)
+   :chan-buf-size - Size of the core.async channel buffer (default: 1024)"
+  ([] (start-audio-capture! {}))
+  ([{:keys [sample-rate sample-size-bits channels buffer-size chan-buf-size]
+     :or {sample-rate 16000
+          channels 1
+          buffer-size 4096
+          sample-size-bits 16
+          chan-buf-size 1024}}]
+   (let [af (audio-format sample-rate sample-size-bits channels)
+         line (open-microphone! af)
+         out-ch (a/chan chan-buf-size)
+         buffer (byte-array buffer-size)
+         running? (atom true)]
 
-  (a/go-loop []
-    (let [res (a/<! (:audio-input-channel @state))]
-      (when res
-        (t/log! {:level :info}
-                ["Result" (:base64 res)])))
-    (recur))
+     ;; Start capture loop in a separate thread
+     (future
+       (try
+         (while @running?
+           (let [bytes-read (read! line buffer 0 buffer-size)]
+             (when (pos? bytes-read)
+               ;; Copy only the bytes that were read
+               (let [audio-data (Arrays/copyOfRange buffer 0 bytes-read)]
+                 ;; Put data on channel, but don't block if channel is full
+                 (a/offer! out-ch audio-data)))))
+         (catch Exception e
+           (a/put! out-ch {:error e}))
+         (finally
+           (.stop ^TargetDataLine line)
+           (.close ^TargetDataLine line)
+           (a/close! out-ch))))
 
-  (reset! state nil)
+     ;; Return a map with the channel and a stop function
+     {:audio-chan out-ch
+      :stop-fn #(do (a/close! out-ch)
+                    (reset! running? false))})))
 
-  (start-local-audio-input! state))
+(defmethod process-frame :transport/local-audio
+  [_ state config frame]
+  (case (:type frame)
+    :system/start
+    (let [{:keys [audio-chan stop-fn]} (start-audio-capture! config)]
+      ;; Store stop-fn in state for cleanup
+      (swap! state assoc-in [:transport/local-audio :stop-fn] stop-fn)
+      ;; Start sending audio frames
+      (a/go-loop []
+        (when-let [data (a/<! audio-chan)]
+          (a/>! (:main-ch @state) (frames/audio-input-frame data))
+          (recur))))
+
+    :system/stop
+    (when-let [stop-fn (get-in @state [:transport/local-audio :stop-fn])]
+      (stop-fn))))
