@@ -3,6 +3,7 @@
    [taoensso.telemere :as t]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.deepgram]
+   [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.local.audio]))
 
 (def pipeline-config
@@ -11,6 +12,11 @@
     :generates-frames #{:audio/raw-input}
     :config {:sample-rate 16000
              :channels 1}}
+   {:type :transcription/deepgram
+    :accepted-frames #{:system/start :system/stop :audio/raw-input}
+    :generates-frames #{:text/input}
+    :api-key (secret [:deepgram :api-key])}
+
    {:type :log/text-input
     :accepted-frames #{:text/input}
     :config {}}])

@@ -44,7 +44,7 @@
   (ws/close! conn))
 
 (defn create-deepgram-connection!
-  [api-key & {:keys [on-transcription]}]
+  [api-key & {:keys [on-transcription on-close]}]
   (let [connection-config {:headers {"Authorization" (str "Token " api-key)}
                            :on-open (fn [_]
                                       (t/log! :info "Deepgram websocket connection open"))
@@ -58,32 +58,33 @@
                            :on-error (fn [_ e]
                                        (t/log! :error ["Error" e]))
                            :on-close (fn [_ code reason]
-                                       (t/log! :info ["Deepgram websocket connection closed" "Code:" code "Reason" reason]))}]
-    (ws/websocket deepgram-url-encoding connection-config)))
+                                       (t/log! :info ["Deepgram websocket connection closed" "Code:" code "Reason" reason])
+                                       (when (fn? on-close)
+                                         (on-close)))}]
+    @(ws/websocket deepgram-url-encoding connection-config)))
 
-(defn- close-connection!
+(defn- close-websocket-connection!
   [state]
   (close-deepgram-websocket! (get-in [:transcription/deepgram :conn] @state))
   (swap! state update-in [:transcription/deepgram] dissoc :conn))
 
 (defmethod process-frame :transcription/deepgram
   [type pipeline {:keys [api-key]} frame]
-  (t/log! :debug [:process-frame, frame])
-  (case (:type frame)
-    :system/start
-    (let [_ (t/log! :debug "Starting transcription engine")
-          ws-conn (create-deepgram-connection!
-                    api-key
-                    :on-transcription
-                    (fn [text]
-                      (a/put! (:main-ch @pipeline) (frames/text-frame text))))]
-      (swap! pipeline assoc-in [type :conn] ws-conn))
+  (let [on-close! (fn []
+                    (t/log! :debug "Stopping transcription engine")
+                    (close-websocket-connection! pipeline)
+                    (close-processor! pipeline type))]
+    (case (:type frame)
+      :system/start
+      (let [_ (t/log! :debug "Starting transcription engine")
+            ws-conn (create-deepgram-connection!
+                      api-key
+                      :on-transcription (fn [text]
+                                          (a/put! (:main-ch @pipeline) (frames/text-frame text)))
+                      :on-close on-close!)]
+        (swap! pipeline assoc-in [type :conn] ws-conn))
+      :system/stop (on-close!)
 
-    :system/stop (do
-                   (t/log! :debug "Stopping transcription engine")
-                   (close-connection! pipeline)
-                   (close-processor! pipeline type))
-
-    :audio/raw-input
-    (when-let [conn (get-in @pipeline [type :conn])]
-      (ws/send! conn (:data frame)))))
+      :audio/raw-input
+      (when-let [conn (get-in @pipeline [type :conn])]
+        (ws/send! conn (:data frame))))))
