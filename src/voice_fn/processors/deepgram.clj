@@ -68,9 +68,11 @@
 
 (defmethod process-frame :transcription/deepgram
   [type pipeline {:keys [api-key]} frame]
+  (t/log! :debug [:process-frame, frame])
   (case (:type frame)
     :system/start
-    (let [ws-conn (create-deepgram-connection!
+    (let [_ (t/log! :debug "Starting transcription engine")
+          ws-conn (create-deepgram-connection!
                     api-key
                     :on-transcription
                     (fn [text]
@@ -78,6 +80,7 @@
       (swap! pipeline assoc-in [type :conn] ws-conn))
 
     :system/stop (do
+                   (t/log! :debug "Stopping transcription engine")
                    (close-connection! pipeline)
                    (close-processor! pipeline type))
 

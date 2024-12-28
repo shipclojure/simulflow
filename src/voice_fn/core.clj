@@ -8,23 +8,24 @@
 (def pipeline-config
   [{:type :transport/local-audio
     :accepted-frames #{:system/start :system/stop}
+    :generates-frames #{:audio/raw-input}
     :config {:sample-rate 16000
              :channels 1}}
-   {:type :transcription/deepgram
-    :accepted-frames #{:system/start :system/stop :audio/raw-input}
-    :config {:api-key "458e3de27b9f4fd7bb3c55d6aadb69565640062e"}}
    {:type :log/text-input
     :accepted-frames #{:text/input}
     :config {}}])
 
 (defmethod pipeline/process-frame :log/text-input
   [_ _ _ frame]
-  (t/log! :info ["Transcription" (:text frame)]))
+  (t/log! {:level :info
+           :id :log/text-input} ["Frame" (:data frame)]))
 
 (t/set-min-level! :debug)
 
 (comment
   (def p (pipeline/create-pipeline pipeline-config))
+
+  @p
 
   (pipeline/start-pipeline! p)
   (pipeline/stop-pipeline! p)

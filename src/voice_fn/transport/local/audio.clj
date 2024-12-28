@@ -68,7 +68,6 @@
           buffer-size (frame-buffer-size sample-rate)
           sample-size-bits 16
           chan-buf-size 1024}}]
-   (t/log! :debug "Starting audio capture")
    (let [af (audio-format sample-rate sample-size-bits channels)
          line (open-microphone! af)
          out-ch (a/chan chan-buf-size)
@@ -98,19 +97,24 @@
                     (reset! running? false))})))
 
 (defmethod process-frame :transport/local-audio
-  [type pipeline config frame]
+  [processor-type pipeline config frame]
   (case (:type frame)
     :system/start
-    (let [{:keys [audio-chan stop-fn]} (start-audio-capture! config)]
-      ;; Store stop-fn in state for cleanup
-      (swap! pipeline assoc-in [:transport/local-audio :stop-fn] stop-fn)
-      ;; Start sending audio frames
-      (a/go-loop []
-        (when-let [data (a/<! audio-chan)]
-          (a/>! (:main-ch @pipeline) (frames/audio-input-frame data))
-          (recur))))
+    (do
+      (t/log! :debug "Starting audio capture")
+      (let [{:keys [audio-chan stop-fn]} (start-audio-capture! config)]
+        ;; Store stop-fn in state for cleanup
+        (swap! pipeline assoc-in [:transport/local-audio :stop-fn] stop-fn)
+        ;; Start sending audio frames
+        (a/go-loop []
+          (when-let [data (a/<! audio-chan)]
+            (a/>! (:main-ch @pipeline) (frames/audio-input-frame data))
+            (recur)))))
 
     :system/stop
-    (when-let [stop-fn (get-in @pipeline [:transport/local-audio :stop-fn])]
-      (stop-fn))
-    (close-processor! pipeline type)))
+    (do
+      (t/log! :debug "Stopping audio capture")
+      (when-let [stop-fn (get-in @pipeline [:transport/local-audio :stop-fn])]
+        (stop-fn)))
+    (close-processor! pipeline processor-type))
+  nil)

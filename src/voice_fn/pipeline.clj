@@ -1,7 +1,8 @@
 (ns voice-fn.pipeline
   (:require
-   [clojure.core.async :as a :refer [<! >! chan go-loop mult tap]]
-   [taoensso.telemere :as t]))
+   [clojure.core.async :as a :refer [<! >! chan go-loop]]
+   [taoensso.telemere :as t]
+   [voice-fn.frames :as frames]))
 
 (defmulti process-frame
   "Process a frame from the pipeline.
@@ -23,9 +24,10 @@
 
     ;; Start each processor
     (doseq [{:keys [type accepted-frames]} processors-config]
-      (let [processor-ch (chan 1024)
-            ;; Tap into main channel, filtering for accepted frame types
-            _ (a/sub main-pub processor-ch accepted-frames)]
+      (let [processor-ch (chan 1024)]
+        ;; Tap into main channel, filtering for accepted frame types
+        (doseq [frame-type accepted-frames]
+          (a/sub main-pub frame-type processor-ch))
         (swap! pipeline assoc-in [type :in-ch] processor-ch)))
     pipeline))
 
@@ -34,13 +36,13 @@
   (t/log! :debug "Starting pipeline")
   (a/put! (:main-ch @pipeline) {:type :system/start})
   ;; Start each processor
-  (doseq [{:keys [type] :as processor} (:processors-config pipeline)]
+  (doseq [{:keys [type] :as processor} (:processors-config @pipeline)]
     (go-loop []
       (when-let [frame (<! (get-in @pipeline [type :in-ch]))]
-        (when-let [results (process-frame type pipeline processor frame)]
-          ;; Put results back on main channel if there are any
-          (doseq [r (seq results)]
-            (>! (:main-ch @pipeline) r)))
+        (when-let [result (process-frame type pipeline processor frame)]
+          ;; Put results back on main channel if the processor returned frames
+          (when (frames/frame? result)
+            (>! (:main-ch @pipeline) result)))
         (recur)))))
 
 (defn stop-pipeline!
