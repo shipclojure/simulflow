@@ -1,13 +1,13 @@
 (ns voice-fn.transport.local.audio
   (:require
    [clojure.core.async :as a]
+   [clojure.java.io :as io]
    [taoensso.telemere :as t]
    [uncomplicate.clojure-sound.core :refer [open! read! start!]]
    [uncomplicate.clojure-sound.sampled :refer [audio-format line line-info]]
    [voice-fn.frames :as frames]
    [voice-fn.pipeline :refer [close-processor! process-frame]])
   (:import
-   (java.io File)
    (java.util Arrays)
    (javax.sound.sampled AudioFormat AudioSystem DataLine$Info TargetDataLine)))
 
@@ -23,7 +23,7 @@
    Returns a channel that will receive byte arrays of audio data."
   [{:audio-in/keys [file-path]
     :or {file-path "input.wav"}}]
-  (let [audio-file (File. file-path)
+  (let [audio-file (io/resource file-path)
         audio-stream (AudioSystem/getAudioInputStream audio-file)
         audio-format (.getFormat audio-stream)
         chunk-size (calculate-chunk-size 20 audio-format)
@@ -36,7 +36,6 @@
         (while (and @running?
                     (pos? (.read audio-stream buffer 0 chunk-size)))
           (let [audio-data (Arrays/copyOf buffer chunk-size)]
-            (Thread/sleep 20) ; Simulate real-time playback
             (a/offer! out-ch audio-data)))
         (catch Exception e
           (a/put! out-ch {:error e}))

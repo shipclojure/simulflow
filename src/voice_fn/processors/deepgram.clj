@@ -24,15 +24,17 @@
                               :punctuate true
                               :model "nova-2"})
 
-(defn deepgram-url
-  [{:audio-in/keys [sample-rate encoding]
-    :pipeline/keys [language]}]
-  {:encoding (deepgram-encoding encoding)
-   :language language
-   :sample_rate sample-rate})
-
-(def deepgram-url-encoding
-  (u/append-search-params deepgram-url deepgram-default-config))
+(defn make-deepgram-url
+  [{:audio-in/keys [sample-rate encoding] :pipeline/keys [language]}
+   {:transcription/keys [interim-results? punctuate? model]
+    :or {interim-results? false
+         punctuate? false}}]
+  (u/append-search-params deepgram-url {:encoding (deepgram-encoding encoding)
+                                        :language language
+                                        :sample_rate sample-rate
+                                        :model model
+                                        :interim_results interim-results?
+                                        :punctuate punctuate?}))
 
 (defn transcript?
   [m]
@@ -58,8 +60,8 @@
     (ws/close! conn)))
 
 (defn create-deepgram-connection!
-  [api-key & {:keys [on-transcription on-close]}]
-  (let [connection-config {:headers {"Authorization" (str "Token " api-key)}
+  [pipeline-config processor-config & {:keys [on-transcription on-close]}]
+  (let [connection-config {:headers {"Authorization" (str "Token " (:transcription/api-key processor-config))}
                            :on-open (fn [_]
                                       (t/log! :info "Deepgram websocket connection open"))
                            :on-message (fn [_ws ^HeapCharBuffer data _last?]
@@ -75,7 +77,7 @@
                                        (t/log! :info ["Deepgram websocket connection closed" "Code:" code "Reason" reason])
                                        (when (fn? on-close)
                                          (on-close ws)))}]
-    @(ws/websocket deepgram-url-encoding connection-config)))
+    @(ws/websocket (make-deepgram-url pipeline-config processor-config) connection-config)))
 
 (defn- close-websocket-connection!
   [pipeline]
@@ -83,7 +85,7 @@
   (swap! pipeline update-in [:transcription/deepgram] dissoc :websocket/conn))
 
 (defmethod process-frame :transcription/deepgram
-  [type pipeline {:keys [api-key]} frame]
+  [type pipeline config frame]
   (let [on-close! (fn []
                     (t/log! :debug "Stopping transcription engine")
                     (close-websocket-connection! pipeline)
@@ -92,7 +94,8 @@
       :system/start
       (let [_ (t/log! :debug "Starting transcription engine")
             ws-conn (create-deepgram-connection!
-                      api-key
+                      (:pipeline/config @pipeline)
+                      config
                       :on-transcription (fn [text]
                                           (a/put! (:pipeline/main-ch @pipeline) (frames/text-frame text)))
                       :on-close on-close!)]

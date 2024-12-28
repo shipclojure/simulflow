@@ -10,6 +10,7 @@
   {:pipeline/config {:audio-in/sample-rate 16000
                      :audio-in/encoding :pcm-signed
                      :audio-in/channels 1
+                     :audio-in/file-path "test-voice.wav"
                      :audio-in/sample-size-bits 16 ;; 2 bytes
                      :audio-out/sample-rate 24000
                      :audio-out/bitrate 96000
@@ -38,7 +39,7 @@
 (t/set-min-level! :debug)
 
 (comment
-  (def p (pipeline/create-pipeline pipeline-config))
+  (def p (pipeline/create-pipeline pipeline))
 
   @p
 
