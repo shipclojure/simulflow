@@ -2,7 +2,7 @@
   (:require
    [taoensso.telemere :as t]
    [voice-fn.pipeline :as pipeline]
-   [voice-fn.processors.deepgram]
+   [voice-fn.processors.deepgram :as deepgram]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.local.audio]))
 
@@ -26,7 +26,7 @@
                           :processor/config {:transcription/api-key (secret [:deepgram :api-key])
                                              :transcription/interim-results? false
                                              :transcription/punctuate? false
-                                             :trnscription/model :nova-2}}
+                                             :transcription/model :nova-2}}
                          {:processor/type :log/text-input
                           :processor/accepted-frames #{:text/input}
                           :processor/config {}}]})
@@ -41,7 +41,7 @@
 (comment
   (def p (pipeline/create-pipeline pipeline))
 
-  @p
+  (:pipeline/processors @p)
 
   (pipeline/start-pipeline! p)
   (pipeline/stop-pipeline! p)
