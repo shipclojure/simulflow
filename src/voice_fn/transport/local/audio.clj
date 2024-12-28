@@ -7,8 +7,46 @@
    [voice-fn.frames :as frames]
    [voice-fn.pipeline :refer [close-processor! process-frame]])
   (:import
+   (java.io File)
    (java.util Arrays)
    (javax.sound.sampled AudioFormat AudioSystem DataLine$Info TargetDataLine)))
+
+(defn- calculate-chunk-size
+  "Calculate bytes for ms miliseconds of audio based on format"
+  [ms ^AudioFormat audio-format]
+  (let [frame-size (.getFrameSize audio-format)
+        frame-rate (.getFrameRate audio-format)]
+    (* frame-size (int (/ (* frame-rate ms) 1000)))))
+
+(defn start-audio-capture-file!
+  "Reads from WAV file in 20ms chunks.
+   Returns a channel that will receive byte arrays of audio data."
+  [{:audio-in/keys [file-path]
+    :or {file-path "input.wav"}}]
+  (let [audio-file (File. file-path)
+        audio-stream (AudioSystem/getAudioInputStream audio-file)
+        audio-format (.getFormat audio-stream)
+        chunk-size (calculate-chunk-size 20 audio-format)
+        buffer (byte-array chunk-size)
+        out-ch (a/chan 1024)
+        running? (atom true)]
+
+    (future
+      (try
+        (while (and @running?
+                    (pos? (.read audio-stream buffer 0 chunk-size)))
+          (let [audio-data (Arrays/copyOf buffer chunk-size)]
+            (Thread/sleep 20) ; Simulate real-time playback
+            (a/offer! out-ch audio-data)))
+        (catch Exception e
+          (a/put! out-ch {:error e}))
+        (finally
+          (.close audio-stream)
+          (a/close! out-ch))))
+
+    {:audio-chan out-ch
+     :stop-fn #(do (reset! running? false)
+                   (a/close! out-ch))}))
 
 (defn line-supported?
   [^DataLine$Info info]
@@ -78,7 +116,7 @@
     :system/start
     (do
       (t/log! :debug "Starting audio capture")
-      (let [{:keys [audio-chan stop-fn]} (start-audio-capture! (:pipeline/config @pipeline))]
+      (let [{:keys [audio-chan stop-fn]} (start-audio-capture-file! (:pipeline/config @pipeline))]
         ;; Store stop-fn in state for cleanup
         (swap! pipeline assoc-in [:transport/local-audio :stop-fn] stop-fn)
         ;; Start sending audio frames
