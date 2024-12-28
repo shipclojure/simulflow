@@ -1,19 +1,21 @@
-(ns voice-fn.frames
-  (:require
-   [voice-fn.utils.core :refer [encode-base64]]))
+(ns voice-fn.frames)
 
-(defprotocol Frame
-  (data [this] "Returns the data for this type of frame"))
-
-(defrecord BaseFrame [type data ts]
-  Frame
-  (data [_] data))
+(defrecord BaseFrame [type data ts])
 
 (defn frame? [frame]
-  (satisfies? Frame frame))
+  (instance? BaseFrame frame))
 
-(defn create-frame [type data]
-  (->BaseFrame type data (System/currentTimeMillis)))
+(defn create-frame
+  [type data]
+  (let [ts (System/currentTimeMillis)]
+    ;; Using namespaced keywords for convenience sicne records don't support
+    ;; namespaced params by default
+    (map->BaseFrame {:type type
+                     :frame/type type
+                     :data data
+                     :frame/data data
+                     :ts ts
+                     :frame/ts ts})))
 
 (defn audio-input-frame [raw-data]
   (create-frame :audio/raw-input raw-data))

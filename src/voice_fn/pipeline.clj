@@ -15,43 +15,43 @@
     processor-type))
 
 ;; Pipeline creation logic here
-(defn create-pipeline [processors-config]
+(defn create-pipeline [pipeline-config]
   (let [main-ch (chan 1024)
-        main-pub (a/pub main-ch :type)
-        pipeline (atom {:main-ch main-ch
-                        :processors-config processors-config
-                        :main-pub main-pub})]
+        main-pub (a/pub main-ch :frame/type)
+        pipeline (atom (merge {:pipeline/main-ch main-ch
+                               :pipeline/main-pub main-pub}
+                              pipeline-config))]
 
     ;; Start each processor
-    (doseq [{:keys [type accepted-frames]} processors-config]
+    (doseq [{:processor/keys [type accepted-frames]} (:pipeline/processors pipeline-config)]
       (let [processor-ch (chan 1024)]
         ;; Tap into main channel, filtering for accepted frame types
         (doseq [frame-type accepted-frames]
           (a/sub main-pub frame-type processor-ch))
-        (swap! pipeline assoc-in [type :in-ch] processor-ch)))
+        (swap! pipeline assoc-in [type :processor/in-ch] processor-ch)))
     pipeline))
 
 (defn start-pipeline!
   [pipeline]
   (t/log! :debug "Starting pipeline")
-  (a/put! (:main-ch @pipeline) {:type :system/start})
+  (a/put! (:pipeline/main-ch @pipeline) {:frame/type :system/start})
   ;; Start each processor
-  (doseq [{:keys [type] :as processor} (:processors-config @pipeline)]
+  (doseq [{:processor/keys [type] :as processor} (:pipeline/processors @pipeline)]
     (go-loop []
-      (when-let [frame (<! (get-in @pipeline [type :in-ch]))]
+      (when-let [frame (<! (get-in @pipeline [type :processor/in-ch]))]
         (when-let [result (process-frame type pipeline processor frame)]
           ;; Put results back on main channel if the processor returned frames
           (when (frames/frame? result)
-            (>! (:main-ch @pipeline) result)))
+            (>! (:pipeline/main-ch @pipeline) result)))
         (recur)))))
 
 (defn stop-pipeline!
   [pipeline]
   (t/log! :debug "Stopping pipeline")
-  (a/put! (:main-ch @pipeline) {:type :system/stop}))
+  (a/put! (:pipeline/main-ch @pipeline) {:frame/type :system/stop}))
 
 (defn close-processor!
   [pipeline type]
   (t/log! {:level :debug
            :id type} "Closing processor")
-  (a/close! (get-in @pipeline [type :in-ch])))
+  (a/close! (get-in @pipeline [type :processor/in-ch])))

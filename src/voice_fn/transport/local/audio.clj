@@ -10,27 +10,6 @@
    (java.util Arrays)
    (javax.sound.sampled AudioFormat AudioSystem DataLine$Info TargetDataLine)))
 
-(def audio-config-schema [:map [:audio-in/sample-rate :int
-                                :audio-in/channels :int
-                                :audio-in/sample-size-bits :int
-                                :audio-out/sample-rate :int
-                                :audio-out/bitrate :int
-                                :audio-out/sample-size-bits :int
-                                :audio-out/channels :int]])
-
-(def local-audio-state-schema
-  [:map
-   [:running? :boolean]
-   [:config audio-config-schema]])
-
-(def default-config {:audio-in/sample-rate 16000
-                     :audio-in/channels 1
-                     :audio-in/sample-size-bits 16 ;; 2 bytes
-                     :audio-out/sample-rate 24000
-                     :audio-out/bitrate 96000
-                     :audio-out/sample-size-bits 16
-                     :audio-out/channels 1})
-
 (defn line-supported?
   [^DataLine$Info info]
   (AudioSystem/isLineSupported info))
@@ -58,19 +37,16 @@
 
    Options:
    :sample-rate - The sample rate in Hz (default: 16000)
-   :channels - Number of audio channels (default: 1)
-   :buffer-size - Size of the buffer in bytes (default: 4096)
-   :chan-buf-size - Size of the core.async channel buffer (default: 1024)"
+   :channels - Number of audio channels (default: 1)"
   ([] (start-audio-capture! {}))
-  ([{:keys [sample-rate sample-size-bits channels buffer-size chan-buf-size]
+  ([{:audio-in/keys [sample-rate sample-size-bits channels]
      :or {sample-rate 16000
           channels 1
-          buffer-size (frame-buffer-size sample-rate)
-          sample-size-bits 16
-          chan-buf-size 1024}}]
-   (let [af (audio-format sample-rate sample-size-bits channels)
+          sample-size-bits 16}}]
+   (let [buffer-size (frame-buffer-size sample-rate)
+         af (audio-format sample-rate sample-size-bits channels)
          line (open-microphone! af)
-         out-ch (a/chan chan-buf-size)
+         out-ch (a/chan 1024)
          buffer (byte-array buffer-size)
          running? (atom true)]
 
@@ -97,18 +73,18 @@
                     (reset! running? false))})))
 
 (defmethod process-frame :transport/local-audio
-  [processor-type pipeline config frame]
-  (case (:type frame)
+  [processor-type pipeline _ frame]
+  (case (:frame/type frame)
     :system/start
     (do
       (t/log! :debug "Starting audio capture")
-      (let [{:keys [audio-chan stop-fn]} (start-audio-capture! config)]
+      (let [{:keys [audio-chan stop-fn]} (start-audio-capture! (:pipeline/config @pipeline))]
         ;; Store stop-fn in state for cleanup
         (swap! pipeline assoc-in [:transport/local-audio :stop-fn] stop-fn)
         ;; Start sending audio frames
         (a/go-loop []
           (when-let [data (a/<! audio-chan)]
-            (a/>! (:main-ch @pipeline) (frames/audio-input-frame data))
+            (a/>! (:pipeline/main-ch @pipeline) (frames/audio-input-frame data))
             (recur)))))
 
     :system/stop

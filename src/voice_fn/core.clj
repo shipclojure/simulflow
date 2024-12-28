@@ -6,20 +6,29 @@
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.local.audio]))
 
-(def pipeline-config
-  [{:type :transport/local-audio
-    :accepted-frames #{:system/start :system/stop}
-    :generates-frames #{:audio/raw-input}
-    :config {:sample-rate 16000
-             :channels 1}}
-   {:type :transcription/deepgram
-    :accepted-frames #{:system/start :system/stop :audio/raw-input}
-    :generates-frames #{:text/input}
-    :api-key (secret [:deepgram :api-key])}
-
-   {:type :log/text-input
-    :accepted-frames #{:text/input}
-    :config {}}])
+(def pipeline
+  {:pipeline/config {:audio-in/sample-rate 16000
+                     :audio-in/encoding :pcm-signed
+                     :audio-in/channels 1
+                     :audio-in/sample-size-bits 16 ;; 2 bytes
+                     :audio-out/sample-rate 24000
+                     :audio-out/bitrate 96000
+                     :audio-out/sample-size-bits 16
+                     :audio-out/channels 1
+                     :pipeline/language :ro}
+   :pipeline/processors [{:processor/type :transport/local-audio
+                          :processor/accepted-frames #{:system/start :system/stop}
+                          :processor/generates-frames #{:audio/raw-input}}
+                         {:processor/type :transcription/deepgram
+                          :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
+                          :processor/generates-frames #{:text/input}
+                          :processor/config {:transcription/api-key (secret [:deepgram :api-key])
+                                             :transcription/interim-results? false
+                                             :transcription/punctuate? false
+                                             :trnscription/model :nova-2}}
+                         {:processor/type :log/text-input
+                          :processor/accepted-frames #{:text/input}
+                          :processor/config {}}]})
 
 (defmethod pipeline/process-frame :log/text-input
   [_ _ _ frame]
