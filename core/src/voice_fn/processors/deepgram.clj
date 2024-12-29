@@ -61,16 +61,23 @@
 
 (declare create-connection-config)
 
+(def max-reconnect-attempts 5)
+
 (defn connect-websocket!
   [type pipeline processor-config]
-  (t/log! :info "Attempting to reconnect to Deepgram")
-  (let [conn-config (create-connection-config
-                      type
-                      pipeline
-                      processor-config)
-        new-conn @(ws/websocket (make-deepgram-url (:pipeline/config @pipeline) processor-config)
-                                conn-config)]
-    (swap! pipeline assoc-in [type :websocket/conn] new-conn)))
+  (let [current-count (get-in @pipeline [type :websocket/reconnect-count] 0)]
+    (if (>= current-count max-reconnect-attempts)
+      (t/log! :warn "Maximum reconnection attempts reached for Deepgram")
+      (do
+        (t/log! :info (str "Attempting to connect to Deepgram (attempt " (inc current-count) "/" max-reconnect-attempts ")"))
+        (swap! pipeline update-in [type :websocket/reconnect-count] (fnil inc 0))
+        (let [conn-config (create-connection-config
+                            type
+                            pipeline
+                            processor-config)
+              new-conn @(ws/websocket (make-deepgram-url (:pipeline/config @pipeline) processor-config)
+                                      conn-config)]
+          (swap! pipeline assoc-in [type :websocket/conn] new-conn))))))
 
 (defn create-connection-config
   [type pipeline processor-config]
