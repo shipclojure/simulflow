@@ -2,7 +2,7 @@
   (:require
    [taoensso.telemere :as t]
    [voice-fn.pipeline :as pipeline]
-   [voice-fn.processors.deepgram :as deepgram]
+   [voice-fn.processors.deepgram]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.local.audio]))
 

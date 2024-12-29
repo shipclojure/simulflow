@@ -1,20 +1,22 @@
 (ns voice-fn.transport.websocket.transport
   (:require
    [clojure.core.async :as a]
+   [ring.websocket :as ws]
+   [taoensso.telemere :as t]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.transport.websocket.protocols :as p]))
 
-(defmethod pipeline/process-frame :transport/websocket
+(defmethod pipeline/process-frame :transport/websocket-input
   [_ pipeline {:keys [websocket serializer]} frame]
   (case (:frame/type frame)
-    :audio/output
-    (let [serialized (p/serialize-frame serializer frame)]
-      ;; TODO see http kit websocket
-      (http/send! websocket serialized))
+    :system/start
+    (do
+      (t/log! :debug "Starting websocket transport input"))
 
-    :audio/raw-input
-    (when-let [data (:data frame)]
-      (let [deserialized (p/deserialize-frame serializer data)]
-        (a/put! (:pipeline/main-ch @pipeline) deserialized)))
+    nil))
+
+(defmethod pipeline/process-frame :transport/websocket-output
+  [_ pipeline {:keys [websocket serializer]} frame]
+  (case (:frame/type frame)
 
     nil))

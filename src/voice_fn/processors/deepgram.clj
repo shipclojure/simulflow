@@ -95,7 +95,7 @@
                        (:pipeline/config @pipeline)
                        (:processor/config processor)
                        {:on-transcription (fn [text]
-                                            (a/put! (:pipeline/main-ch @pipeline) (frames/text-frame text)))
+                                            (a/put! (:pipeline/main-ch @pipeline) (frames/text-input-frame text)))
                         :on-close on-close!})]
         (swap! pipeline assoc-in [type :websocket/conn] ws-conn))
       :system/stop (on-close!)

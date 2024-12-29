@@ -20,5 +20,5 @@
 (defn audio-input-frame [raw-data]
   (create-frame :audio/raw-input raw-data))
 
-(defn text-frame [text]
+(defn text-input-frame [text]
   (create-frame :text/input text))
