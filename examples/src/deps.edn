@@ -1,20 +1,14 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-        org.uncomplicate/clojure-sound {:mvn/version "0.3.0"}
         com.taoensso/telemere {:mvn/version "1.0.0-RC1"}
         org.clojure/core.async {:mvn/version "1.7.701"}
-        hato/hato {:mvn/version "0.9.0"}
         metosin/jsonista {:mvn/version "0.3.8"}
-        com.sun.jna/jna {:mvn/version "3.0.9"}
-        http-kit/http-kit {:mvn/version "2.8.0"}
-        metosin/reitit {:mvn/version "0.7.2"}
-        ring/ring-core {:mvn/version "1.13.0"}}
+        ring/ring-core {:mvn/version "1.13.0"}
+        hato/hato {:mvn/version "1.0.0"}}
  :aliases
  {:build {:deps {io.github.clojure/tools.build {:mvn/version "0.9.4"}
                  slipset/deps-deploy {:mvn/version "0.2.1"}}
           :ns-default build}
-  :run {:main-opts ["-m" "voice-fn.transport.local.audio"]
-        :exec-fn voice-fn.transport.local.audio/main}
   :dev {:extra-deps {djblue/portal {:mvn/version "0.58.5"}}}
   :cider-clj {:extra-deps {cider/cider-nrepl {:mvn/version "0.50.3"}}
               :main-opts ["-m" "nrepl.cmdline" "--middleware" "[cider.nrepl/cider-middleware]"]}

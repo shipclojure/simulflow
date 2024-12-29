@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>net.clojars.ovistoica</groupId>
+  <groupId>com.shipclojure</groupId>
   <artifactId>voice-fn</artifactId>
   <version>0.1.0-SNAPSHOT</version>
-  <name>ovistoica/voice-fn</name>
-  <description>FIXME: my new library.</description>
-  <url>https://github.com/ovistoica/voice-fn</url>
+  <name>shipclojure/voice-fn</name>
+  <description>A Clojure framework for building real-time voice-enabled AI applications. voice-fn handles the orchestration of speech recognition, audio processing, and AI service integration with the elegance of functional programming.</description>
+  <url>https://github.com/shipclojure/voice-fn</url>
   <licenses>
     <license>
       <name>Eclipse Public License</name>

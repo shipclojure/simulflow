@@ -74,7 +74,7 @@
                           :processor/generates-frames #{}
                           :processor/config {}}
                          {:processor/type :transport/async-output
-                          :processor/accepted-frames #{:audio/output}
+                          :processor/accepted-frames #{:audio/output :system/stop}
                           :generates/frames #{}}]})
 
 (defmethod pipeline/process-frame :log/text-input
