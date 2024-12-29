@@ -39,8 +39,8 @@
                                          (let [data (merge (ex-data e)
                                                            {:message (ex-message e)})]
                                            (a/>! (:pipeline/main-ch @pipeline) (frames/error-frame data)))))]
-                (a/>! (:pipeline/main-ch @pipeline) input-frame)
-                (recur))))))
+                (a/>! (:pipeline/main-ch @pipeline) input-frame))
+              (recur)))))
       :system/stop
       (t/log! {:level :info
                :id processor-type} "Stopping transport input")
@@ -50,8 +50,8 @@
   [_ pipeline _ frame]
   (let [{:transport/keys [out-ch serializer]} (:pipeline/config @pipeline)]
     (case (:frame/type frame)
-      :audio/output (let [output (if serializer
-                                   (tp/serialize-frame frame serializer)
-                                   frame)]
+      :audio/output (when-let [output (if serializer
+                                        (tp/serialize-frame frame serializer)
+                                        frame)]
                       (a/put! out-ch output))
       :system/stop (a/close! out-ch))))

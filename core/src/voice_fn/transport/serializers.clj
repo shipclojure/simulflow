@@ -1,7 +1,7 @@
 (ns voice-fn.transport.serializers
   (:require
    [voice-fn.frames :as frames]
-   [voice-fn.transport.websocket.protocols :as p]
+   [voice-fn.transport.protocols :as p]
    [voice-fn.utils.core :as u]))
 
 ;; Example Twilio serializer
@@ -13,11 +13,13 @@
       (case (:frame/type frame)
         :audio/output {:event "media"
                        :streamSid stream-sid
-                       :media {:payload (:data frame)}}))
+                       :media {:payload (:data frame)}}
+        nil))
 
     (deserialize-frame [_ raw-data]
       ;; Convert Twilio message to pipeline frame
       (let [data (u/parse-if-json raw-data)]
         (case (:event data)
           ;; TODO more cases
-          "media" (frames/audio-input-frame (:payload (:media data))))))))
+          "media" (frames/audio-input-frame (u/decode-base64 (:payload (:media data))))
+          nil)))))

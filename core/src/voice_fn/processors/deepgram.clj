@@ -59,28 +59,44 @@
     (ws/send! conn (close-connection-payload))
     (ws/close! conn)))
 
-(defn create-deepgram-connection!
-  [pipeline-config processor-config {:keys [on-transcription on-close]}]
-  (let [connection-config {:headers {"Authorization" (str "Token " (:transcription/api-key processor-config))}
-                           :on-open (fn [_]
-                                      (t/log! :info "Deepgram websocket connection open"))
-                           :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                                         (let [m (u/parse-if-json (str data))
-                                               trsc (transcript m)]
-                                           (when (not= trsc "")
-                                             (on-transcription trsc))))
-                           :on-error (fn [_ e]
-                                       (t/log! :error ["Error" e]))
-                           :on-close (fn [ws code reason]
-                                       (t/log! :info ["Deepgram websocket connection closed" "Code:" code "Reason" reason])
-                                       (when (fn? on-close)
-                                         (on-close ws)))}]
-    (ws/websocket (make-deepgram-url pipeline-config processor-config) connection-config)))
+(declare create-connection-config)
+
+(defn connect-websocket!
+  [type pipeline processor-config]
+  (t/log! :info "Attempting to reconnect to Deepgram")
+  (let [conn-config (create-connection-config
+                      type
+                      pipeline
+                      processor-config)
+        new-conn @(ws/websocket (make-deepgram-url (:pipeline/config @pipeline) processor-config)
+                                conn-config)]
+    (swap! pipeline assoc-in [type :websocket/conn] new-conn)))
+
+(defn create-connection-config
+  [type pipeline processor-config]
+  {:headers {"Authorization" (str "Token " (:transcription/api-key processor-config))}
+   :on-open (fn [_]
+              (t/log! :info "Deepgram websocket connection open"))
+   :on-message (fn [_ws ^HeapCharBuffer data _last?]
+                 (let [m (u/parse-if-json (str data))
+                       trsc (transcript m)]
+                   (when (and trsc (not= trsc ""))
+                     (a/put! (:pipeline/main-ch @pipeline)
+                             (frames/text-input-frame trsc)))))
+   :on-error (fn [_ e]
+               (t/log! :error ["Error" e]))
+   :on-close (fn [_ws code reason]
+               (t/log! :info ["Deepgram websocket connection closed" "Code:" code "Reason:" reason])
+               (when (= code 1011) ;; timeout
+                 (connect-websocket! type pipeline processor-config)))})
 
 (defn- close-websocket-connection!
   [pipeline]
   (close-deepgram-websocket! (get-in [:transcription/deepgram :websocket/conn] @pipeline))
   (swap! pipeline update-in [:transcription/deepgram] dissoc :websocket/conn))
+
+(def code-reason
+  {1011 :timeout})
 
 (defmethod process-frame :transcription/deepgram
   [type pipeline processor frame]
@@ -90,14 +106,8 @@
                     (close-processor! pipeline type))]
     (case (:frame/type frame)
       :system/start
-      (let [_ (t/log! :debug "Starting transcription engine")
-            ws-conn @(create-deepgram-connection!
-                       (:pipeline/config @pipeline)
-                       (:processor/config processor)
-                       {:on-transcription (fn [text]
-                                            (a/put! (:pipeline/main-ch @pipeline) (frames/text-input-frame text)))
-                        :on-close on-close!})]
-        (swap! pipeline assoc-in [type :websocket/conn] ws-conn))
+      (do (t/log! :debug "Starting transcription engine")
+          (connect-websocket! type pipeline (:processor/config processor)))
       :system/stop (on-close!)
 
       :audio/raw-input

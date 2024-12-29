@@ -6,6 +6,7 @@
    [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.deepgram]
    [voice-fn.secrets :refer [secret]]
+   [voice-fn.transport.async]
    [voice-fn.transport.local.audio]))
 
 (def local-transcription-log-pipeline
@@ -80,7 +81,7 @@
 (defmethod pipeline/process-frame :log/text-input
   [_ _ _ frame]
   (t/log! {:level :info
-           :id :log/text-input} ["Frame" (:data frame)]))
+           :id :log/text-input} ["Frame" (:frame/data frame)]))
 
 (t/set-min-level! :debug)
 

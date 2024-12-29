@@ -1,5 +1,6 @@
 (ns voice-fn-examples.twilio-websocket
   (:require
+   [clojure.core.async :as a]
    [clojure.data.xml :as xml]
    [muuntaja.core :as m]
    [reitit.core]
@@ -11,7 +12,12 @@
    [reitit.ring.middleware.parameters :as parameters]
    [ring.adapter.jetty :as jetty]
    [ring.util.response :as r]
-   [ring.websocket :as ws]))
+   [ring.websocket :as ws]
+   [taoensso.telemere :as t]
+   [voice-fn.core]
+   [voice-fn.pipeline :as vpipe]
+   [voice-fn.secrets :refer [secret]]
+   [voice-fn.transport.serializers :as vs]))
 
 (defn emit-xml-str
   [xml-data]
@@ -44,23 +50,66 @@
                      [:Connect
                       [:Stream {:url ws-url}]]]))))
 
+(defn create-twilio-ai-pipeline
+  [in out]
+  {:pipeline/config {:audio-in/sample-rate 8000
+                     :audio-in/encoding :ulaw
+                     :audio-in/channels 1
+                     :audio-in/sample-size-bits 8
+                     :audio-out/sample-rate 8000
+                     :audio-out/bitrate 64000
+                     :audio-out/sample-size-bits 8
+                     :audio-out/channels 1
+                     :pipeline/language :ro
+                     :transport/in-ch in
+                     :transport/serializer (vs/make-twilio-serializer "hello")
+                     :transport/out-ch out}
+   :pipeline/processors [{:processor/type :transport/async-input
+                          :processor/accepted-frames #{:system/start :system/stop}
+                          :processor/generates-frames #{:audio/raw-input}}
+                         {:processor/type :transcription/deepgram
+                          :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
+                          :processor/generates-frames #{:text/input}
+                          :processor/config {:transcription/api-key (secret [:deepgram :api-key])
+                                             :transcription/interim-results? false
+                                             :transcription/punctuate? false
+                                             :transcription/model :nova-2}}
+                         {:processor/type :log/text-input
+                          :processor/accepted-frames #{:text/input}
+                          :processor/generates-frames #{}
+                          :processor/config {}}]})
+
 ;; Using ring websocket protocols to setup a websocket server
 (defn twilio-ws-handler
   [req]
   (assert (ws/upgrade-request? req))
-  (let [ws-handler
-        (fn [upgrade-request]
-          (let [provided-subprotocols (:websocket-subprotocols upgrade-request)]
-            {::ws/listener
-             {:on-open (fn on-connect [_]
-                         (prn ::ws-connected))
-              :on-message (fn on-text [_ws payload]
-                            (prn payload))
-              :on-close (fn on-close [_ws status-code reason])
-              :on-ping (fn on-ping [ws payload]
-                         (ws/send ws payload))}
-             ::ws/protocol (first provided-subprotocols)}))]
-    (ws-handler req)))
+  (let [in (a/chan 1024)
+        out (a/chan 1024)
+        pipeline (vpipe/create-pipeline (create-twilio-ai-pipeline in out))
+        start-pipeline (fn [socket]
+                         ;; listen on the output channel we provided to send
+                         ;; that audio back to twilio
+                         (a/go-loop []
+                           (when-let [output (a/<! out)]
+                             (prn "Output" output)
+                             (ws/send socket output)
+                             (recur)))
+                         (vpipe/start-pipeline! pipeline))]
+    {::ws/listener
+     {:on-open (fn on-open [socket]
+                 (start-pipeline socket)
+                 (prn "Opening socket" socket)
+
+                 nil)
+      :on-message (fn on-text [_ws payload]
+                    (a/put! in payload))
+      :on-close (fn on-close [_ws _status-code _reason]
+                  (vpipe/stop-pipeline! pipeline))
+      :on-error (fn on-error [ws error]
+                  (prn error)
+                  (t/log! :debug error))
+      :on-ping (fn on-ping [ws payload]
+                 (ws/send ws payload))}}))
 
 (def routes
   [["/inbound-call" {:summary "Webhook where a call is made"
