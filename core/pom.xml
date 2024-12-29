@@ -15,20 +15,45 @@
   </licenses>
   <developers>
     <developer>
-      <name>Ovistoica</name>
+      <name>Ovi Stoica</name>
     </developer>
   </developers>
   <scm>
-    <url>https://github.com/ovistoica/voice-fn</url>
-    <connection>scm:git:git://github.com/ovistoica/voice-fn.git</connection>
-    <developerConnection>scm:git:ssh://git@github.com/ovistoica/voice-fn.git</developerConnection>
+    <url>https://github.com/shipclojure/voice-fn</url>
+    <connection>scm:git:git://github.com/shipclojure/voice-fn.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/shipclojure/voice-fn.git</developerConnection>
     <tag>v0.1.0-SNAPSHOT</tag>
   </scm>
   <dependencies>
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
-      <version>1.11.1</version>
+      <version>1.12.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.uncomplicate</groupId>
+      <artifactId>clojure-sound</artifactId>
+      <version>0.3.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.taoensso</groupId>
+      <artifactId>telemere</artifactId>
+      <version>1.0.0-RC1</version>
+    </dependency>
+    <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>core.async</artifactId>
+      <version>1.7.701</version>
+    </dependency>
+    <dependency>
+      <groupId>metosin</groupId>
+      <artifactId>jsonista</artifactId>
+      <version>0.3.8</version>
+    </dependency>
+    <dependency>
+      <groupId>ring</groupId>
+      <artifactId>ring-core</artifactId>
+      <version>1.13.0</version>
     </dependency>
   </dependencies>
   <build>
