@@ -1,4 +1,4 @@
-(ns voice-fn.transport.websocket.protocols)
+(ns voice-fn.transport.protocols)
 
 (defprotocol FrameSerializer
   (serialize-frame [this frame])

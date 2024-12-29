@@ -1,4 +1,4 @@
-(ns voice-fn.transport.websocket.serializers
+(ns voice-fn.transport.serializers
   (:require
    [voice-fn.frames :as frames]
    [voice-fn.transport.websocket.protocols :as p]
