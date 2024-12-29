@@ -1,0 +1,9 @@
+{:paths ["src"]
+ :deps {org.clojure/clojure {:mvn/version "1.12.0"}
+        org.clojure/data.xml {:mvn/version "0.0.8"}
+        ring/ring-jetty-adapter {:mvn/version "1.13.0"}
+        com.shipclojure/voice-fn {:local/root "../core"}
+        metosin/reitit {:mvn/version "0.7.2"}
+        hato/hato {:mvn/version "1.0.0"}}
+ :aliases {:cider-clj {:extra-deps {cider/cider-nrepl {:mvn/version "0.50.3"}}
+                       :main-opts ["-m" "nrepl.cmdline" "--middleware" "[cider.nrepl/cider-middleware]"]}}}
