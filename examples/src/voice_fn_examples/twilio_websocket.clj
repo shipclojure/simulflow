@@ -10,6 +10,7 @@
    [reitit.ring.middleware.muuntaja :as muuntaja]
    [reitit.ring.middleware.parameters :as parameters]
    [ring.adapter.jetty :as jetty]
+   [ring.util.response :as r]
    [ring.websocket :as ws]))
 
 (defn emit-xml-str
@@ -26,15 +27,22 @@
   [req]
   (header req "host"))
 
+(defn xml-response
+  [body]
+  (-> (r/response body)
+      (r/content-type "text/xml")))
+
 (defn twilio-inbound-handler
   "Handler to direct the incoming call to stream audio to our websocket handler"
   [req]
+  (prn "Got request for inbound")
   (let [h (host req)
         ws-url (str "wss://" h "/ws")]
     ;; https://www.twilio.com/docs/voice/twiml/connect
-    (emit-xml-str [:Response
-                   [:Connect
-                    [:Stream {:url ws-url}]]])))
+    (xml-response
+      (emit-xml-str [:Response
+                     [:Connect
+                      [:Stream {:url ws-url}]]]))))
 
 ;; Using ring websocket protocols to setup a websocket server
 (defn twilio-ws-handler
@@ -46,7 +54,8 @@
             {::ws/listener
              {:on-open (fn on-connect [_]
                          (prn ::ws-connected))
-              :on-message (fn on-text [_ws payload])
+              :on-message (fn on-text [_ws payload]
+                            (prn payload))
               :on-close (fn on-close [_ws status-code reason])
               :on-ping (fn on-ping [ws payload]
                          (ws/send ws payload))}
@@ -55,7 +64,7 @@
 
 (def routes
   [["/inbound-call" {:summary "Webhook where a call is made"
-                     :get {:handler (fn [req])}}]
+                     :post {:handler twilio-inbound-handler}}]
    ["/ws" {:summary "Websocket endpoint to receive a twilio call"
            :get {:handler twilio-ws-handler}}]])
 
@@ -82,12 +91,12 @@
     (ring/create-default-handler)))
 
 (defn start [& {:keys [port] :or {port 3000}}]
-  (jetty/run-jetty #'app {:port port, :join? false})
-  (println (str "server running in port" port)))
+  (println (str "server running in port " port))
+  (jetty/run-jetty #'app {:port port, :join? false}))
 
 (comment
 
-  (def server (start :port 3001))
+  (def server (start :port 3000))
   (.stop server)
 
   ,)
