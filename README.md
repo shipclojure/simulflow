@@ -14,7 +14,7 @@ A Clojure library for building real-time voice-enabled AI applications. voice-fn
 
 ## Why voice-fn?
 
-voice-fn brings Clojure's functional elegance to voice AI applications. Rather than wrestling with complex state management and imperative audio processing, voice-fn lets you create AI pipelines in a declarative way. 
+voice-fn brings Clojure's functional elegance to voice AI applications. Rather than wrestling with complex state management and imperative audio processing, voice-fn lets you create AI pipelines in a declarative way.
 
 ```clojure
 (ns example
@@ -59,11 +59,43 @@ voice-fn brings Clojure's functional elegance to voice AI applications. Rather t
 (pipeline/stop-pipeline! p) ;;stopping
 ```
 
+To add a new processor simply tell voice-fn how to run `process-frame` for that new processor. Example of a frame logger for text-input frames
+```clojure
+(ns my-logger-processor
+  (:require
+   [voice-fn.pipeline :as pipeline]))
+
+(defmethod pipeline/process-frame :log/text-input
+  [_ _ _ frame]
+  (t/log! {:level :info
+           :id :log/text-input} ["Frame" (:frame/data frame)]))
+
+
+;; and now you can use it in the pipeline
+(def async-echo-pipeline
+  {:pipeline/config {...}
+   :pipeline/processors [...
+                         {:processor/type :transcription/deepgram
+                          :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
+                          :processor/generates-frames #{:text/input}
+                          :processor/config {:transcription/api-key (secret [:deepgram :api-key])
+                                             :transcription/interim-results? false
+                                             :transcription/punctuate? false
+                                             :transcription/model :nova-2}}
+                         {:processor/type :log/text-input
+                          :processor/accepted-frames #{:text/input}
+                          :processor/generates-frames #{}
+                          :processor/config {}}
+                          ...]})
+```
+
 ## Status
 
 WIP - Early stage. See examples for what can be achieved for now
 
 ## Documentation
+
+WIP - TODO
 
 See [docs/](docs/) for full documentation, including:
 - Getting Started Guide
