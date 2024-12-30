@@ -44,6 +44,11 @@
   [text]
   (create-frame :text/input text))
 
+(defn llm-output-text-chunk-frame
+  "Frame outputted by text based streaming LLMs"
+  [text-chunk]
+  (create-frame :llm/output-text-chunk text-chunk))
+
 (defn error-frame
   [data]
   (create-frame :system/error data))

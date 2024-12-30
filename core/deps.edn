@@ -5,7 +5,8 @@
         org.clojure/core.async {:mvn/version "1.7.701"}
         metosin/jsonista {:mvn/version "0.3.8"}
         ring/ring-core {:mvn/version "1.13.0"}
-        hato/hato {:mvn/version "1.0.0"}}
+        hato/hato {:mvn/version "1.0.0"}
+        net.clojars.wkok/openai-clojure {:mvn/version "0.22.0"}}
  :aliases
  {:build {:deps {io.github.clojure/tools.build {:mvn/version "0.9.4"}
                  slipset/deps-deploy {:mvn/version "0.2.1"}}

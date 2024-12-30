@@ -57,9 +57,7 @@
                      :audio-out/bitrate 64000
                      :audio-out/sample-size-bits 8
                      :audio-out/channels 1
-                     :pipeline/language :ro
-                     :transport/in-ch ws-server
-                     :transport/out-ch ws-client}
+                     :pipeline/language :ro}
    :pipeline/processors [{:processor/type :transport/async-input
                           :processor/accepted-frames #{:system/start :system/stop}
                           :processor/generates-frames #{:audio/raw-input}}
@@ -70,6 +68,14 @@
                                              :transcription/interim-results? false
                                              :transcription/punctuate? false
                                              :transcription/model :nova-2}}
+                         {:processor/type :llm/openai
+                          :processor/accepted-frames #{:system/stop :text/input}
+                          :processor/generates-frames #{:llm/output-text-tokens}
+                          :processor/config {:llm/model "gpt-4o-mini"
+                                             :llm/messages [{:role "system" :content "You are a helpful assistant"}]
+                                             :openai/api-key (secret [:openai :new-api-key])}}
+                         {:processor/type :sentence/assembler
+                          :processor/accepted-frames #{:system/stop :system/start :llm/output-text-tokens}}
                          {:processor/type :log/text-input
                           :processor/accepted-frames #{:text/input}
                           :processor/generates-frames #{}
