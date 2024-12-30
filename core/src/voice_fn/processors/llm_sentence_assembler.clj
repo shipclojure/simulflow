@@ -11,9 +11,11 @@
   (let [end-sentence-matcher (:sentence/end-matcher config default-end-sentence-mather)
         sentence (get-in @pipeline [processor-type :sentence] "")]
     (case type
-      :llm/output-text-chunk (if (re-find end-sentence-matcher data)
-                               (do
-                                 (swap! pipeline assoc-in [type :sentence] "")
-                                 (a/put! (:pipeline/main-ch @pipeline)
-                                         (frames/llm-output-text-sentence-frame (str sentence data))))
-                               (swap! pipeline assoc-in [type :sentence] (str sentence data))))))
+      :llm/output-text-chunk
+      (if (re-find end-sentence-matcher data)
+        (do
+          (swap! pipeline assoc-in [processor-type :sentence] "")
+          (a/put! (:pipeline/main-ch @pipeline)
+                  (frames/llm-output-text-sentence-frame (str sentence data))))
+        (swap! pipeline assoc-in [processor-type :sentence] (str sentence data)))
+      nil)))

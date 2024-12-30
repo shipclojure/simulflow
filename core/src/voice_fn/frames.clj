@@ -17,6 +17,10 @@
                      :ts ts
                      :frame/ts ts})))
 
+(def start-frame (create-frame :system/start nil))
+
+(def stop-frame (create-frame :system/stop nil))
+
 (defmacro defframe
   "Define a frame creator function and its predicate.
    Usage: (defframe audio-input :audio/raw-input \"Doc string\")"
