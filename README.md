@@ -61,7 +61,7 @@ voice-fn brings Clojure's functional elegance to voice AI applications. Rather t
 
 ## Status
 
-WIP
+WIP - Early stage. See examples for what can be achieved for now
 
 ## Documentation
 
