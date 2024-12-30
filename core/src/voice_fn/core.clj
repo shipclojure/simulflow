@@ -76,7 +76,8 @@
                                              :openai/api-key (secret [:openai :new-api-key])}}
                          {:processor/type :llm/sentence-assembler
                           :processor/accepted-frames #{:system/stop :system/start :llm/output-text-chunk}
-                          :processor/generates-frames #{:llm/output-text-sentence}}
+                          :processor/generates-frames #{:llm/output-text-sentence}
+                          :processor/config {:sentence/end-matcher #"[.?!]"}}
 
                          {:processor/type :log/text-input
                           :processor/accepted-frames #{:text/input}
@@ -94,9 +95,9 @@
 (t/set-min-level! :debug)
 
 (comment
-  (def p (pipeline/create-pipeline local-transcription-log-pipeline))
+  (def p (pipeline/create-pipeline async-echo-pipeline))
 
-  (:pipeline/processors @p)
+  @p
 
   (pipeline/start-pipeline! p)
   (pipeline/stop-pipeline! p)
