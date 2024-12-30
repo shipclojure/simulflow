@@ -16,4 +16,6 @@
         (is (f/llm-output-text-sentence-frame? sentence-frame))
         (is (= (:frame/data sentence-frame) "Hello, my name is John!")))
       (testing "Handling other types of frames"
-        (is (nil? (pipeline/process-frame :llm/sentence-assembler pipeline processor-config f/start-frame)))))))
+        (is (nil? (pipeline/process-frame :llm/sentence-assembler pipeline processor-config f/start-frame))))))
+  ;; TODO
+  (testing "Assembles sentences correctly when token starts with punctuation"))

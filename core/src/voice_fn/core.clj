@@ -54,13 +54,16 @@
                      :audio-in/channels 1
                      :audio-in/sample-size-bits 8
                      :audio-out/sample-rate 8000
+                     :audio-out/encoding :ulaw
                      :audio-out/bitrate 64000
                      :audio-out/sample-size-bits 8
                      :audio-out/channels 1
                      :pipeline/language :ro}
-   :pipeline/processors [{:processor/type :transport/async-input
+   :pipeline/processors [;; Transport in
+                         {:processor/type :transport/async-input
                           :processor/accepted-frames #{:system/start :system/stop}
                           :processor/generates-frames #{:audio/raw-input}}
+                         ;; Transcription
                          {:processor/type :transcription/deepgram
                           :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
                           :processor/generates-frames #{:text/input}
@@ -68,21 +71,35 @@
                                              :transcription/interim-results? false
                                              :transcription/punctuate? false
                                              :transcription/model :nova-2}}
+                         ;; LLM
                          {:processor/type :llm/openai
                           :processor/accepted-frames #{:system/stop :text/input}
                           :processor/generates-frames #{:llm/output-text-chunk}
                           :processor/config {:llm/model "gpt-4o-mini"
                                              :llm/messages [{:role "system" :content "You are a helpful assistant"}]
-                                             :openai/api-key (secret [:openai :new-api-key])}}
+                                             `                             :openai/api-key (secret [:openai :new-api-key])}}
+
+                         ;; Sentence assembler
                          {:processor/type :llm/sentence-assembler
                           :processor/accepted-frames #{:system/stop :system/start :llm/output-text-chunk}
                           :processor/generates-frames #{:llm/output-text-sentence}
                           :processor/config {:sentence/end-matcher #"[.?!]"}}
-
-                         {:processor/type :log/text-input
+                         ;; TTS
+                         {:processor/type :tts/elevenlabs
+                          :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
+                          :processor/generates-frames #{:audio/output}
+                          :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                                             :elevenlabs/model-id "eleven_flash_v2_5"
+                                             :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                                             :voice/stability 0.5
+                                             :voice/similarity-boost 0.8
+                                             :voice/use-speaker-boost? true}}
+                         ;; Logger
+                         {:processorvoi/type :log/text-input
                           :processor/accepted-frames #{:text/input}
                           :processor/generates-frames #{}
                           :processor/config {}}
+                         ;; Transport out
                          {:processor/type :transport/async-output
                           :processor/accepted-frames #{:audio/output :system/stop}
                           :generates/frames #{}}]})

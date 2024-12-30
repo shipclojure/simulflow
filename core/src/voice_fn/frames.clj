@@ -39,8 +39,7 @@
   bynary")
 
 (defframe audio-output-frame :audio/output "Audio frame to be played back to the user through output transport. Generated
-  by text to speech processors or multi modal (with voice capabilities) LLM
-  processors.")
+  by text to speech processors or multi modal (with voice capabilities) LLM processors. Data is binary")
 
 (defframe text-input-frame :text/input "Frame usually outputted by a transcription processor. Serves as input for text
   LLM processors.")
