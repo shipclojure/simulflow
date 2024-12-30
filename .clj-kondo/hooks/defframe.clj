@@ -10,9 +10,10 @@
              [(api/token-node 'do)
               (api/list-node
                 [(api/token-node 'defn) frame-name docstring
-                 (api/vector-node []) ;; empty args vector
+
+                 (api/vector-node [(api/token-node 'frame)])
                  (api/token-node nil)]) ;; body returning nil
               (api/list-node
                 [(api/token-node 'defn) pred-name
-                 (api/vector-node [(api/token-node 'x)]) ;; args [x]
+                 (api/vector-node [(api/token-node 'frame)]) ;; args [frame]
                  (api/list-node [(api/token-node 'instance?) frame-name (api/token-node 'x)])])])}))
