@@ -70,12 +70,14 @@
                                              :transcription/model :nova-2}}
                          {:processor/type :llm/openai
                           :processor/accepted-frames #{:system/stop :text/input}
-                          :processor/generates-frames #{:llm/output-text-tokens}
+                          :processor/generates-frames #{:llm/output-text-chunk}
                           :processor/config {:llm/model "gpt-4o-mini"
                                              :llm/messages [{:role "system" :content "You are a helpful assistant"}]
                                              :openai/api-key (secret [:openai :new-api-key])}}
-                         {:processor/type :sentence/assembler
-                          :processor/accepted-frames #{:system/stop :system/start :llm/output-text-tokens}}
+                         {:processor/type :llm/sentence-assembler
+                          :processor/accepted-frames #{:system/stop :system/start :llm/output-text-chunk}
+                          :processor/generates-frames #{:llm/output-text-sentence}}
+
                          {:processor/type :log/text-input
                           :processor/accepted-frames #{:text/input}
                           :processor/generates-frames #{}
