@@ -13,7 +13,8 @@
           :ns-default build}
   :run {:main-opts ["-m" "voice-fn.transport.local.audio"]
         :exec-fn voice-fn.transport.local.audio/main}
-  :dev {:extra-deps {djblue/portal {:mvn/version "0.58.5"}}}
+  :dev {:extra-deps {djblue/portal {:mvn/version "0.58.5"}
+                     clj-kondo/clj-kondo {:mvn/version "2024.11.14"}}}
   :cider-clj {:extra-deps {cider/cider-nrepl {:mvn/version "0.50.3"}}
               :main-opts ["-m" "nrepl.cmdline" "--middleware" "[cider.nrepl/cider-middleware]"]}
   :test {:extra-paths ["test"]

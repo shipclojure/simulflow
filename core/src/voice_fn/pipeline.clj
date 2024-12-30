@@ -11,7 +11,7 @@
   - config - pipeline config
   - frame - the frame to be processed by the processor"
   {:arglists '([processor-type pipeline config frame])}
-  (fn [processor-type state config frame]
+  (fn [processor-type _state _config _frame]
     processor-type))
 
 ;; Pipeline creation logic here
