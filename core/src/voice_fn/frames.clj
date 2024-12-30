@@ -51,3 +51,5 @@
   "Frame outputted by text based streaming LLMs")
 
 (defframe error-frame :system/error "General error")
+
+(defframe elevenlabs-audio-chunk-frame :elevenlabs/audio-chunk "Elevenlabs doesn't send full json, sometimes it just sends partial JSON that needs to be assembled")

@@ -48,6 +48,7 @@
 
 (defmethod pipeline/process-frame :transport/async-output
   [_ pipeline _ frame]
+  (t/log! :debug ["Output frame" frame])
   (let [{:transport/keys [out-ch serializer]} (:pipeline/config @pipeline)]
     (case (:frame/type frame)
       :audio/output (when-let [output (if serializer

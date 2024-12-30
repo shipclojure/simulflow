@@ -16,6 +16,8 @@
    [taoensso.telemere :as t]
    [voice-fn.core]
    [voice-fn.pipeline :as vpipe]
+   [voice-fn.processors.elevenlabs]
+   [voice-fn.processors.llm-sentence-assembler]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.serializers :as vs]))
 
@@ -57,7 +59,7 @@
                      :audio-in/channels 1
                      :audio-in/sample-size-bits 8
                      :audio-out/sample-rate 8000
-                     :audio-out/bitrate 64000
+                     :audio-out/encoding :ulaw
                      :audio-out/sample-size-bits 8
                      :audio-out/channels 1
                      :pipeline/language :ro
@@ -74,10 +76,35 @@
                                              :transcription/interim-results? false
                                              :transcription/punctuate? false
                                              :transcription/model :nova-2}}
+                         {:processor/type :llm/openai
+                          :processor/accepted-frames #{:text/input}
+                          :processor/generates-frames #{:llm/output-text-chunk}
+                          :processor/config {:llm/model "gpt-4o-mini"
+                                             :llm/messages [{:role "system" :content "You are a helpful assistant"}]
+                                             :openai/api-key (secret [:openai :new-api-sk])}}
                          {:processor/type :log/text-input
                           :processor/accepted-frames #{:text/input}
                           :processor/generates-frames #{}
-                          :processor/config {}}]})
+                          :processor/config {}}
+                         {:processor/type :llm/sentence-assembler
+                          :processor/accepted-frames #{:system/stop :system/start :llm/output-text-chunk}
+                          :processor/generates-frames #{:llm/output-text-sentence}
+                          :processor/config {:sentence/end-matcher #"[.?!]"}}
+                         {:processor/type :tts/elevenlabs
+                          :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
+                          :processor/generates-frames #{:audio/output :elevenlabs/audio-chunk}
+                          :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                                             :elevenlabs/model-id "eleven_flash_v2_5"
+                                             :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                                             :voice/stability 0.5
+                                             :voice/similarity-boost 0.8
+                                             :voice/use-speaker-boost? true}}
+                         {:processor/type :elevenlabs/audio-assembler
+                          :processor/accepted-frames #{:elevenlabs/audio-chunk}
+                          :processor/generates-frames #{:audio/output}}
+                         {:processor/type :transport/async-output
+                          :processor/accepted-frames #{:audio/output :system/stop}
+                          :generates/frames #{}}]})
 
 ;; Using ring websocket protocols to setup a websocket server
 (defn twilio-ws-handler

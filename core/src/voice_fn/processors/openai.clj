@@ -17,7 +17,7 @@
                     main-ch
                     (comp (map token-content) (filter some?) (map frames/llm-output-text-chunk-frame))
                     (api/create-chat-completion {:model model
-                                                 :messages (conj messages)
+                                                 :messages (conj messages {:role "user" :content (:frame/data frame)})
                                                  :stream true}
                                                 {:api-key api-key
                                                  :version :http-2 :as :stream})))))

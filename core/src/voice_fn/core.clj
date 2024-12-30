@@ -5,6 +5,7 @@
    [taoensso.telemere :as t]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.deepgram]
+   [voice-fn.processors.openai]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.async]
    [voice-fn.transport.local.audio]))
@@ -77,7 +78,7 @@
                           :processor/generates-frames #{:llm/output-text-chunk}
                           :processor/config {:llm/model "gpt-4o-mini"
                                              :llm/messages [{:role "system" :content "You are a helpful assistant"}]
-                                             `                             :openai/api-key (secret [:openai :new-api-key])}}
+                                             :openai/api-key (secret [:openai :new-api-key])}}
 
                          ;; Sentence assembler
                          {:processor/type :llm/sentence-assembler

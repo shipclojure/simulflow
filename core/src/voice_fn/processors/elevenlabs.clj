@@ -1,6 +1,7 @@
 (ns voice-fn.processors.elevenlabs
   (:require
    [clojure.core.async :as a]
+   [clojure.pprint :as pprint]
    [hato.websocket :as ws]
    [taoensso.telemere :as t]
    [voice-fn.frames :as f]
@@ -61,28 +62,40 @@
     :elevenlabs/keys [api-key]
     :or {stability 0.5
          similarity-boost 0.8
-         use-speaker-boost? true}}]
-  (when-not api-key
-    (throw (ex-info "Missing elevenlabs api key" {:cause :elevenlabs/missing-api-key})))
-  {:text " "
-   :voice_settings {:stability stability
-                    :similarity_boost similarity-boost
-                    :use_speaker_boost use-speaker-boost?}
-   :xi_api_key api-key})
+         use-speaker-boost? true}
+    :as config}]
+
+  (u/json-str {:text " "
+               :voice_settings {:stability stability
+                                :similarity_boost similarity-boost
+                                :use_speaker_boost use-speaker-boost?}
+               :xi_api_key api-key}))
 
 (def close-stream-message
   {:text ""})
 
+(defn text-message
+  [text]
+  (u/json-str {:text text
+               :generation_config {:flush true}}))
+
 (defn create-connection-config
   [type pipeline processor-config]
-  {:on-open (fn [_]
-              (t/log! :info "Elevenlabs websocket connection open"))
+  {:on-open (fn [ws]
+              (t/log! :info "Elevenlabs websocket connection open")
+              (ws/send! ws (begin-stream-message processor-config)))
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
-
                  (let [m (u/parse-if-json (str data))]
-                   (when-let [audio (:audio m)]
-                     (a/put! (:pipeline/main-ch @pipeline)
-                             (f/audio-output-frame (u/decode-base64 audio))))))
+                   (t/log! :debug ["Elevenlabs result", (class m)])
+                   (if (string? m)
+                     (do
+                       (t/log! :debug "Putting audio chunk on pipeline")
+                       (a/put! (:pipeline/main-ch @pipeline)
+                               (f/elevenlabs-audio-chunk-frame m)))
+                     (when (:audio m)
+                       (t/log! :debug "Putting full audio on pipeline")
+                       (a/put! (:pipeline/main-ch @pipeline)
+                               (f/audio-output-frame (:audio m)))))))
    :on-error (fn [_ e]
                (t/log! :error ["Error" e]))
    :on-close (fn [_ws code reason]
@@ -94,9 +107,9 @@
   [type pipeline processor-config]
   (let [current-count (get-in @pipeline [type :websocket/reconnect-count] 0)]
     (if (>= current-count max-reconnect-attempts)
-      (t/log! :warn "Maximum reconnection attempts reached for Deepgram")
+      (t/log! :warn "Maximum reconnection attempts reached for Elevenlabs")
       (do
-        (t/log! :info (str "Attempting to connect to Deepgram (attempt " (inc current-count) "/" max-reconnect-attempts ")"))
+        (t/log! :info (str "Attempting to connect to Elevenlabs (attempt " (inc current-count) "/" max-reconnect-attempts ")"))
         (swap! pipeline update-in [type :websocket/reconnect-count] (fnil inc 0))
         (let [conn-config (create-connection-config
                             type
@@ -117,11 +130,6 @@
   (close-elevenlabs-websocket! (get-in [:tts/elevenlabs :websocket/conn] @pipeline))
   (swap! pipeline update-in [:tts/elevenlabs] dissoc :websocket/conn))
 
-(defn send-text!
-  [conn text]
-  (ws/send! conn (u/json-str {:text text
-                              :generation_config {:flush true}})))
-
 (defmethod pipeline/process-frame :tts/elevenlabs
   [type pipeline processor frame]
   (case (:frame/type frame)
@@ -132,4 +140,19 @@
 
     :llm/output-text-sentence
     (when-let [conn (get-in @pipeline [type :websocket/conn])]
-      (ws/send! conn (:data frame)))))
+      (ws/send! conn (text-message (:frame/data frame))))))
+
+(defmethod pipeline/process-frame :elevenlabs/audio-assembler
+  [type pipeline _ frame]
+  (t/log! :debug ["Audio Chunk" frame])
+  (let [acc (get-in @pipeline [type :audio-accumulator] "")]
+    (case type
+      :elevenlabs/audio-chunk
+      (let [attempt (u/parse-if-json (str acc (:frame/data frame)))]
+        (if-let [audio (:audio attempt)]
+          (do
+            (swap! pipeline assoc-in [type :audio-accumulator] "")
+            (a/put! (:pipeline/main-ch @pipeline)
+                    (f/audio-output-frame audio)))
+          (swap! pipeline assoc-in [type :audio-accumulator] attempt)))
+      nil)))

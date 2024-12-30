@@ -1,6 +1,7 @@
 (ns voice-fn.processors.llm-sentence-assembler
   (:require
    [clojure.core.async :as a]
+   [taoensso.telemere :as t]
    [voice-fn.frames :as frames]
    [voice-fn.pipeline :as pipeline]))
 
@@ -13,9 +14,10 @@
     (case type
       :llm/output-text-chunk
       (if (re-find end-sentence-matcher data)
-        (do
+        (let [full-sentence (str sentence data)]
+          (t/log! :debug ["Full sentence" full-sentence])
           (swap! pipeline assoc-in [processor-type :sentence] "")
           (a/put! (:pipeline/main-ch @pipeline)
-                  (frames/llm-output-text-sentence-frame (str sentence data))))
+                  (frames/llm-output-text-sentence-frame full-sentence)))
         (swap! pipeline assoc-in [processor-type :sentence] (str sentence data)))
       nil)))
