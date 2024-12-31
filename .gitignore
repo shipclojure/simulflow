@@ -30,3 +30,4 @@
 /resources/secrets.edn
 /core/resources/secrets.edn
 /core/.clj-kondo/.cache
+/core/.lsp/
