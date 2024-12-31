@@ -37,7 +37,7 @@
     (u/append-search-params (format xi-tts-websocket-url voice-id)
                             {:model_id model-id
                              :language_code language
-                             :output-format (encoding->elevenlabs encoding sample-rate)})))
+                             :output_format (encoding->elevenlabs encoding sample-rate)})))
 
 (comment
   (make-elevenlabs-url {:audio-in/sample-rate 8000
@@ -62,8 +62,7 @@
     :elevenlabs/keys [api-key]
     :or {stability 0.5
          similarity-boost 0.8
-         use-speaker-boost? true}
-    :as config}]
+         use-speaker-boost? true}}]
 
   (u/json-str {:text " "
                :voice_settings {:stability stability
@@ -76,28 +75,28 @@
 
 (defn text-message
   [text]
-  (u/json-str {:text text
-               :generation_config {:flush true}}))
+  (u/json-str {:text (str text " ")
+               :flush true}))
 
 (defn create-connection-config
   [type pipeline processor-config]
   {:on-open (fn [ws]
-              (t/log! :info "Elevenlabs websocket connection open")
-              (ws/send! ws (begin-stream-message processor-config)))
+              (let [configuration (begin-stream-message processor-config)]
+                (t/log! :info ["Elevenlabs websocket connection open. Sending configuration message" configuration])
+                (ws/send! ws configuration)))
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
                  (let [m (u/parse-if-json (str data))]
-                   (t/log! :debug ["Elevenlabs result", (class m)])
                    (if (string? m)
                      (do
-                       (t/log! :debug "Putting audio chunk on pipeline")
+                       (t/log! :debug ["Processing audio chunk" m])
                        (a/put! (:pipeline/main-ch @pipeline)
                                (f/elevenlabs-audio-chunk-frame m)))
                      (when (:audio m)
-                       (t/log! :debug "Putting full audio on pipeline")
+                       (t/log! :debug ["Processing complete audio" m])
                        (a/put! (:pipeline/main-ch @pipeline)
                                (f/audio-output-frame (:audio m)))))))
    :on-error (fn [_ e]
-               (t/log! :error ["Error" e]))
+               (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
    :on-close (fn [_ws code reason]
                (t/log! :info ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))})
 
@@ -117,42 +116,54 @@
                             processor-config)
               new-conn @(ws/websocket (make-elevenlabs-url (:pipeline/config @pipeline) processor-config)
                                       conn-config)]
-          (swap! pipeline assoc-in [type :websocket/conn] new-conn))))))
-
-(defn close-elevenlabs-websocket!
-  [conn]
-  (when conn
-    (ws/send! conn (u/json-str close-stream-message))
-    (ws/close! conn)))
+          (swap! pipeline assoc-in [type :websocket/conn] new-conn)
+          (t/log! :debug "Elevenlabs connection ready"))))))
 
 (defn- close-websocket-connection!
-  [pipeline]
-  (close-elevenlabs-websocket! (get-in [:tts/elevenlabs :websocket/conn] @pipeline))
+  [type pipeline]
+  (t/log! :info "Closing elevenlabs websocket connection")
+  (when-let  [conn (get-in @pipeline [type :websocket/conn])]
+    (ws/send! conn (u/json-str close-stream-message))
+    (ws/close! conn))
+
   (swap! pipeline update-in [:tts/elevenlabs] dissoc :websocket/conn))
 
 (defmethod pipeline/process-frame :tts/elevenlabs
   [type pipeline processor frame]
   (case (:frame/type frame)
     :system/start
-    (do (t/log! :debug "Starting text to speech engine")
+    (do (t/log! {:level :debug
+                 :id type} "Starting text to speech engine")
         (connect-websocket! type pipeline (:processor/config processor)))
-    :system/stop (close-websocket-connection! pipeline)
+    :system/stop (close-websocket-connection! type pipeline)
 
     :llm/output-text-sentence
-    (when-let [conn (get-in @pipeline [type :websocket/conn])]
-      (ws/send! conn (text-message (:frame/data frame))))))
+    (do
+      (t/log! {:level :debug
+               :id type} ["Got sentence for elevenlabs", (:frame/data frame)])
+      (let [conn (get-in @pipeline [type :websocket/conn])
+            xi-message (text-message (:frame/data frame))]
+        (t/log! {:level :debug
+                 :id type} ["Sending websocket payload" xi-message])
+        (ws/send! conn xi-message)))))
 
 (defmethod pipeline/process-frame :elevenlabs/audio-assembler
   [type pipeline _ frame]
-  (t/log! :debug ["Audio Chunk" frame])
+  (t/log! {:level :debug
+           :id type} ["Audio Chunk" frame])
   (let [acc (get-in @pipeline [type :audio-accumulator] "")]
-    (case type
+    (case (:frame/type frame)
       :elevenlabs/audio-chunk
       (let [attempt (u/parse-if-json (str acc (:frame/data frame)))]
         (if-let [audio (:audio attempt)]
           (do
+            (t/log! {:level :debug
+                     :id type} ["Successfully parsed audio chunk" audio])
             (swap! pipeline assoc-in [type :audio-accumulator] "")
             (a/put! (:pipeline/main-ch @pipeline)
                     (f/audio-output-frame audio)))
-          (swap! pipeline assoc-in [type :audio-accumulator] attempt)))
+          (do
+            (t/log! {:level :debug
+                     :id type} ["Accumulating audio chunk" (:frame/data frame)])
+            (swap! pipeline assoc-in [type :audio-accumulator] attempt))))
       nil)))

@@ -11,9 +11,9 @@
     (serialize-frame [_ frame]
       ;; Convert pipeline frame to Twilio-specific format
       (case (:frame/type frame)
-        :audio/output {:event "media"
-                       :streamSid stream-sid
-                       :media {:payload (:data frame)}}
+        :audio/output (u/json-str {:event "media"
+                                   :streamSid stream-sid
+                                   :media {:payload (:data frame)}})
         nil))
 
     (deserialize-frame [_ raw-data]

@@ -19,7 +19,7 @@
    [voice-fn.processors.elevenlabs]
    [voice-fn.processors.llm-sentence-assembler]
    [voice-fn.secrets :refer [secret]]
-   [voice-fn.transport.serializers :as vs]))
+   [voice-fn.transport.twilio]))
 
 (defn emit-xml-str
   [xml-data]
@@ -43,7 +43,6 @@
 (defn twilio-inbound-handler
   "Handler to direct the incoming call to stream audio to our websocket handler"
   [req]
-  (prn "Got request for inbound")
   (let [h (host req)
         ws-url (str "wss://" h "/ws")]
     ;; https://www.twilio.com/docs/voice/twiml/connect
@@ -64,9 +63,8 @@
                      :audio-out/channels 1
                      :pipeline/language :ro
                      :transport/in-ch in
-                     :transport/serializer (vs/make-twilio-serializer "hello")
                      :transport/out-ch out}
-   :pipeline/processors [{:processor/type :transport/async-input
+   :pipeline/processors [{:processor/type :transport/twilio-input
                           :processor/accepted-frames #{:system/start :system/stop}
                           :processor/generates-frames #{:audio/raw-input}}
                          {:processor/type :transcription/deepgram
@@ -118,14 +116,14 @@
                          ;; that audio back to twilio
                          (a/go-loop []
                            (when-let [output (a/<! out)]
-                             (prn "Output" output)
+                             (t/log! {:id :twilio-output
+                                      :level :debug} ["Sending twilio output" output])
                              (ws/send socket output)
                              (recur)))
                          (vpipe/start-pipeline! pipeline))]
     {::ws/listener
      {:on-open (fn on-open [socket]
                  (start-pipeline socket)
-                 (prn "Opening socket" socket)
 
                  nil)
       :on-message (fn on-text [_ws payload]

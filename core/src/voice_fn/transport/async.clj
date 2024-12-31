@@ -47,12 +47,14 @@
       (reset! running? false))))
 
 (defmethod pipeline/process-frame :transport/async-output
-  [_ pipeline _ frame]
-  (t/log! :debug ["Output frame" frame])
+  [type pipeline _ frame]
+  (t/log! {:level :debug
+           :id type}
+    ["Output frame" (:frame/data frame)])
   (let [{:transport/keys [out-ch serializer]} (:pipeline/config @pipeline)]
     (case (:frame/type frame)
       :audio/output (when-let [output (if serializer
-                                        (tp/serialize-frame frame serializer)
+                                        (tp/serialize-frame serializer frame)
                                         frame)]
                       (a/put! out-ch output))
       :system/stop (a/close! out-ch))))

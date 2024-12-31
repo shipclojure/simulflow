@@ -17,13 +17,6 @@
    :ulaw :mulaw
    :alaw :alaw})
 
-(def deepgram-default-config {:encoding "linear16"
-                              :language "ro"
-                              :sample_rate 16000
-                              :interim_results false
-                              :punctuate true
-                              :model "nova-2"})
-
 (defn make-deepgram-url
   [{:audio-in/keys [sample-rate encoding] :pipeline/keys [language]}
    {:transcription/keys [interim-results? punctuate? model]
@@ -52,12 +45,6 @@
 (defn close-connection-payload
   []
   (u/json-str {:type "CloseStream"}))
-
-(defn close-deepgram-websocket!
-  [conn]
-  (when conn
-    (ws/send! conn (close-connection-payload))
-    (ws/close! conn)))
 
 (declare create-connection-config)
 
@@ -98,8 +85,10 @@
                  (connect-websocket! type pipeline processor-config)))})
 
 (defn- close-websocket-connection!
-  [pipeline]
-  (close-deepgram-websocket! (get-in [:transcription/deepgram :websocket/conn] @pipeline))
+  [type pipeline]
+  (when-let [conn (get-in @pipeline [type :websocket/conn])]
+    (ws/send! conn (close-connection-payload))
+    (ws/close! conn))
   (swap! pipeline update-in [:transcription/deepgram] dissoc :websocket/conn))
 
 (def code-reason
@@ -109,7 +98,7 @@
   [type pipeline processor frame]
   (let [on-close! (fn []
                     (t/log! :debug "Stopping transcription engine")
-                    (close-websocket-connection! pipeline)
+                    (close-websocket-connection! type pipeline)
                     (close-processor! pipeline type))]
     (case (:frame/type frame)
       :system/start
