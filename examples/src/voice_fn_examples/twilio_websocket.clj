@@ -62,6 +62,7 @@
                      :audio-out/sample-size-bits 8
                      :audio-out/channels 1
                      :pipeline/language :ro
+                     :llm/context [{:role "system" :content  "You are a helpful assistant"}]
                      :transport/in-ch in
                      :transport/out-ch out}
    :pipeline/processors [{:processor/type :transport/twilio-input
@@ -74,11 +75,13 @@
                                              :transcription/interim-results? false
                                              :transcription/punctuate? false
                                              :transcription/model :nova-2}}
+                         {:processor/type :llm/context-aggregator
+                          :processor/accepted-frames #{:llm/output-text-sentence :text/input}
+                          :processor/generates-frames #{:llm/user-context-added}}
                          {:processor/type :llm/openai
-                          :processor/accepted-frames #{:text/input}
+                          :processor/accepted-frames #{:llm/user-context-added}
                           :processor/generates-frames #{:llm/output-text-chunk}
                           :processor/config {:llm/model "gpt-4o-mini"
-                                             :llm/messages [{:role "system" :content "You are a helpful assistant"}]
                                              :openai/api-key (secret [:openai :new-api-sk])}}
                          {:processor/type :log/text-input
                           :processor/accepted-frames #{:text/input}

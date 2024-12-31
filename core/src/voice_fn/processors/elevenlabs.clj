@@ -1,7 +1,6 @@
 (ns voice-fn.processors.elevenlabs
   (:require
    [clojure.core.async :as a]
-   [clojure.pprint :as pprint]
    [hato.websocket :as ws]
    [taoensso.telemere :as t]
    [voice-fn.frames :as f]

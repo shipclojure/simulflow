@@ -53,3 +53,5 @@
 (defframe error-frame :system/error "General error")
 
 (defframe elevenlabs-audio-chunk-frame :elevenlabs/audio-chunk "Elevenlabs doesn't send full json, sometimes it just sends partial JSON that needs to be assembled")
+
+(defframe llm-user-context-added-frame :llm/user-context-added "Frame sent after the user context was appended to the AI context. Used to sync the llm aggregator with the llm processor pipeline")

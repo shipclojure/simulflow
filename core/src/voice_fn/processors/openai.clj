@@ -9,15 +9,15 @@
 
 (defmethod pipeline/process-frame :llm/openai
   [_type pipeline processor frame]
-  (let [{:llm/keys [model messages] :openai/keys [api-key]} (:processor/config processor)
-        main-ch (:pipeline/main-ch @pipeline)]
+  (let [{:llm/keys [model] :openai/keys [api-key]} (:processor/config processor)
+        {:llm/keys [context]} (:pipeline/config @pipeline)]
     (case (:frame/type frame)
-      :text/input (a/pipeline
-                    1
-                    main-ch
-                    (comp (map token-content) (filter some?) (map frames/llm-output-text-chunk-frame))
-                    (api/create-chat-completion {:model model
-                                                 :messages (conj messages {:role "user" :content (:frame/data frame)})
-                                                 :stream true}
-                                                {:api-key api-key
-                                                 :version :http-2 :as :stream})))))
+      :llm/user-context-added (a/pipeline
+                                1
+                                (:pipeline/main-ch @pipeline)
+                                (comp (map token-content) (filter some?) (map frames/llm-output-text-chunk-frame))
+                                (api/create-chat-completion {:model model
+                                                             :messages context
+                                                             :stream true}
+                                                            {:api-key api-key
+                                                             :version :http-2 :as :stream})))))
