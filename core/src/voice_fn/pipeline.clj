@@ -48,6 +48,7 @@
 (defn stop-pipeline!
   [pipeline]
   (t/log! :debug "Stopping pipeline")
+  (t/log! :debug ["Conversation so far" (get-in @pipeline [:pipeline/config :llm/context])])
   (a/put! (:pipeline/main-ch @pipeline) {:frame/type :system/stop}))
 
 (defn close-processor!

@@ -84,16 +84,8 @@
                 (t/log! :info ["Elevenlabs websocket connection open. Sending configuration message" configuration])
                 (ws/send! ws configuration)))
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                 (let [m (u/parse-if-json (str data))]
-                   (if (string? m)
-                     (do
-                       (t/log! :debug ["Processing audio chunk" m])
-                       (a/put! (:pipeline/main-ch @pipeline)
-                               (f/elevenlabs-audio-chunk-frame m)))
-                     (when (:audio m)
-                       (t/log! :debug ["Processing complete audio" m])
-                       (a/put! (:pipeline/main-ch @pipeline)
-                               (f/audio-output-frame (:audio m)))))))
+                 (a/put! (:pipeline/main-ch @pipeline)
+                         (f/elevenlabs-audio-chunk-frame (str data))))
    :on-error (fn [_ e]
                (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
    :on-close (fn [_ws code reason]
@@ -137,14 +129,11 @@
     :system/stop (close-websocket-connection! type pipeline)
 
     :llm/output-text-sentence
-    (do
+    (let [conn (get-in @pipeline [type :websocket/conn])
+          xi-message (text-message (:frame/data frame))]
       (t/log! {:level :debug
-               :id type} ["Got sentence for elevenlabs", (:frame/data frame)])
-      (let [conn (get-in @pipeline [type :websocket/conn])
-            xi-message (text-message (:frame/data frame))]
-        (t/log! {:level :debug
-                 :id type} ["Sending websocket payload" xi-message])
-        (ws/send! conn xi-message)))))
+               :id type} ["Sending websocket payload" xi-message])
+      (ws/send! conn xi-message))))
 
 (defmethod pipeline/process-frame :elevenlabs/audio-assembler
   [type pipeline _ frame]
@@ -152,15 +141,15 @@
     (case (:frame/type frame)
       :elevenlabs/audio-chunk
       (let [attempt (u/parse-if-json (str acc (:frame/data frame)))]
-        (if-let [audio (:audio attempt)]
-          (do
-            (t/log! {:level :debug
-                     :id type} ["Successfully parsed audio chunk" audio])
+        (if (map? attempt)
+          (when-let [audio (:audio attempt)]
             (swap! pipeline assoc-in [type :audio-accumulator] "")
             (a/put! (:pipeline/main-ch @pipeline)
                     (f/audio-output-frame audio)))
           (do
             (t/log! {:level :debug
-                     :id type} ["Accumulating audio chunk" (:frame/data frame)])
+                     :id type} ["Accumulating audio chunk" attempt])
             (swap! pipeline assoc-in [type :audio-accumulator] attempt))))
-      nil)))
+      :system/stop
+      (t/log! {:level :debug
+               :id type} ["Accumulator at the end" acc]))))

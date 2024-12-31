@@ -17,6 +17,7 @@
    [voice-fn.core]
    [voice-fn.pipeline :as vpipe]
    [voice-fn.processors.elevenlabs]
+   [voice-fn.processors.llm-context-aggregator]
    [voice-fn.processors.llm-sentence-assembler]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.twilio]))
@@ -62,7 +63,7 @@
                      :audio-out/sample-size-bits 8
                      :audio-out/channels 1
                      :pipeline/language :ro
-                     :llm/context [{:role "system" :content  "You are a helpful assistant"}]
+                     :llm/context [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}]
                      :transport/in-ch in
                      :transport/out-ch out}
    :pipeline/processors [{:processor/type :transport/twilio-input
@@ -88,9 +89,9 @@
                           :processor/generates-frames #{}
                           :processor/config {}}
                          {:processor/type :llm/sentence-assembler
-                          :processor/accepted-frames #{:system/stop :system/start :llm/output-text-chunk}
+                          :processor/accepted-frames #{:system/stop :llm/output-text-chunk}
                           :processor/generates-frames #{:llm/output-text-sentence}
-                          :processor/config {:sentence/end-matcher #"[.?!]"}}
+                          :processor/config {:sentence/end-matcher #"[.?!,;:]"}}
                          {:processor/type :tts/elevenlabs
                           :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
                           :processor/generates-frames #{:audio/output :elevenlabs/audio-chunk}
