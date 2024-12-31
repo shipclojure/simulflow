@@ -148,8 +148,6 @@
 
 (defmethod pipeline/process-frame :elevenlabs/audio-assembler
   [type pipeline _ frame]
-  (t/log! {:level :debug
-           :id type} ["Audio Chunk" frame])
   (let [acc (get-in @pipeline [type :audio-accumulator] "")]
     (case (:frame/type frame)
       :elevenlabs/audio-chunk
