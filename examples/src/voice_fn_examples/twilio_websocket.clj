@@ -73,8 +73,10 @@
                           :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
                           :processor/generates-frames #{:text/input}
                           :processor/config {:transcription/api-key (secret [:deepgram :api-key])
-                                             :transcription/interim-results? false
+                                             :transcription/interim-results? true
                                              :transcription/punctuate? false
+                                             :transcription/vad-events? true
+                                             :transcription/smart-format? true
                                              :transcription/model :nova-2}}
                          {:processor/type :llm/context-aggregator
                           :processor/accepted-frames #{:llm/output-text-sentence :text/input}

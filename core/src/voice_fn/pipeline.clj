@@ -1,8 +1,37 @@
 (ns voice-fn.pipeline
   (:require
    [clojure.core.async :as a :refer [<! >! chan go-loop]]
+   [malli.core :as m]
    [taoensso.telemere :as t]
-   [voice-fn.frames :as frames]))
+   [voice-fn.frames :as frames]
+   [voice-fn.schema :as schema]))
+
+(defmulti make-processor-config
+  "Create the configuration for the processor based on the pipeline
+  configuration. Used when the final configuration for a processor requires
+  information from the global pipeline configuration. ex: audio-in encoding,
+  pipeline language, etc
+
+  - type - the processor type
+
+  - pipeline-config - the global config of the pipeline. It contains config such
+  as the input audio-encoding, pipeline language, input and output channels and
+  more. See `voice-fn.pipeline/PipelineConfigSchema`.
+
+  - processor-config - the config of the processor as specified in the list of
+  processors from the pipeline"
+  {:arglists '([type pipeline-config processor-config])}
+  (fn [type _pipeline-config _processor-config]
+    type))
+
+(defmethod make-processor-config :default
+  [_ _ processor-config]
+  processor-config)
+
+(defmulti processor-schema
+  "Returns the malli schema for a processor type's configuration"
+  {:arglists '([processor-type])}
+  (fn [processor-type] processor-type))
 
 (defmulti process-frame
   "Process a frame from the pipeline.
@@ -13,6 +42,21 @@
   {:arglists '([processor-type pipeline config frame])}
   (fn [processor-type _state _config _frame]
     processor-type))
+
+(def PipelineConfigSchema
+  [:map
+   [:audio-in/sample-rate {:default 16000} schema/SampleRate]
+   [:audio-in/channels {:default 1} schema/AudioChannels]
+   [:audio-in/encoding {:default :pcm-signed} schema/AudioEncoding]
+   [:audio-in/sample-size-bits {:default 16} schema/SampleSizeBits]
+   [:audio-out/sample-rate {:default 16000} schema/SampleRate]
+   [:audio-out/channels {:default 1} schema/AudioChannels]
+   [:audio-out/encoding {:default :pcm-signed} schema/AudioEncoding]
+   [:audio-out/sample-size-bits {:default 16} schema/SampleSizeBits]
+   [:pipeline/language schema/Language]
+   [:llm/context schema/LLMContext]
+   [:transport/in-ch schema/Channel]
+   [:transport/out-ch schema/Channel]])
 
 ;; Pipeline creation logic here
 (defn create-pipeline [pipeline-config]
