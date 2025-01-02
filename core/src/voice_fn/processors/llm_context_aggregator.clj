@@ -1,6 +1,7 @@
 (ns voice-fn.processors.llm-context-aggregator
   (:require
    [clojure.core.async :as a]
+   [taoensso.telemere :as t]
    [voice-fn.frames :as f]
    [voice-fn.pipeline :as pipeline]))
 
@@ -27,7 +28,9 @@ concat
   [_ pipeline _ frame]
   (case (:frame/type frame)
     :llm/output-text-sentence
-    (swap! pipeline update-in [:pipeline/config :llm/context] concat-context "assistant" (:frame/data frame))
+    (do
+      (t/log! :info ["AI sentence" (:frame/data frame)])
+      (swap! pipeline update-in [:pipeline/config :llm/context] concat-context "assistant" (:frame/data frame)))
     :text/input
     (do (swap! pipeline update-in [:pipeline/config :llm/context] concat-context "user" (:frame/data frame))
         (a/put! (:pipeline/main-ch @pipeline) (f/llm-user-context-added-frame true)))))

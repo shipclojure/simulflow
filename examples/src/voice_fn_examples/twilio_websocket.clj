@@ -91,7 +91,7 @@
                          {:processor/type :llm/sentence-assembler
                           :processor/accepted-frames #{:system/stop :llm/output-text-chunk}
                           :processor/generates-frames #{:llm/output-text-sentence}
-                          :processor/config {:sentence/end-matcher #"[.?!,;:]"}}
+                          :processor/config {:sentence/end-matcher #"[.?!;:]"}}
                          {:processor/type :tts/elevenlabs
                           :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
                           :processor/generates-frames #{:audio/output :elevenlabs/audio-chunk}
