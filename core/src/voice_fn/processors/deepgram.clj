@@ -23,12 +23,8 @@
    :ulaw :mulaw
    :alaw :alaw})
 
-(defn deepgram-config
-  [pipeline-config processor-config])
-
 (defn make-deepgram-url
-  [{:audio-in/keys [sample-rate encoding] :pipeline/keys [language]}
-   {:transcription/keys [interim-results? punctuate? model vad-events?]
+  [{:transcription/keys [interim-results? punctuate? model sample-rate language  vad-events? smart-format? encoding channels]
     :or {interim-results? false
          punctuate? false}}]
   (u/append-search-params deepgram-url {:encoding (deepgram-encoding encoding)
@@ -121,27 +117,28 @@
     [:transcription/vad-events? {:default false} :boolean]
     [:transcription/sample-rate schema/SampleRate]
     [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
+    [:transcription/language {:default :en} schema/Language]
     ;; if smart-format is true, no need for punctuate
     [:transcription/punctuate? {:default false} :boolean]]
    [:fn {:error/message "When :transcription/smart-format? is true, :transcription/punctuate? must be false. More details here: https://developers.deepgram.com/docs/smart-format#enable-feature"}
     (fn [{:transcription/keys [smart-format? punctuate?]}]
       (not (and smart-format? punctuate?)))]])
 
-(def pipeline->deepgram-config
-  (fn [value]
-    (cond-> {}
-      ;; Map sample rate directly
-      (:audio-in/sample-rate value)
-      (assoc :transcription/sample-rate (:audio-in/sample-rate value))
+(defn pipeline->deepgram-config
+  [value]
+  (cond-> {}
+    ;; Map sample rate directly
+    (:audio-in/sample-rate value)
+    (assoc :transcription/sample-rate (:audio-in/sample-rate value))
 
-      ;; Map encoding with conversion
-      (:audio-in/encoding value)
-      (assoc :transcription/encoding
-             (get deepgram-encoding (:audio-in/encoding value)))
+    ;; Map encoding with conversion
+    (:audio-in/encoding value)
+    (assoc :transcription/encoding
+           (get deepgram-encoding (:audio-in/encoding value)))
 
-      ;; Map language directly
-      (:pipeline/language value)
-      (assoc :transcription/language (:pipeline/language value)))))
+    ;; Map language directly
+    (:pipeline/language value)
+    (assoc :transcription/language (:pipeline/language value))))
 
 (defmethod processor-schema :transcription/deepgram
   [_]

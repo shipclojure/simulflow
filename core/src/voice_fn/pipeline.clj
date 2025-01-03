@@ -120,65 +120,92 @@
 (comment
   (def in (a/chan 1))
   (def out (a/chan 1))
-  (validate-pipeline
-    {:pipeline/config {:audio-in/sample-rate 8000
-                       :audio-in/encoding :ulaw
-                       :audio-in/channels 1
-                       :audio-in/sample-size-bits 8
-                       :audio-out/sample-rate 8000
-                       :audio-out/encoding :ulaw
-                       :audio-out/sample-size-bits 8
-                       :audio-out/channels 1
-                       :pipeline/language :ro
-                       :llm/context [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}]
-                       :transport/in-ch in
-                       :transport/out-ch out}
-     :pipeline/processors
-     [{:processor/type :transport/twilio-input
-       :processor/accepted-frames #{:system/start :system/stop}
-       :processor/generates-frames #{:audio/raw-input}}
-      {:processor/type :transcription/deepgram
-       :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
-       :processor/generates-frames #{:text/input}
-       :processor/config {:transcription/api-key (secret [:deepgram :api-key])
+  (def test-pipeline-config {:pipeline/config {:audio-in/sample-rate 8000
+                                               :audio-in/encoding :ulaw
+                                               :audio-in/channels 1
+                                               :audio-in/sample-size-bits 8
+                                               :audio-out/sample-rate 8000
+                                               :audio-out/encoding :ulaw
+                                               :audio-out/sample-size-bits 8
+                                               :audio-out/channels 1
+                                               :pipeline/language :ro
+                                               :llm/context [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}]
+                                               :transport/in-ch in
+                                               :transport/out-ch out}
+                             :pipeline/processors
+                             [{:processor/type :transport/twilio-input
+                               :processor/accepted-frames #{:system/start :system/stop}
+                               :processor/generates-frames #{:audio/raw-input}}
+                              {:processor/type :transcription/deepgram
+                               :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
+                               :processor/generates-frames #{:text/input}
+                               :processor/config {:transcription/api-key (secret [:deepgram :api-key])
+                                                  :transcription/interim-results? true
+                                                  :transcription/punctuate? false
+                                                  :transcription/vad-events? true
+                                                  :transcription/smart-format? true
+                                                  :transcription/model :nova-2}}
+                              {:processor/type :llm/context-aggregator
+                               :processor/accepted-frames #{:llm/output-text-sentence :text/input}
+                               :processor/generates-frames #{:llm/user-context-added}}
+                              {:processor/type :llm/openai
+                               :processor/accepted-frames #{:llm/user-context-added}
+                               :processor/generates-frames #{:llm/output-text-chunk}
+                               :processor/config {:llm/model "gpt-4o-mini"
+                                                  :openai/api-key (secret [:openai :new-api-sk])}}
+                              {:processor/type :log/text-input
+                               :processor/accepted-frames #{:text/input}
+                               :processor/generates-frames #{}
+                               :processor/config {}}
+                              {:processor/type :llm/sentence-assembler
+                               :processor/accepted-frames #{:system/stop :llm/output-text-chunk}
+                               :processor/generates-frames #{:llm/output-text-sentence}
+                               :processor/config {:sentence/end-matcher #"[.?!;:]"}}
+                              {:processor/type :tts/elevenlabs
+                               :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
+                               :processor/generates-frames #{:audio/output :elevenlabs/audio-chunk}
+                               :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                                                  :elevenlabs/model-id "eleven_flash_v2_5"
+                                                  :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                                                  :voice/stability 0.5
+                                                  :voice/similarity-boost 0.8
+                                                  :voice/use-speaker-boost? true}}
+                              {:processor/type :elevenlabs/audio-assembler
+                               :processor/accepted-frames #{:elevenlabs/audio-chunk}
+                               :processor/generates-frames #{:audio/output}}
+                              {:processor/type :transport/async-output
+                               :processor/accepted-frames #{:audio/output :system/stop}
+                               :generates/frames #{}}]})
+
+  (validate-pipeline test-pipeline-config)
+
+  (make-processor-config :transcription/deepgram {:audio-in/sample-rate 8000
+                                                  :audio-in/encoding :ulaw
+                                                  :audio-in/channels 1
+                                                  :audio-in/sample-size-bits 8
+                                                  :audio-out/sample-rate 8000
+                                                  :audio-out/encoding :ulaw
+                                                  :audio-out/sample-size-bits 8
+                                                  :audio-out/channels 1
+                                                  :pipeline/language :ro}
+                         {:transcription/api-key (secret [:deepgram :api-key])
                           :transcription/interim-results? true
                           :transcription/punctuate? false
                           :transcription/vad-events? true
                           :transcription/smart-format? true
-                          :transcription/model :nova-2}}
-      {:processor/type :llm/context-aggregator
-       :processor/accepted-frames #{:llm/output-text-sentence :text/input}
-       :processor/generates-frames #{:llm/user-context-added}}
-      {:processor/type :llm/openai
-       :processor/accepted-frames #{:llm/user-context-added}
-       :processor/generates-frames #{:llm/output-text-chunk}
-       :processor/config {:llm/model "gpt-4o-mini"
-                          :openai/api-key (secret [:openai :new-api-sk])}}
-      {:processor/type :log/text-input
-       :processor/accepted-frames #{:text/input}
-       :processor/generates-frames #{}
-       :processor/config {}}
-      {:processor/type :llm/sentence-assembler
-       :processor/accepted-frames #{:system/stop :llm/output-text-chunk}
-       :processor/generates-frames #{:llm/output-text-sentence}
-       :processor/config {:sentence/end-matcher #"[.?!;:]"}}
-      {:processor/type :tts/elevenlabs
-       :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
-       :processor/generates-frames #{:audio/output :elevenlabs/audio-chunk}
-       :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
-                          :elevenlabs/model-id "eleven_flash_v2_5"
-                          :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
-                          :voice/stability 0.5
-                          :voice/similarity-boost 0.8
-                          :voice/use-speaker-boost? true}}
-      {:processor/type :elevenlabs/audio-assembler
-       :processor/accepted-frames #{:elevenlabs/audio-chunk}
-       :processor/generates-frames #{:audio/output}}
-      {:processor/type :transport/async-output
-       :processor/accepted-frames #{:audio/output :system/stop}
-       :generates/frames #{}}]})
+                          :transcription/model :nova-2})
 
   ,)
+
+(defn enrich-processor
+  [pipeline-config processor]
+  (assoc-in processor [:processor/config] (make-processor-config (:processor/type processor) pipeline-config (:processor/config processor))))
+
+(defn enrich-processors
+  "Add pipeline configuration to each processor config based on `make-processor-config`"
+  [pipeline]
+  (merge pipeline
+         {:pipeline/processors (mapv (partial enrich-processor (:pipeline/config pipeline)) (:pipeline/processors pipeline))}))
 
 ;; Pipeline creation logic here
 (defn create-pipeline
@@ -196,7 +223,7 @@
             main-pub (a/pub main-ch :frame/type)
             pipeline (atom (merge {:pipeline/main-ch main-ch
                                    :pipeline/main-pub main-pub}
-                                  pipeline-config))]
+                                  (enrich-processors pipeline-config)))]
         ;; Start each processor
         (doseq [{:processor/keys [type accepted-frames]} (:pipeline/processors pipeline-config)]
           (let [processor-ch (chan 1024)]
