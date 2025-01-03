@@ -1,9 +1,30 @@
 #+TITLE: Tasks to do for voice-fn
 
-* TODO Add schema validation with defaults
+* DONE Add schema validation with defaults
+CLOSED: [2025-01-03 Fri 11:01]
 :LOGBOOK:
-CLOCK: [2025-01-03 Fri 07:06]
+CLOCK: [2025-01-03 Fri 07:51]--[2025-01-03 Fri 08:16] =>  0:25
+CLOCK: [2025-01-03 Fri 07:06]--[2025-01-03 Fri 07:31] =>  0:25
 CLOCK: [2025-01-03 Fri 06:35]--[2025-01-03 Fri 07:00] =>  0:25
 :END:
 
 * TODO Add VAD events from deepgram
+:LOGBOOK:
+CLOCK: [2025-01-03 Fri 16:25]
+CLOCK: [2025-01-03 Fri 15:36]--[2025-01-03 Fri 16:01] =>  0:25
+CLOCK: [2025-01-03 Fri 11:01]--[2025-01-03 Fri 11:26] =>  0:25
+:END:
+
+* TODO Add support for first message
+
+* TODO Add support for [[https://github.com/fixie-ai/ultravox][ultravox]]
+
+* TODO Add support for google gemini
+
+* TODO Add support for telnyx transport
+
+* TODO Add support for xAI text LLM
+
+* TODO Add support for openai realtime API
+
+* TODO Research webrtc support

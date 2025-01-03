@@ -27,10 +27,12 @@
   [{:transcription/keys [interim-results? punctuate? model sample-rate language  vad-events? smart-format? encoding channels]
     :or {interim-results? false
          punctuate? false}}]
-  (u/append-search-params deepgram-url {:encoding (deepgram-encoding encoding)
+  (u/append-search-params deepgram-url {:encoding encoding
                                         :language language
                                         :sample_rate sample-rate
                                         :model model
+                                        :smart_format smart-format?
+                                        :channels channels
                                         :vad_events vad-events?
                                         :interim_results interim-results?
                                         :punctuate punctuate?}))
@@ -64,12 +66,14 @@
       (do
         (t/log! :info (str "Attempting to connect to Deepgram (attempt " (inc current-count) "/" max-reconnect-attempts ")"))
         (swap! pipeline update-in [type :websocket/reconnect-count] (fnil inc 0))
-        (let [conn-config (create-connection-config
+        (let [websocket-url (make-deepgram-url processor-config)
+              conn-config (create-connection-config
                             type
                             pipeline
                             processor-config)
-              new-conn @(ws/websocket (make-deepgram-url (:pipeline/config @pipeline) processor-config)
-                                      conn-config)]
+              new-conn @(ws/websocket
+                          websocket-url
+                          conn-config)]
           (swap! pipeline assoc-in [type :websocket/conn] new-conn))))))
 
 (def deepgram-events
@@ -118,8 +122,8 @@
     [:transcription/sample-rate schema/SampleRate]
     [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
     [:transcription/language {:default :en} schema/Language]
-    ;; if smart-format is true, no need for punctuate
     [:transcription/punctuate? {:default false} :boolean]]
+   ;; if smart-format is true, no need for punctuate
    [:fn {:error/message "When :transcription/smart-format? is true, :transcription/punctuate? must be false. More details here: https://developers.deepgram.com/docs/smart-format#enable-feature"}
     (fn [{:transcription/keys [smart-format? punctuate?]}]
       (not (and smart-format? punctuate?)))]])

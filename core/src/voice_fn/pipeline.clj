@@ -1,11 +1,11 @@
 (ns voice-fn.pipeline
   (:require
-   [clojure.core.async :as a :refer [<! >! chan go-loop]]
+   [clojure.core.async :as a :refer [chan go-loop]]
    [malli.core :as m]
    [malli.error :as me]
    [malli.transform :as mt]
    [taoensso.telemere :as t]
-   [voice-fn.frames :as frames]
+   [voice-fn.frames :as f :refer [system-frame?]]
    [voice-fn.schema :as schema]
    [voice-fn.secrets :refer [secret]]))
 
@@ -86,7 +86,7 @@
 
         ;; Validate each processor's config
         processor-results
-        (for [{:processor/keys [type config] :as processor} processors]
+        (for [{:processor/keys [type config]} processors]
           (let [schema (processor-schema type)
                 processor-config (make-processor-config type pipeline-config config)
                 processor-valid? (m/validate schema processor-config)
@@ -207,6 +207,13 @@
   (merge pipeline
          {:pipeline/processors (mapv (partial enrich-processor (:pipeline/config pipeline)) (:pipeline/processors pipeline))}))
 
+(defn send-frame!
+  "Sends a frame to the appropriate channel based on its type"
+  [pipeline frame]
+  (if (system-frame? frame)
+    (a/put! (:pipeline/system-ch @pipeline) frame)
+    (a/put! (:pipeline/main-ch @pipeline) frame)))
+
 ;; Pipeline creation logic here
 (defn create-pipeline
   "Creates a new pipeline from the provided configuration.
@@ -220,17 +227,24 @@
   (let [validation-result (validate-pipeline pipeline-config)]
     (if (:valid? validation-result)
       (let [main-ch (chan 1024)
+            system-ch (chan 1024) ;; High priority channel for system frames
             main-pub (a/pub main-ch :frame/type)
+            system-pub (a/pub system-ch :frame/type)
             pipeline (atom (merge {:pipeline/main-ch main-ch
+                                   :pipeline/system-ch system-ch
                                    :pipeline/main-pub main-pub}
                                   (enrich-processors pipeline-config)))]
         ;; Start each processor
         (doseq [{:processor/keys [type accepted-frames]} (:pipeline/processors pipeline-config)]
-          (let [processor-ch (chan 1024)]
+          (let [processor-ch (chan 1024)
+                processor-system-ch (chan 1024)]
             ;; Tap into main channel, filtering for accepted frame types
             (doseq [frame-type accepted-frames]
-              (a/sub main-pub frame-type processor-ch))
-            (swap! pipeline assoc-in [type :processor/in-ch] processor-ch)))
+              (a/sub main-pub frame-type processor-ch)
+              ;; system frames that take prioriy over other frames
+              (a/sub system-pub frame-type processor-system-ch))
+            (swap! pipeline assoc-in [type] {:processor/in-ch processor-ch
+                                             :processor/system-ch processor-system-ch})))
         pipeline)
       ;; Throw detailed validation error
       (throw (ex-info "Invalid pipeline configuration"
@@ -239,23 +253,26 @@
 
 (defn start-pipeline!
   [pipeline]
-  (t/log! :debug "Starting pipeline")
-  (a/put! (:pipeline/main-ch @pipeline) {:frame/type :system/start})
   ;; Start each processor
-  (doseq [{:processor/keys [type] :as processor} (:pipeline/processors @pipeline)]
+  (doseq [{:processor/keys [type]} (:pipeline/processors @pipeline)]
     (go-loop []
-      (when-let [frame (<! (get-in @pipeline [type :processor/in-ch]))]
-        (when-let [result (process-frame type pipeline processor frame)]
-          ;; Put results back on main channel if the processor returned frames
-          (when (frames/frame? result)
-            (>! (:pipeline/main-ch @pipeline) result)))
-        (recur)))))
+      ;; Read from both processor system channel and processor in
+      ;; channel. system channel takes priority
+      (when-let [[frame] (a/alts! [(get-in @pipeline [type :processor/system-ch])
+                                   (get-in @pipeline [type :processor/in-ch])])]
+        (when-let [result (process-frame type pipeline frame)]
+          (when (f/frame? result)
+            (send-frame! pipeline result)))
+        (recur))))
+  ;; Send start frame
+  (t/log! :debug "Starting pipeline")
+  (send-frame! pipeline (f/start-frame true)))
 
 (defn stop-pipeline!
   [pipeline]
   (t/log! :debug "Stopping pipeline")
   (t/log! :debug ["Conversation so far" (get-in @pipeline [:pipeline/config :llm/context])])
-  (a/put! (:pipeline/main-ch @pipeline) {:frame/type :system/stop}))
+  (send-frame! pipeline (f/stop-frame true)))
 
 (defn close-processor!
   [pipeline type]

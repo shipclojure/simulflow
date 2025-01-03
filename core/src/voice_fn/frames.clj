@@ -17,9 +17,15 @@
                      :ts ts
                      :frame/ts ts})))
 
-(def start-frame (create-frame :system/start nil))
-
-(def stop-frame (create-frame :system/stop nil))
+(defn system-frame?
+  "Returns true if the frame is a system frame that should be processed immediately"
+  [frame]
+  (let [frame-type (:frame/type frame)]
+    (or (= frame-type :system/start)
+        (= frame-type :system/stop)
+        (= frame-type :system/bot-interruption)
+        (= frame-type :user/started-speaking)
+        (= frame-type :user/stopped-speaking))))
 
 (defmacro defframe
   "Define a frame creator function and its predicate.
@@ -34,6 +40,9 @@
      (defn ~(symbol (str name "?"))
        [frame#]
        (and (frame? frame#) (= ~type (:frame/type frame#))))))
+
+(defframe start-frame :system/start "Frame sent when the pipeline begins")
+(defframe stop-frame :system/stop "Frame send when the pipeline stops")
 
 (defframe audio-input-frame :audio/raw-input "User audio input frame. Put on the pipeline by the input transport. Data is
   bynary")
@@ -55,3 +64,9 @@
 (defframe elevenlabs-audio-chunk-frame :elevenlabs/audio-chunk "Elevenlabs doesn't send full json, sometimes it just sends partial JSON that needs to be assembled")
 
 (defframe llm-user-context-added-frame :llm/user-context-added "Frame sent after the user context was appended to the AI context. Used to sync the llm aggregator with the llm processor pipeline")
+
+(defframe user-started-speaking-frame :user/started-speaking
+  "Sent when user starts speaking, used to pause AI output")
+
+(defframe user-stopped-speaking-frame :user/stopped-speaking
+  "Sent when user stops speaking, used to resume AI output")
