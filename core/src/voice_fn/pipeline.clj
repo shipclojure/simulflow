@@ -88,11 +88,10 @@
         processor-results
         (for [{:processor/keys [type config] :as processor} processors]
           (let [schema (processor-schema type)
-                ;; TODO find a way to include the defaults when generating configs
                 processor-config (make-processor-config type pipeline-config config)
                 processor-valid? (m/validate schema processor-config)
                 processor-errors (when-not processor-valid?
-                                   (me/humanize (m/explain schema config)))]
+                                   (me/humanize (m/explain schema processor-config)))]
             {:type type
              :valid? processor-valid?
              :errors processor-errors}))
@@ -182,21 +181,34 @@
   ,)
 
 ;; Pipeline creation logic here
-(defn create-pipeline [pipeline-config]
-  (let [main-ch (chan 1024)
-        main-pub (a/pub main-ch :frame/type)
-        pipeline (atom (merge {:pipeline/main-ch main-ch
-                               :pipeline/main-pub main-pub}
-                              pipeline-config))]
+(defn create-pipeline
+  "Creates a new pipeline from the provided configuration.
 
-    ;; Start each processor
-    (doseq [{:processor/keys [type accepted-frames]} (:pipeline/processors pipeline-config)]
-      (let [processor-ch (chan 1024)]
-        ;; Tap into main channel, filtering for accepted frame types
-        (doseq [frame-type accepted-frames]
-          (a/sub main-pub frame-type processor-ch))
-        (swap! pipeline assoc-in [type :processor/in-ch] processor-ch)))
-    pipeline))
+   Throws ExceptionInfo with :type :invalid-pipeline-config when the configuration
+   is invalid. The exception data will contain :errors with detailed validation
+   information.
+
+   Returns an atom containing the initialized pipeline state."
+  [pipeline-config]
+  (let [validation-result (validate-pipeline pipeline-config)]
+    (if (:valid? validation-result)
+      (let [main-ch (chan 1024)
+            main-pub (a/pub main-ch :frame/type)
+            pipeline (atom (merge {:pipeline/main-ch main-ch
+                                   :pipeline/main-pub main-pub}
+                                  pipeline-config))]
+        ;; Start each processor
+        (doseq [{:processor/keys [type accepted-frames]} (:pipeline/processors pipeline-config)]
+          (let [processor-ch (chan 1024)]
+            ;; Tap into main channel, filtering for accepted frame types
+            (doseq [frame-type accepted-frames]
+              (a/sub main-pub frame-type processor-ch))
+            (swap! pipeline assoc-in [type :processor/in-ch] processor-ch)))
+        pipeline)
+      ;; Throw detailed validation error
+      (throw (ex-info "Invalid pipeline configuration"
+                      {:type :pipeline/invalid-configuration
+                       :errors (:errors validation-result)})))))
 
 (defn start-pipeline!
   [pipeline]

@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async.impl.protocols :as async-protocols]
    [malli.core :as m]
+   [malli.error :as me]
    [malli.transform :as mt]))
 
 (defn flex-enum
@@ -17,6 +18,11 @@
    (into [:enum meta] (distinct (mapcat (fn [v]
                                           [(name v)
                                            (keyword v)]) vals)))))
+
+(defn safe-coerce
+  "Coerce to value without throwing error but instead "
+  [schema value transformer]
+  (m/coerce schema value transformer identity (partial (comp me/humanize :explain))))
 
 (def SampleRate
   [:enum

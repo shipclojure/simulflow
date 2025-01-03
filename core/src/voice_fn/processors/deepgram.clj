@@ -3,6 +3,7 @@
    [clojure.core.async :as a]
    [hato.websocket :as ws]
    [malli.core :as m]
+   [malli.error :as me]
    [malli.transform :as mt]
    [taoensso.telemere :as t]
    [voice-fn.frames :as frames]
@@ -108,21 +109,23 @@
   {1011 :timeout})
 
 (def DeepgramConfig
-  [:map
-   [:transcription/api-key :string]
-   [:transcription/model {:default :nova-2-general}
-    (flex-enum (into [:nova-2] (map #(str "nova-2-" %) #{"general" "meeting" "phonecall" "voicemail" "finance" "conversationalai" "video" "medical" "drivethru" "automotive" "atc"})))]
-   [:transcription/interim-results? {:default true} :boolean]
-   [:transcription/channels {:default 1} [:enum 1 2]]
-   [:transcription/smart-format? {:default true} :boolean]
-   [:transcription/profanity-filter? {:default true} :boolean]
-   [:transcription/vad-events? {:default false} :boolean]
-   [:transcription/sample-rate schema/SampleRate]
-   [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
-   ;; if smart-format is true, no need for punctuate
-   [:transcription/punctuate? {:default false} :boolean]])
-
-(m/decode any? {:transcription/model :nova-2} mt/default-value-transformer)
+  [:and
+   [:map
+    [:transcription/api-key :string]
+    [:transcription/model {:default :nova-2-general}
+     (flex-enum (into [:nova-2] (map #(str "nova-2-" %) #{"general" "meeting" "phonecall" "voicemail" "finance" "conversationalai" "video" "medical" "drivethru" "automotive" "atc"})))]
+    [:transcription/interim-results? {:default true} :boolean]
+    [:transcription/channels {:default 1} [:enum 1 2]]
+    [:transcription/smart-format? {:default true} :boolean]
+    [:transcription/profanity-filter? {:default true} :boolean]
+    [:transcription/vad-events? {:default false} :boolean]
+    [:transcription/sample-rate schema/SampleRate]
+    [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
+    ;; if smart-format is true, no need for punctuate
+    [:transcription/punctuate? {:default false} :boolean]]
+   [:fn {:error/message "When :transcription/smart-format? is true, :transcription/punctuate? must be false. More details here: https://developers.deepgram.com/docs/smart-format#enable-feature"}
+    (fn [{:transcription/keys [smart-format? punctuate?]}]
+      (not (and smart-format? punctuate?)))]])
 
 (def pipeline->deepgram-config
   (fn [value]

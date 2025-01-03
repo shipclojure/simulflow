@@ -2,7 +2,8 @@
 
 * TODO Add schema validation with defaults
 :LOGBOOK:
-CLOCK: [2025-01-03 Fri 06:35]
+CLOCK: [2025-01-03 Fri 07:06]
+CLOCK: [2025-01-03 Fri 06:35]--[2025-01-03 Fri 07:00] =>  0:25
 :END:
 
 * TODO Add VAD events from deepgram
