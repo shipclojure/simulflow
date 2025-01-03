@@ -8,14 +8,21 @@ CLOCK: [2025-01-03 Fri 07:06]--[2025-01-03 Fri 07:31] =>  0:25
 CLOCK: [2025-01-03 Fri 06:35]--[2025-01-03 Fri 07:00] =>  0:25
 :END:
 
-* TODO Add VAD events from deepgram
+* DONE Add VAD events from deepgram
+CLOSED: [2025-01-03 Fri 19:41]
 :LOGBOOK:
 CLOCK: [2025-01-03 Fri 16:25]--[2025-01-03 Fri 16:50] =>  0:25
 CLOCK: [2025-01-03 Fri 15:36]--[2025-01-03 Fri 16:01] =>  0:25
 CLOCK: [2025-01-03 Fri 11:01]--[2025-01-03 Fri 11:26] =>  0:25
 :END:
 
-* TODO Add support for first message
+* TODO Add pipeline interruptions
+
+** TODO Add assembler that takes in interim transcripts based on VAD
+
+** TODO Handle Start/Stop interruption frames in LLM and TTS and other assemblers
+
+* TODO Add support for first message greeting in the pipeline
 
 * TODO Add support for [[https://github.com/fixie-ai/ultravox][ultravox]]
 
