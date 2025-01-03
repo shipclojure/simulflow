@@ -2,10 +2,12 @@
   (:require
    [clojure.core.async :as a]
    [hato.websocket :as ws]
+   [malli.core :as m]
+   [malli.transform :as mt]
    [taoensso.telemere :as t]
    [voice-fn.frames :as frames]
-   [voice-fn.pipeline :refer [close-processor! process-frame processor-schema]]
-   [voice-fn.schema :refer [flex-enum]]
+   [voice-fn.pipeline :refer [close-processor! make-processor-config process-frame processor-schema]]
+   [voice-fn.schema :as schema :refer [flex-enum]]
    [voice-fn.utils.core :as u])
   (:import
    (java.nio HeapCharBuffer)))
@@ -15,6 +17,8 @@
 (def deepgram-encoding
   "Mapping from clojure sound encoding to deepgram notation"
   {:pcm-signed :linear16
+   :pcm-unsigned :linear16
+   :pcm-float :linear16
    :ulaw :mulaw
    :alaw :alaw})
 
@@ -113,17 +117,39 @@
    [:transcription/smart-format? {:default true} :boolean]
    [:transcription/profanity-filter? {:default true} :boolean]
    [:transcription/vad-events? {:default false} :boolean]
-   [:transcription/sample-rate :number]
+   [:transcription/sample-rate schema/SampleRate]
    [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
    ;; if smart-format is true, no need for punctuate
    [:transcription/punctuate? {:default false} :boolean]])
+
+(m/decode any? {:transcription/model :nova-2} mt/default-value-transformer)
+
+(def pipeline->deepgram-config
+  (fn [value]
+    (cond-> {}
+      ;; Map sample rate directly
+      (:audio-in/sample-rate value)
+      (assoc :transcription/sample-rate (:audio-in/sample-rate value))
+
+      ;; Map encoding with conversion
+      (:audio-in/encoding value)
+      (assoc :transcription/encoding
+             (get deepgram-encoding (:audio-in/encoding value)))
+
+      ;; Map language directly
+      (:pipeline/language value)
+      (assoc :transcription/language (:pipeline/language value)))))
 
 (defmethod processor-schema :transcription/deepgram
   [_]
   DeepgramConfig)
 
 (defmethod make-processor-config :transcription/deepgram
-  [_ pipeline-config processor-config])
+  [_ pipeline-config processor-config]
+  (m/decode DeepgramConfig
+            (merge processor-config
+                   (pipeline->deepgram-config pipeline-config))
+            (mt/default-value-transformer {::mt/add-optional-keys true})))
 
 (defmethod process-frame :transcription/deepgram
   [type pipeline processor frame]

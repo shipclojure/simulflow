@@ -2,15 +2,27 @@
   (:require
    [clojure.core.async :as a :refer [<! >! chan go-loop]]
    [malli.core :as m]
+   [malli.error :as me]
+   [malli.transform :as mt]
    [taoensso.telemere :as t]
    [voice-fn.frames :as frames]
-   [voice-fn.schema :as schema]))
+   [voice-fn.schema :as schema]
+   [voice-fn.secrets :refer [secret]]))
+
+(defmulti processor-schema
+  "Returns the malli schema for a processor type's configuration"
+  {:arglists '([processor-type])}
+  (fn [processor-type] processor-type))
+
+(defmethod processor-schema :default
+  [_]
+  any?)
 
 (defmulti make-processor-config
   "Create the configuration for the processor based on the pipeline
   configuration. Used when the final configuration for a processor requires
   information from the global pipeline configuration. ex: audio-in encoding,
-  pipeline language, etc
+  pipeline language, etc.
 
   - type - the processor type
 
@@ -25,13 +37,8 @@
     type))
 
 (defmethod make-processor-config :default
-  [_ _ processor-config]
-  processor-config)
-
-(defmulti processor-schema
-  "Returns the malli schema for a processor type's configuration"
-  {:arglists '([processor-type])}
-  (fn [processor-type] processor-type))
+  [type _ processor-config]
+  (m/decode (processor-schema type) processor-config mt/default-value-transformer))
 
 (defmulti process-frame
   "Process a frame from the pipeline.
@@ -57,6 +64,122 @@
    [:llm/context schema/LLMContext]
    [:transport/in-ch schema/Channel]
    [:transport/out-ch schema/Channel]])
+
+(defn validate-pipeline
+  "Validates the pipeline configuration and all processor configs.
+   Returns a map with :valid? boolean and :errors containing any validation errors.
+
+   Example return for valid config:
+   {:valid? true}
+
+   Example return for invalid config:
+   {:valid? false
+    :errors {:pipeline {...}           ;; Pipeline config errors
+             :processors [{:type :some/processor
+                          :errors {...}}]}} ;; Processor specific errors"
+  [{pipeline-config :pipeline/config
+    processors :pipeline/processors}]
+  (let [;; Validate main pipeline config
+        pipeline-valid? (m/validate PipelineConfigSchema pipeline-config)
+        pipeline-errors (when-not pipeline-valid?
+                          (me/humanize (m/explain PipelineConfigSchema pipeline-config)))
+
+        ;; Validate each processor's config
+        processor-results
+        (for [{:processor/keys [type config] :as processor} processors]
+          (let [schema (processor-schema type)
+                ;; TODO find a way to include the defaults when generating configs
+                processor-config (make-processor-config type pipeline-config config)
+                processor-valid? (m/validate schema processor-config)
+                processor-errors (when-not processor-valid?
+                                   (me/humanize (m/explain schema config)))]
+            {:type type
+             :valid? processor-valid?
+             :errors processor-errors}))
+
+        ;; Check if any processors are invalid
+        invalid-processors (filter (comp not :valid?) processor-results)
+
+        ;; Combine all validation results
+        all-valid? (and pipeline-valid?
+                        (empty? invalid-processors))]
+
+    (cond-> {:valid? all-valid?}
+
+      ;; Add pipeline errors if any
+      (not pipeline-valid?)
+      (assoc-in [:errors :pipeline] pipeline-errors)
+
+      ;; Add processor errors if any
+      (seq invalid-processors)
+      (assoc-in [:errors :processors]
+                (keep #(when-not (:valid? %)
+                         {:type (:type %)
+                          :errors (:errors %)})
+                      processor-results)))))
+
+(comment
+  (def in (a/chan 1))
+  (def out (a/chan 1))
+  (validate-pipeline
+    {:pipeline/config {:audio-in/sample-rate 8000
+                       :audio-in/encoding :ulaw
+                       :audio-in/channels 1
+                       :audio-in/sample-size-bits 8
+                       :audio-out/sample-rate 8000
+                       :audio-out/encoding :ulaw
+                       :audio-out/sample-size-bits 8
+                       :audio-out/channels 1
+                       :pipeline/language :ro
+                       :llm/context [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}]
+                       :transport/in-ch in
+                       :transport/out-ch out}
+     :pipeline/processors
+     [{:processor/type :transport/twilio-input
+       :processor/accepted-frames #{:system/start :system/stop}
+       :processor/generates-frames #{:audio/raw-input}}
+      {:processor/type :transcription/deepgram
+       :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
+       :processor/generates-frames #{:text/input}
+       :processor/config {:transcription/api-key (secret [:deepgram :api-key])
+                          :transcription/interim-results? true
+                          :transcription/punctuate? false
+                          :transcription/vad-events? true
+                          :transcription/smart-format? true
+                          :transcription/model :nova-2}}
+      {:processor/type :llm/context-aggregator
+       :processor/accepted-frames #{:llm/output-text-sentence :text/input}
+       :processor/generates-frames #{:llm/user-context-added}}
+      {:processor/type :llm/openai
+       :processor/accepted-frames #{:llm/user-context-added}
+       :processor/generates-frames #{:llm/output-text-chunk}
+       :processor/config {:llm/model "gpt-4o-mini"
+                          :openai/api-key (secret [:openai :new-api-sk])}}
+      {:processor/type :log/text-input
+       :processor/accepted-frames #{:text/input}
+       :processor/generates-frames #{}
+       :processor/config {}}
+      {:processor/type :llm/sentence-assembler
+       :processor/accepted-frames #{:system/stop :llm/output-text-chunk}
+       :processor/generates-frames #{:llm/output-text-sentence}
+       :processor/config {:sentence/end-matcher #"[.?!;:]"}}
+      {:processor/type :tts/elevenlabs
+       :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
+       :processor/generates-frames #{:audio/output :elevenlabs/audio-chunk}
+       :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                          :elevenlabs/model-id "eleven_flash_v2_5"
+                          :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                          :voice/stability 0.5
+                          :voice/similarity-boost 0.8
+                          :voice/use-speaker-boost? true}}
+      {:processor/type :elevenlabs/audio-assembler
+       :processor/accepted-frames #{:elevenlabs/audio-chunk}
+       :processor/generates-frames #{:audio/output}}
+      {:processor/type :transport/async-output
+       :processor/accepted-frames #{:audio/output :system/stop}
+       :generates/frames #{}}]})
+
+  ,)
 
 ;; Pipeline creation logic here
 (defn create-pipeline [pipeline-config]

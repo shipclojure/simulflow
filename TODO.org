@@ -1,0 +1,8 @@
+#+TITLE: Tasks to do for voice-fn
+
+* TODO Add schema validation with defaults
+:LOGBOOK:
+CLOCK: [2025-01-03 Fri 06:35]
+:END:
+
+* TODO Add VAD events from deepgram
