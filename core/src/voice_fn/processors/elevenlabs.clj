@@ -5,14 +5,13 @@
    [taoensso.telemere :as t]
    [voice-fn.frames :as f]
    [voice-fn.pipeline :as pipeline]
+   [voice-fn.schema :as schema]
    [voice-fn.secrets :as secrets]
    [voice-fn.utils.core :as u])
   (:import
    (java.nio HeapCharBuffer)))
 
 (def ^:private xi-tts-websocket-url "wss://api.elevenlabs.io/v1/text-to-speech/%s/stream-input")
-
-(def models #{"eleven_multilingual_v2" "eleven_turbo_v2_5" "eleven_turbo_v2" "eleven_monolingual_v1" "eleven_multilingual_v1" "eleven_multilingual_sts_v2" "eleven_flash_v2" "eleven_flash_v2_5" "eleven_english_sts_v2"})
 
 (def elevenlabs-encoding
   "Mapping from clojure sound encoding to elevenlabs format"
@@ -118,6 +117,48 @@
     (ws/close! conn))
 
   (swap! pipeline update-in [:tts/elevenlabs] dissoc :websocket/conn))
+
+(def ElevenLabsTTSConfig
+  "Configuration for Elevenlabs TextToSpeech service"
+  [:map
+   {:closed true ;; No additional fields allowed
+    :description "ElevenLabs TTS configuration"}
+   [:elevenlabs/api-key
+    [:string
+     {:min 32      ;; ElevenLabs API keys are typically long
+      :secret true ;; Marks this as sensitive data
+      :description "ElevenLabs API key"}]]
+   [:elevenlabs/model-id
+    (schema/flex-enum
+      {:default "eleven_flash_v2_5"
+       :description "ElevenLabs model identifier"}
+      ["eleven_multilingual_v2" "eleven_turbo_v2_5" "eleven_turbo_v2" "eleven_monolingual_v1" "eleven_multilingual_v1" "eleven_multilingual_sts_v2" "eleven_flash_v2" "eleven_flash_v2_5" "eleven_english_sts_v2"])]
+
+   [:elevenlabs/voice-id
+    [:string
+     {:min 20 ;; ElevenLabs voice IDs are fixed length
+      :max 20
+      :description "ElevenLabs voice identifier"}]]
+   [:voice/stability
+    [:double
+     {:min 0.0
+      :max 1.0
+      :default 0.5
+      :description "Voice stability factor (0.0 to 1.0)"}]]
+   [:voice/similarity-boost
+    [:double
+     {:min 0.0
+      :max 1.0
+      :default 0.8
+      :description "Voice similarity boost factor (0.0 to 1.0)"}]]
+   [:voice/use-speaker-boost?
+    [:boolean
+     {:default true
+      :description "Whether to enable speaker boost enhancement"}]]])
+
+(defmethod pipeline/processor-schema :tts/elevenlabs
+  [_]
+  ElevenLabsTTSConfig)
 
 (defmethod pipeline/process-frame :tts/elevenlabs
   [type pipeline processor frame]
