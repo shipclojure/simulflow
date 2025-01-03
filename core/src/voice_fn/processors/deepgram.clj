@@ -76,7 +76,7 @@
                           conn-config)]
           (swap! pipeline assoc-in [type :websocket/conn] new-conn))))))
 
-(def deepgram-events
+(defonce deepgram-events
   (atom []))
 
 (defn create-connection-config

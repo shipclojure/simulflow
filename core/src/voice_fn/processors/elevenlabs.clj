@@ -187,10 +187,7 @@
             (swap! pipeline assoc-in [type :audio-accumulator] "")
             (a/put! (:pipeline/main-ch @pipeline)
                     (f/audio-output-frame audio)))
-          (do
-            (t/log! {:level :debug
-                     :id type} ["Accumulating audio chunk" attempt])
-            (swap! pipeline assoc-in [type :audio-accumulator] attempt))))
+          (swap! pipeline assoc-in [type :audio-accumulator] attempt)))
       :system/stop
       (t/log! {:level :debug
                :id type} ["Accumulator at the end" acc]))))

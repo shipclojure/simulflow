@@ -254,13 +254,13 @@
 (defn start-pipeline!
   [pipeline]
   ;; Start each processor
-  (doseq [{:processor/keys [type]} (:pipeline/processors @pipeline)]
+  (doseq [{:processor/keys [type] :as processor} (:pipeline/processors @pipeline)]
     (go-loop []
       ;; Read from both processor system channel and processor in
       ;; channel. system channel takes priority
       (when-let [[frame] (a/alts! [(get-in @pipeline [type :processor/system-ch])
                                    (get-in @pipeline [type :processor/in-ch])])]
-        (when-let [result (process-frame type pipeline frame)]
+        (when-let [result (process-frame type pipeline processor frame)]
           (when (f/frame? result)
             (send-frame! pipeline result)))
         (recur))))
