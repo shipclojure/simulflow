@@ -1,113 +1,288 @@
-# voice-fn - WIP
+# voice-fn - Real-time Voice AI with Clojure
 
-A Clojure library for building real-time voice-enabled AI applications. voice-fn handles the orchestration of speech recognition, audio processing, and AI service integration with the elegance of functional programming.
+`voice-fn` is a Clojure framework for building real-time, voice-enabled AI applications. It provides a functional and data-driven approach to orchestrating speech recognition, audio processing, and AI service integration. `voice-fn` leverages Clojure's strengths in concurrency, immutability, and data transformation to create robust and scalable voice AI pipelines.
 
 ## Features
 
-- Real-time speech recognition with configurable backends
-- Clean functional interface for audio stream processing
-- Seamless integration with popular AI models and services
-- Built-in support for conversation state management
-- Efficient audio processing with core.async channels
-- Hot-reloadable pipeline components
-- Extensible architecture with composable transforms
+-   **Real-time Audio Processing:** Efficiently process audio streams using core.async channels.
+-   **Data-Driven Pipelines:** Define AI pipelines as data structures, making them easy to configure and extend.
+-   **Modular Processors:** Create composable and reusable processing components for speech-to-text, text-to-speech, natural language understanding, and more.
+-   **Flexible Transports:** Support for various input/output transports like local audio files, microphones, WebSockets, and telephony.
+-   **Configurable Services:** Seamless integration with popular AI services like Deepgram, OpenAI, ElevenLabs, and more, with easy extensibility.
+-   **Functional Core:** Emphasizes pure functions, immutability, and data transformation for maintainability and testability.
+-   **Extensible Architecture:** Easily add new processors, transports, and services by implementing a few simple protocols.
+-   **Schema Validation:** Ensures pipeline configuration and processor settings are valid and well-defined using Malli.
+-   **Concurrency-Ready:** Built on core.async for concurrent processing, enabling efficient handling of real-time audio streams.
 
-## Why voice-fn?
+## Why `voice-fn`?
 
-voice-fn brings Clojure's functional elegance to voice AI applications. Rather than wrestling with complex state management and imperative audio processing, voice-fn lets you create AI pipelines in a declarative way.
+`voice-fn` brings the power and elegance of functional programming to voice AI. Instead of dealing with complex state management and imperative audio processing, `voice-fn` allows you to construct AI pipelines in a declarative and data-oriented manner. Its functional core promotes code that is easier to reason about, test, and maintain.
 
-```clojure
-(ns example
-  (:require
-   [voice-fn.pipeline :as pipeline]
-   [voice-fn.secrets :refer [secret]]))
+## Core Concepts
 
-(def async-echo-pipeline
-  {:pipeline/config {:audio-in/sample-rate 8000
-                     :audio-in/encoding :ulaw
-                     :audio-in/channels 1
-                     :audio-in/sample-size-bits 8
-                     :audio-out/sample-rate 8000
-                     :audio-out/bitrate 64000
-                     :audio-out/sample-size-bits 8
-                     :audio-out/channels 1
-                     :pipeline/language :ro}
-   :pipeline/processors [;;transport in
-                         {:processor/type :transport/async-input
-                          :processor/accepted-frames #{:system/start :system/stop}
-                          :processor/generates-frames #{:audio/raw-input}}
-                         ;; transcription
-                         {:processor/type :transcription/deepgram
-                          :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
-                          :processor/generates-frames #{:text/input}
-                          :processor/config {:transcription/api-key (secret [:deepgram :api-key])
-                                             :transcription/interim-results? false
-                                             :transcription/punctuate? false
-                                             :transcription/model :nova-2}}
-                        ;; text to speech
-                        {:processor/type :tts/openai
-                         :processor/accepted-frames #{:text/input}
-                         :processor/generates-frames #{:audio/output}
-                         :processor/config {:openai/api-key (secret [:openai :api-key])}}
-                        ;; transport out
-                         {:processor/type :transport/async-output
-                          :processor/accepted-frames #{:audio/output :system/stop}
-                          :generates/frames #{}}]})
+-   **Frames:** The fundamental unit of data flowing through the pipeline. Frames are represented as Clojure maps, making them flexible and easy to manipulate.
+    -   `:audio/raw-input`: Raw audio data in byte arrays.
+    -   `:text/input`: Text transcriptions from speech-to-text.
+    -   `:llm/output-text-chunk`: Chunks of text generated by a streaming language model.
+    -   `:llm/output-text-sentence`:  Full sentences assembled from LLM text chunks.
+    -   `:audio/output`: Audio data ready to be played back.
+    -   `:system/start`: Signals the start of a pipeline.
+    -   `:system/stop`: Signals the end of a pipeline.
+    -   `:system/error`: Represents an error within the pipeline.
+-   **Processors:** Components that operate on frames. They accept specific frame types as input, perform some transformation or operation, and output zero or more frames.
+    -   Processors are defined as multimethods, making it easy to extend the system.
+    -   Each processor has a configuration map with settings.
+    -   Processors use core.async channels for asynchronous communication.
+-   **Transports:** Components that handle input/output for the pipeline. They are responsible for bringing data into the pipeline (e.g., capturing audio) and taking data out (e.g., sending audio to a client).
+    -   Transports can be local (reading files), network-based (WebSockets, HTTP), or hardware interfaces.
+-   **Pipeline:** The central data structure that organizes processors and manages data flow. It is a vector of processor specifications and a configuration map that defines various parameters of the system.
+    -   The pipeline is created and run by the `voice-fn.pipeline` namespace.
 
-(def p (pipeline/create-pipeline async-echo-pipeline))
-(pipeline/start-pipeline! p) ;;starting pipeline
-(pipeline/stop-pipeline! p) ;;stopping
+## Getting Started
+
+### Prerequisites
+
+-   Java 11+
+-   Clojure CLI Tools
+-   A basic understanding of Clojure and functional programming
+
+### Installation
+
+1.  Clone the repository:
+
+    #+end_srcbash
+    git clone https://github.com/shipclojure/voice-fn.git
+    cd voice-fn/core
+    #+begin_src
+
+2.  Install dependencies using the Clojure CLI:
+
+    #+end_srcbash
+    clojure -M:deps
+    #+begin_src
+
+### Basic Usage
+
+1.  **Define Your Pipeline:** Create a data structure that specifies your pipeline configuration. This includes the audio settings, the processors you want to use and their order, and any additional settings. Here's a basic example:
+
+    ```clojure
+    (ns example
+      (:require
+       [voice-fn.pipeline :as pipeline]
+       [voice-fn.secrets :refer [secret]]))
+
+    (def async-echo-pipeline
+      {:pipeline/config {:audio-in/sample-rate 8000
+                         :audio-in/encoding :ulaw
+                         :audio-in/channels 1
+                         :audio-in/sample-size-bits 8
+                         :audio-out/sample-rate 8000
+                         :audio-out/bitrate 64000
+                         :audio-out/sample-size-bits 8
+                         :audio-out/channels 1
+                         :pipeline/language :ro
+                         :llm/context [{:role "system" :content "You are a helpful assistant"}]}
+       :pipeline/processors [;;transport in
+                             {:processor/type :transport/async-input
+                              :processor/accepted-frames #{:system/start :system/stop}
+                              :processor/generates-frames #{:audio/raw-input}}
+                             ;; transcription
+                             {:processor/type :transcription/deepgram
+                              :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
+                              :processor/generates-frames #{:text/input}
+                              :processor/config {:transcription/api-key (secret [:deepgram :api-key])
+                                                 :transcription/interim-results? false
+                                                 :transcription/punctuate? false
+                                                 :transcription/model :nova-2}}
+                             ;; LLM
+                             {:processor/type :llm/openai
+                              :processor/accepted-frames #{:system/stop :text/input}
+                              :processor/generates-frames #{:llm/output-text-chunk}
+                              :processor/config {:llm/model "gpt-4o-mini"
+                                                 :openai/api-key (secret [:openai :new-api-key])}}
+
+                             ;; Sentence assembler
+                             {:processor/type :llm/sentence-assembler
+                              :processor/accepted-frames #{:system/stop :system/start :llm/output-text-chunk}
+                              :processor/generates-frames #{:llm/output-text-sentence}
+                              :processor/config {:sentence/end-matcher #"[.?!]"}}
+                             ;; TTS
+                             {:processor/type :tts/elevenlabs
+                              :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
+                              :processor/generates-frames #{:audio/output}
+                              :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                                                 :elevenlabs/model-id "eleven_flash_v2_5"
+                                                 :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                                                 :voice/stability 0.5
+                                                 :voice/similarity-boost 0.8
+                                                 :voice/use-speaker-boost? true}}
+                             ;; Logger
+                             {:processor/type :log/text-input
+                              :processor/accepted-frames #{:text/input}
+                              :processor/generates-frames #{}
+                              :processor/config {}}
+                             ;; transport out
+                             {:processor/type :transport/async-output
+                              :processor/accepted-frames #{:audio/output :system/stop}
+                              :generates/frames #{}}]})
+    ```
+
+2.  **Create the Pipeline:** Use `voice-fn.pipeline/create-pipeline` to instantiate the pipeline:
+
+    ```clojure
+    (def p (pipeline/create-pipeline async-echo-pipeline))
+    ```
+
+3.  **Start and Stop the Pipeline:**
+
+    ```clojure
+    (pipeline/start-pipeline! p) ;;starting pipeline
+    (pipeline/stop-pipeline! p) ;;stopping
+    ```
+
+## Adding a New Processor
+
+To add a new processor:
+
+1.  **Define the Processor:** Create a new namespace for your processor and implement the `process-frame` multimethod:
+
+    ```clojure
+    (ns my-logger-processor
+      (:require
+       [taoensso.telemere :as t]
+       [voice-fn.pipeline :as pipeline]))
+
+    (defmethod pipeline/process-frame :log/text-input
+      [_ _ _ frame]
+      (t/log! {:level :info
+               :id :log/text-input} ["Frame" (:frame/data frame)]))
+    ```
+
+2.  **Use in the Pipeline:** Include your processor's type in the pipeline configuration.
+
+    ```clojure
+    (def async-echo-pipeline
+      {:pipeline/config {...}
+       :pipeline/processors [...
+                             {:processor/type :transcription/deepgram
+                              :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
+                              :processor/generates-frames #{:text/input}
+                              :processor/config {:transcription/api-key (secret [:deepgram :api-key])
+                                                 :transcription/interim-results? false
+                                                 :transcription/punctuate? false
+                                                 :transcription/model :nova-2}}
+                             {:processor/type :log/text-input
+                              :processor/accepted-frames #{:text/input}
+                              :processor/generates-frames #{}
+                              :processor/config {}}
+                             ...]})
+    ```
+
+## Transports
+
+`voice-fn` provides several built-in transports, and you can create your own using the protocol:
+
+-   **`:transport/local-audio`**: Reads audio from local files or the microphone.
+-   **`:transport/async-input`**: Receives audio from a core.async channel or any other async source.
+-    **`:transport/async-output`**: Sends audio to a core.async channel or any other async destination.
+-   **`:transport/twilio-input`**: Handles input from Twilio voice webhooks.
+-   **`:transport/websocket`**: Handles input and output over WebSockets.
+
+### Custom Transports
+To create a custom transport:
+1.  Implement the `process-frame` multimethod for the transport.
+2. Add a custom `FrameSerializer` to handle serialization and deserialization of frames when required.
+
+## Data Validation and Schema
+
+`voice-fn` uses [Malli](https://github.com/metosin/malli) for data validation and schema definitions. This allows for defining clear contracts for data structures and configurations.
+
+-   Processors define their schema using the `processor-schema` multimethod.
+-   The pipeline itself has a `PipelineConfigSchema`.
+-   Validation is done when the pipeline is created, and detailed error messages are provided in case of invalid configuration.
+
+## Concurrency
+
+`voice-fn` is built on top of Clojure's `core.async` library, which provides a powerful framework for handling concurrent operations. This allows you to build real-time applications that can efficiently handle multiple audio streams simultaneously.
+- Each processor is a `go-loop`, that takes a frame from it's in channel, processes it and puts the results back onto the pipeline's main channel.
+-  Processors can run asynchronously, without blocking the main thread.
+
+## Architecture Overview
+
+The architecture of `voice-fn` follows a data-first approach, with data flowing through a series of processors. The key components are:
+
+-   **Frames:** Represents data as it flows through the pipeline.
+-   **Processors:** Transforms data from one frame type to another, or performs side effects like logging or sending audio.
+-   **Pipeline:** Defines the sequence of processors and manages the overall state.
+-   **Transports:** Connect external systems (e.g., microphones, WebSockets) to the pipeline.
+-   **Services:** Integrates with external AI services like Deepgram, OpenAI, and ElevenLabs.
+
+## Project Structure
+
+```
+voice-fn
+├── core
+│   ├── test
+│   │   └── voice_fn
+│   │       ├── pipeline_test.clj
+│   │       ├── processors
+│   │       │   └── llm_sentence_assembler_test.clj
+│   │       └── core_test.clj
+│   ├── deps.edn
+│   ├── resources
+│   │   └── test-voice.wav
+│   ├── pom.xml
+│   ├── build.clj
+│   └── src
+│       └── voice_fn
+│           ├── transport
+│           │   ├── protocols.clj
+│           │   ├── twilio.clj
+│           │   ├── local
+│           │   │   └── audio.clj
+│           │   ├── serializers.clj
+│           │   └── async.clj
+│           ├── frames.clj
+│           ├── pipeline.clj
+│           ├── schema.clj
+│           ├── secrets.clj
+│           ├── core.clj
+│           ├── utils
+│           │   └── core.clj
+│           └── processors
+│               ├── llm_sentence_assembler.clj
+│               ├── openai.clj
+│               ├── groq.clj
+│               ├── deepgram.clj
+│               ├── llm_context_aggregator.clj
+│               └── elevenlabs.clj
+├── LICENSE
+├── CHANGELOG.md
+├── TODO.org
+├── README.md
+├── examples
+│   ├── deps.edn
+│   └── src
+│       ├── deps.edn
+│       └── voice_fn_examples
+│           └── twilio_websocket.clj
+├── doc
+│   └── intro.md
+└── architecture.org
 ```
 
-To add a new processor simply tell voice-fn how to run `process-frame` for that new processor. Example of a frame logger for text-input frames
-```clojure
-(ns my-logger-processor
-  (:require
-   [voice-fn.pipeline :as pipeline]))
+-   **`core`**: Contains the main library code.
+    -   `src/voice_fn`: Contains the core namespaces.
+    -   `src/voice_fn/transport`: Defines transport protocols and implementations.
+    -   `src/voice_fn/processors`: Defines various data processing components.
+    -   `src/voice_fn/utils`:  Utility functions for the system.
+-   **`examples`**: Contains examples showing how to use `voice-fn` in real-world scenarios.
+-   **`doc`**: Contains project documentation.
 
-(defmethod pipeline/process-frame :log/text-input
-  [_ _ _ frame]
-  (t/log! {:level :info
-           :id :log/text-input} ["Frame" (:frame/data frame)]))
+## Contributing
 
-
-;; and now you can use it in the pipeline
-(def async-echo-pipeline
-  {:pipeline/config {...}
-   :pipeline/processors [...
-                         {:processor/type :transcription/deepgram
-                          :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
-                          :processor/generates-frames #{:text/input}
-                          :processor/config {:transcription/api-key (secret [:deepgram :api-key])
-                                             :transcription/interim-results? false
-                                             :transcription/punctuate? false
-                                             :transcription/model :nova-2}}
-                         {:processor/type :log/text-input
-                          :processor/accepted-frames #{:text/input}
-                          :processor/generates-frames #{}
-                          :processor/config {}}
-                          ...]})
-```
-
-## Status
-
-WIP - Early stage. See examples for what can be achieved for now
-
-## Documentation
-
-WIP - TODO
-
-See [docs/](docs/) for full documentation, including:
-- Getting Started Guide
-- Architecture Overview
-- API Reference
-- Examples
-- Contributing Guidelines
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 
 MIT
-
----
-
-voice-fn - Functional voice AI, powered by Clojure.
