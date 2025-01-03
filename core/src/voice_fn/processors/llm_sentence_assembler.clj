@@ -3,13 +3,29 @@
    [clojure.core.async :as a]
    [taoensso.telemere :as t]
    [voice-fn.frames :as frames]
-   [voice-fn.pipeline :as pipeline]))
+   [voice-fn.pipeline :as pipeline]
+   [voice-fn.schema :as schema]))
 
-(def default-end-sentence-mather #"[.?!]")
+(def default-end-sentence-matcher #"[.?!;:]")
+
+(def SentenceAssemblerConfig
+  [:map
+   {:closed true
+    :description "Configuration for sentence assembly and detection"}
+   [:sentence/end-matcher
+    [:fn
+     {:error/message "Must be a valid regex patter (java.util.regex.Pattern)"
+      :default #"[.?!;:]"
+      :description "Regular expression pattern for detecting sentence endings"}
+     schema/regex?]]])
+
+(defmethod pipeline/processor-schema :llm/sentence-assembler
+  [_]
+  SentenceAssemblerConfig)
 
 (defmethod pipeline/process-frame :llm/sentence-assembler
   [processor-type pipeline {:processor/keys [config]} {:frame/keys [data type]}]
-  (let [end-sentence-matcher (:sentence/end-matcher config default-end-sentence-mather)
+  (let [end-sentence-matcher (:sentence/end-matcher config default-end-sentence-matcher)
         sentence (get-in @pipeline [processor-type :sentence] "")]
     (case type
       :llm/output-text-chunk

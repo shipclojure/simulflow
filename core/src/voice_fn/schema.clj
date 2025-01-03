@@ -19,6 +19,10 @@
                                           [(name v)
                                            (keyword v)]) vals)))))
 
+(defn regex?
+  [input]
+  (instance? java.util.regex.Pattern input))
+
 (defn safe-coerce
   "Coerce to value without throwing error but instead "
   [schema value transformer]
