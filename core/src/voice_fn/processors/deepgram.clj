@@ -79,10 +79,19 @@
 (defonce deepgram-events
   (atom []))
 
+(def keep-alive-payload (u/json-str {:type "KeepAlive"}))
+
 (defn create-connection-config
   [type pipeline processor-config]
   {:headers {"Authorization" (str "Token " (:transcription/api-key processor-config))}
-   :on-open (fn [_]
+   :on-open (fn [ws]
+              ;; Send a keepalive message every 3 seconds to maintain websocket connection
+              (a/go-loop []
+                (a/<! (a/timeout 3000))
+                (when (get-in @pipeline [type :websocket/conn])
+                  (t/log! :debug "Sending keep-alive message")
+                  (ws/send! ws keep-alive-payload)
+                  (recur)))
               (t/log! :info "Deepgram websocket connection open"))
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
                  (let [m (u/parse-if-json (str data))
@@ -95,8 +104,9 @@
                (t/log! :error ["Error" e]))
    :on-close (fn [_ws code reason]
                (t/log! :info ["Deepgram websocket connection closed" "Code:" code "Reason:" reason])
-               (when (= code 1011) ;; timeout
-                 (connect-websocket! type pipeline processor-config)))})
+               (if (= code 1011) ;; timeout
+                 (connect-websocket! type pipeline processor-config)
+                 (swap! pipeline update-in [type] dissoc :websocket/conn)))})
 
 (defn- close-websocket-connection!
   [type pipeline]
