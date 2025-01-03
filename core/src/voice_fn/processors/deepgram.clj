@@ -3,11 +3,10 @@
    [clojure.core.async :as a]
    [hato.websocket :as ws]
    [malli.core :as m]
-   [malli.error :as me]
    [malli.transform :as mt]
    [taoensso.telemere :as t]
-   [voice-fn.frames :as frames]
-   [voice-fn.pipeline :refer [close-processor! make-processor-config process-frame processor-schema]]
+   [voice-fn.frames :as f]
+   [voice-fn.pipeline :refer [close-processor! make-processor-config process-frame processor-schema send-frame! supports-interrupt?]]
    [voice-fn.schema :as schema :refer [flex-enum]]
    [voice-fn.utils.core :as u])
   (:import
@@ -41,18 +40,25 @@
   [m]
   (= (:event m) "transcript"))
 
+(defn final-transcript?
+  [m]
+  (let [transcript-map (-> m :channel :alternatives first)]
+    (or (:speech_final transcript-map) ;; end of speech through endpointing
+        (:is_final transcript-map))))
+
 (defn- transcript
   [m]
   (-> m :channel :alternatives first :transcript))
 
-(defn final-transcription?
+(defn speech-started-event?
   [m]
-  (and (transcript? m)
-       (= (:type m) "final")))
+  (= (:type m) "SpeechStarted"))
 
-(defn close-connection-payload
-  []
-  (u/json-str {:type "CloseStream"}))
+(defn utterance-end-event?
+  [m]
+  (= (:type m) "UtteranceEnd"))
+
+(def close-connection-payload (u/json-str {:type "CloseStream"}))
 
 (declare create-connection-config)
 
@@ -76,9 +82,6 @@
                           conn-config)]
           (swap! pipeline assoc-in [type :websocket/conn] new-conn))))))
 
-(defonce deepgram-events
-  (atom []))
-
 (def keep-alive-payload (u/json-str {:type "KeepAlive"}))
 
 (defn create-connection-config
@@ -89,21 +92,28 @@
               (a/go-loop []
                 (a/<! (a/timeout 3000))
                 (when (get-in @pipeline [type :websocket/conn])
-                  (t/log! :debug "Sending keep-alive message")
+                  (t/log! {:level :debug :id type} "Sending keep-alive message")
                   (ws/send! ws keep-alive-payload)
                   (recur)))
               (t/log! :info "Deepgram websocket connection open"))
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
                  (let [m (u/parse-if-json (str data))
                        trsc (transcript m)]
-                   (swap! deepgram-events conj m)
-                   (when (and trsc (not= trsc ""))
-                     (a/put! (:pipeline/main-ch @pipeline)
-                             (frames/text-input-frame trsc)))))
+                   (cond
+                     (final-transcript? m) (send-frame! pipeline (f/transcription-frame trsc))
+                     (and trsc (not= "" trsc)) (send-frame! pipeline (send-frame! pipeline (f/interim-transcription-frame trsc)))
+                     (speech-started-event? m) (do
+                                                 (send-frame! pipeline (f/user-started-speaking-frame true))
+                                                 (when (supports-interrupt? @pipeline)
+                                                   (send-frame! pipeline (f/start-interruption-frame true))))
+                     (utterance-end-event? m) (do
+                                                (send-frame! pipeline (f/user-stopped-speaking-frame true))
+                                                (when (supports-interrupt? @pipeline)
+                                                  (send-frame! pipeline (f/stop-interruption-frame true)))))))
    :on-error (fn [_ e]
-               (t/log! :error ["Error" e]))
+               (t/log! {:level :error :id type} ["Error" e]))
    :on-close (fn [_ws code reason]
-               (t/log! :info ["Deepgram websocket connection closed" "Code:" code "Reason:" reason])
+               (t/log! {:level :info :id type} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason])
                (if (= code 1011) ;; timeout
                  (connect-websocket! type pipeline processor-config)
                  (swap! pipeline update-in [type] dissoc :websocket/conn)))})
@@ -111,7 +121,7 @@
 (defn- close-websocket-connection!
   [type pipeline]
   (when-let [conn (get-in @pipeline [type :websocket/conn])]
-    (ws/send! conn (close-connection-payload))
+    (ws/send! conn close-connection-payload)
     (ws/close! conn))
   (swap! pipeline update-in [:transcription/deepgram] dissoc :websocket/conn))
 
@@ -128,31 +138,39 @@
     [:transcription/channels {:default 1} [:enum 1 2]]
     [:transcription/smart-format? {:default true} :boolean]
     [:transcription/profanity-filter? {:default true} :boolean]
+    [:transcription/supports-interrupt? {:optional true
+                                         :default false} :boolean]
     [:transcription/vad-events? {:default false} :boolean]
+    [:transcription/utterance-end-ms {:optional true
+                                      :default 1000} :int]
     [:transcription/sample-rate schema/SampleRate]
     [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
     [:transcription/language {:default :en} schema/Language]
     [:transcription/punctuate? {:default false} :boolean]]
    ;; if smart-format is true, no need for punctuate
+   [:fn {:error/message "When :transcription/utterance-end-ms is provided, :transcription/interim-results? must be true. More details here:
+https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using-utteranceend"}
+    (fn [{:transcription/keys [utterance-end-ms interim-results?]}]
+      (and (int? utterance-end-ms) interim-results?))]
    [:fn {:error/message "When :transcription/smart-format? is true, :transcription/punctuate? must be false. More details here: https://developers.deepgram.com/docs/smart-format#enable-feature"}
     (fn [{:transcription/keys [smart-format? punctuate?]}]
       (not (and smart-format? punctuate?)))]])
 
 (defn pipeline->deepgram-config
-  [value]
+  [p]
   (cond-> {}
     ;; Map sample rate directly
-    (:audio-in/sample-rate value)
-    (assoc :transcription/sample-rate (:audio-in/sample-rate value))
+    (:audio-in/sample-rate p)
+    (assoc :transcription/sample-rate (:audio-in/sample-rate p))
 
     ;; Map encoding with conversion
-    (:audio-in/encoding value)
+    (:audio-in/encoding p)
     (assoc :transcription/encoding
-           (get deepgram-encoding (:audio-in/encoding value)))
+           (get deepgram-encoding (:audio-in/encoding p)))
 
-    ;; Map language directly
-    (:pipeline/language value)
-    (assoc :transcription/language (:pipeline/language value))))
+    (:pipeline/language p) (assoc :transcription/language (:pipeline/language p))
+    (:pipeline/supports-interrupt? p)
+    (assoc :transcription/supports-interrupt? (:pipeline/supports-interrupt? p))))
 
 (defmethod processor-schema :transcription/deepgram
   [_]
@@ -179,4 +197,5 @@
 
       :audio/raw-input
       (when-let [conn (get-in @pipeline [type :websocket/conn])]
-        (ws/send! conn (:data frame))))))
+        (ws/send! conn (:data frame)))
+      nil)))

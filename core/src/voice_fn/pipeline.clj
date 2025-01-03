@@ -61,9 +61,14 @@
    [:audio-out/encoding {:default :pcm-signed} schema/AudioEncoding]
    [:audio-out/sample-size-bits {:default 16} schema/SampleSizeBits]
    [:pipeline/language schema/Language]
+   [:pipeline/supports-interrupt? {:default false} :boolean]
    [:llm/context schema/LLMContext]
    [:transport/in-ch schema/Channel]
    [:transport/out-ch schema/Channel]])
+
+(defn supports-interrupt?
+  [pipeline]
+  (get-in pipeline [:pipeline/config :pipeline/supports-interrupt?]))
 
 (defn validate-pipeline
   "Validates the pipeline configuration and all processor configs.
@@ -268,6 +273,7 @@
   (t/log! :debug "Starting pipeline")
   (send-frame! pipeline (f/start-frame true)))
 
+;; TODO stop all pipeline channels
 (defn stop-pipeline!
   [pipeline]
   (t/log! :debug "Stopping pipeline")

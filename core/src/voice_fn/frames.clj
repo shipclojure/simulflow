@@ -25,7 +25,9 @@
         (= frame-type :system/stop)
         (= frame-type :system/bot-interruption)
         (= frame-type :user/started-speaking)
-        (= frame-type :user/stopped-speaking))))
+        (= frame-type :user/stopped-speaking)
+        (= frame-type :pipeline/start-interruption)
+        (= frame-type :pipeline/stop-interruption))))
 
 (defmacro defframe
   "Define a frame creator function and its predicate.
@@ -64,6 +66,10 @@
   full transcription by an aggregator."
   :transcription/interim-results)
 
+(defframe transcription-frame
+  "A text frame with transcription specific data."
+  :transcription/result)
+
 (defframe text-input-frame
   "Frame usually outputted by a transcription processor. Serves as input for
   text LLM processors."
@@ -98,3 +104,11 @@
 (defframe user-stopped-speaking-frame
   "Sent when user stops speaking, used to resume AI output"
   :user/stopped-speaking)
+
+(defframe start-interruption-frame
+  "Frame sent when the pipeline should be interrupted. Usually because the user started speaking"
+  :pipeline/start-interruption)
+
+(defframe stop-interruption-frame
+  "Frame sent when the pipeline should resume processing. Usually means the user has stopped speaking"
+  :pipeline/stop-interruption)
