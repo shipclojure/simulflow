@@ -55,3 +55,17 @@
                     (str/join #"&")
                     (str "?"))]
     (str (strip-search-params url) search)))
+
+(def end-of-sentence-pattern
+  "Matches end of sentences with following rules:
+  - (?<![A-Z]): Not after uppercase letters (e.g., U.S.A.)
+  - (?<!\\d): Not preceded by digits (e.g 1. Let's start)
+  - (?<!\\d\\s[ap]): Not after time markers (e.g., 3 a.m.)
+  - (?<!Mr|Ms|Dr|Dl)(?<!Mrs|Dna|)(?<!Prof): Not after common titles (Mr., Ms.,
+  Dr., Prof.)
+  - [\\.\\?\\!:;]|[。？！：；]: Matches standard and full-width Asian
+  punctuation"
+  #"(?<![A-Z])(?<!\d)(?<!\d\s[ap])(?<!Mr|Ms|Dr)(?<!Mrs)(?<!Prof)[\.\?\!:;]|[。？！：；]$")
+
+(defn ends-with-sentence? [text]
+  (boolean (re-find end-of-sentence-pattern text)))

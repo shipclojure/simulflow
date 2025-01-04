@@ -18,7 +18,6 @@
    [voice-fn.pipeline :as vpipe]
    [voice-fn.processors.elevenlabs]
    [voice-fn.processors.llm-context-aggregator]
-   [voice-fn.processors.llm-sentence-assembler]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.twilio]))
 
@@ -66,48 +65,28 @@
                      :llm/context [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}]
                      :transport/in-ch in
                      :transport/out-ch out}
-   :pipeline/processors [{:processor/type :transport/twilio-input
-                          :processor/accepted-frames #{:system/start :system/stop}
-                          :processor/generates-frames #{:audio/raw-input}}
+   :pipeline/processors [{:processor/type :transport/twilio-input}
                          {:processor/type :transcription/deepgram
-                          :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
-                          :processor/generates-frames #{:text/input}
                           :processor/config {:transcription/api-key (secret [:deepgram :api-key])
                                              :transcription/interim-results? true
                                              :transcription/punctuate? false
                                              :transcription/vad-events? true
                                              :transcription/smart-format? true
                                              :transcription/model :nova-2}}
-                         {:processor/type :llm/context-aggregator
-                          :processor/accepted-frames #{:llm/output-text-sentence :text/input}
-                          :processor/generates-frames #{:llm/user-context-added}}
+                         {:processor/type :context.aggregator/user}
                          {:processor/type :llm/openai
-                          :processor/accepted-frames #{:llm/user-context-added}
-                          :processor/generates-frames #{:llm/output-text-chunk}
                           :processor/config {:llm/model "gpt-4o-mini"
                                              :openai/api-key (secret [:openai :new-api-sk])}}
-                         {:processor/type :log/text-input
-                          :processor/accepted-frames #{:text/input}
-                          :processor/generates-frames #{}
-                          :processor/config {}}
-                         {:processor/type :llm/sentence-assembler
-                          :processor/accepted-frames #{:system/stop :llm/output-text-chunk}
-                          :processor/generates-frames #{:llm/output-text-sentence}
-                          :processor/config {:sentence/end-matcher #"[.?!;:]"}}
+                         {:processor/type :context.aggregator/assistant}
+
                          {:processor/type :tts/elevenlabs
-                          :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
-                          :processor/generates-frames #{:audio/output :elevenlabs/audio-chunk}
                           :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
                                              :elevenlabs/model-id "eleven_flash_v2_5"
                                              :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
                                              :voice/stability 0.5
                                              :voice/similarity-boost 0.8
                                              :voice/use-speaker-boost? true}}
-                         {:processor/type :elevenlabs/audio-assembler
-                          :processor/accepted-frames #{:elevenlabs/audio-chunk}
-                          :processor/generates-frames #{:audio/output}}
                          {:processor/type :transport/async-output
-                          :processor/accepted-frames #{:audio/output :system/stop}
                           :generates/frames #{}}]})
 
 ;; Using ring websocket protocols to setup a websocket server

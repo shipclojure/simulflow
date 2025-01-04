@@ -151,48 +151,31 @@
                                                :transport/in-ch in
                                                :transport/out-ch out}
                              :pipeline/processors
-                             [{:processor/type :transport/twilio-input
-                               :processor/accepted-frames #{:system/start :system/stop}
-                               :processor/generates-frames #{:audio/raw-input}}
+                             [{:processor/type :transport/twilio-input}
                               {:processor/type :transcription/deepgram
-                               :processor/accepted-frames #{:system/start :system/stop :audio/raw-input}
-                               :processor/generates-frames #{:text/input}
                                :processor/config {:transcription/api-key (secret [:deepgram :api-key])
                                                   :transcription/interim-results? true
                                                   :transcription/punctuate? false
                                                   :transcription/vad-events? true
                                                   :transcription/smart-format? true
                                                   :transcription/model :nova-2}}
-                              {:processor/type :llm/context-aggregator
-                               :processor/accepted-frames #{:llm/output-text-sentence :text/input}
-                               :processor/generates-frames #{:llm/user-context-added}}
+                              {:processor/type :llm/context-aggregator}
                               {:processor/type :llm/openai
-                               :processor/accepted-frames #{:llm/user-context-added}
-                               :processor/generates-frames #{:llm/output-text-chunk}
                                :processor/config {:llm/model "gpt-4o-mini"
                                                   :openai/api-key (secret [:openai :new-api-sk])}}
                               {:processor/type :log/text-input
-                               :processor/accepted-frames #{:text/input}
-                               :processor/generates-frames #{}
                                :processor/config {}}
                               {:processor/type :llm/sentence-assembler
-                               :processor/accepted-frames #{:system/stop :llm/output-text-chunk}
-                               :processor/generates-frames #{:llm/output-text-sentence}
                                :processor/config {:sentence/end-matcher #"[.?!;:]"}}
                               {:processor/type :tts/elevenlabs
-                               :processor/accepted-frames #{:system/stop :system/start :llm/output-text-sentence}
-                               :processor/generates-frames #{:audio/output :elevenlabs/audio-chunk}
                                :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
                                                   :elevenlabs/model-id "eleven_flash_v2_5"
                                                   :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
                                                   :voice/stability 0.5
                                                   :voice/similarity-boost 0.8
                                                   :voice/use-speaker-boost? true}}
-                              {:processor/type :elevenlabs/audio-assembler
-                               :processor/accepted-frames #{:elevenlabs/audio-chunk}
-                               :processor/generates-frames #{:audio/output}}
+
                               {:processor/type :transport/async-output
-                               :processor/accepted-frames #{:audio/output :system/stop}
                                :generates/frames #{}}]})
 
   (validate-pipeline test-pipeline-config)
@@ -253,11 +236,12 @@
                                    :pipeline/main-pub main-pub}
                                   (enrich-processors pipeline-config)))]
         ;; Start each processor
-        (doseq [{:processor/keys [type accepted-frames]} (:pipeline/processors pipeline-config)]
-          (let [processor-ch (chan 1024)
+        (doseq [{:processor/keys [type]} (:pipeline/processors pipeline-config)]
+          (let [afs (accepted-frames type)
+                processor-ch (chan 1024)
                 processor-system-ch (chan 1024)]
             ;; Tap into main channel, filtering for accepted frame types
-            (doseq [frame-type accepted-frames]
+            (doseq [frame-type afs]
               (a/sub main-pub frame-type processor-ch)
               ;; system frames that take prioriy over other frames
               (a/sub system-pub frame-type processor-system-ch))
