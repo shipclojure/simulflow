@@ -1,11 +1,8 @@
 (ns voice-fn.processors.llm-context-aggregator
   (:require
-   [malli.core :as m]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline :refer [send-frame!]]
    [voice-fn.schema :as schema]))
-
-concat
 
 (defn concat-context
   "Concat to context a new message. If the last message from the context is from
@@ -96,6 +93,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    [:aggregator/interim-results-frame? {:optional true} [:maybe schema/FramePredicate]]
    [:aggregator/accumulator-frame? schema/FramePredicate]])
 
+;; Aggregator for user
+
 (def user-context-aggregator-options
   {:messages/role "user"
    :aggregator/start-frame? frame/user-speech-start?
@@ -107,15 +106,33 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   [_]
   ContextAggregatorConfig)
 
-(defmethod pipeline/processor-schema :context.aggregator/assistant
-  [_]
-  ContextAggregatorConfig)
-
 (defmethod pipeline/make-processor-config :context.aggregator/user
   [_ _ processor-config]
   (merge user-context-aggregator-options
          processor-config))
 
 (defmethod pipeline/process-frame :context.aggregator/user
+  [type pipeline processor frame]
+  (process-aggregator-frame type pipeline processor frame))
+
+;; Aggregator for assistant
+
+(def assistant-context-aggregation-options
+  {:messages/role "assistant"
+   :aggregator/start-frame? frame/llm-full-response-start?
+   :aggregator/end-frame? frame/llm-full-response-end?
+   :aggregator/accumulator-frame? frame/llm-text-sentence?
+   :aggregator/interim-results-frame? frame/llm-text-chunk?})
+
+(defmethod pipeline/processor-schema :context.aggregator/assistant
+  [_]
+  ContextAggregatorConfig)
+
+(defmethod pipeline/make-processor-config :context.aggregator/assistant
+  [_ _ processor-config]
+  (merge assistant-context-aggregation-options
+         processor-config))
+
+(defmethod pipeline/process-frame :context.aggregator/assistant
   [type pipeline processor frame]
   (process-aggregator-frame type pipeline processor frame))

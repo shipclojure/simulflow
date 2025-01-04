@@ -6,7 +6,7 @@
    [malli.transform :as mt]
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :refer [close-processor! make-processor-config process-frame processor-schema send-frame! supports-interrupt?]]
+   [voice-fn.pipeline :refer [accepted-frames close-processor! make-processor-config process-frame processor-schema send-frame! supports-interrupt?]]
    [voice-fn.schema :as schema :refer [flex-enum]]
    [voice-fn.utils.core :as u])
   (:import
@@ -182,6 +182,10 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
             (merge processor-config
                    (pipeline->deepgram-config pipeline-config))
             (mt/default-value-transformer {::mt/add-optional-keys true})))
+
+(defmethod accepted-frames :transcription/deepgram
+  [_]
+  #{:frame.system/start :frame.system/stop :frame.audio/input-raw})
 
 (defmethod process-frame :transcription/deepgram
   [type pipeline processor frame]

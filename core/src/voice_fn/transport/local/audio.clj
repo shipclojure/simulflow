@@ -6,7 +6,7 @@
    [uncomplicate.clojure-sound.core :refer [open! read! start!]]
    [uncomplicate.clojure-sound.sampled :refer [audio-format line line-info]]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :refer [close-processor! process-frame]])
+   [voice-fn.pipeline :refer [accepted-frames close-processor! process-frame]])
   (:import
    (java.util Arrays)
    (javax.sound.sampled AudioFormat AudioSystem DataLine$Info TargetDataLine)))
@@ -108,6 +108,10 @@
      {:audio-chan out-ch
       :stop-fn #(do (a/close! out-ch)
                     (reset! running? false))})))
+
+(defmethod accepted-frames :transport/local-audio
+  [_]
+  #{:frame.system/start :frame.system/stop})
 
 (defmethod process-frame :transport/local-audio
   [processor-type pipeline _ frame]

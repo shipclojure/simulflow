@@ -165,6 +165,10 @@
   [_]
   ElevenLabsTTSConfig)
 
+(defmethod pipeline/accepted-frames :tts/elevenlabs
+  [_]
+  #{:frame.system/start :frame.system/stop :frame.llm/text-sentence})
+
 (defmethod pipeline/process-frame :tts/elevenlabs
   [type pipeline processor frame]
   (cond

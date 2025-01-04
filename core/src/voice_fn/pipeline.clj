@@ -18,6 +18,19 @@
   [_]
   any?)
 
+(defmulti accepted-frames
+  "Returns set of frame types this processor accepts. Each processor must
+  implement this method so the pipeline can know what frames to subscribe it
+  to."
+  {:arglists '([processor-type])}
+  (fn [processor-type] processor-type))
+
+(defmethod accepted-frames :default
+  [type]
+  (throw (ex-info (str "Processor " type " must declare accepted frame types")
+                  {:type type
+                   :cause :processor.error/no-accepted-frames})))
+
 (defmulti make-processor-config
   "Create the configuration for the processor based on the pipeline
   configuration. Used when the final configuration for a processor requires

@@ -107,12 +107,15 @@
 (defframe llm-text-chunk
   "Chunk of text from streaming LLM output"
   :frame.llm/text-chunk)
+
 (defframe llm-text-sentence
   "Complete sentence from LLM output"
   :frame.llm/text-sentence)
+
 (defframe llm-full-response-start
   "Indicates the start of an LLM response"
   :frame.llm/response-start)
+
 (defframe llm-full-response-end
   "Indicates the end of an LLM response"
   :frame.llm/response-end)

@@ -20,6 +20,10 @@
        input
        (tp/deserialize-frame serializer input)))))
 
+(defmethod pipeline/accepted-frames :transport/async-input
+  [_]
+  #{:frame.system/start :frame.system/stop})
+
 (defmethod pipeline/process-frame :transport/async-input
   [processor-type pipeline _ frame]
   (let [{:transport/keys [in-ch serializer]} (:pipeline/config @pipeline)
@@ -44,13 +48,17 @@
       (frame/system-stop frame)
       (do (t/log! {:level :info
                    :id processor-type} "Stopping transport input")
-        (reset! running? false)))))
+          (reset! running? false)))))
+
+(defmethod pipeline/accepted-frames :transport/async-output
+  [_]
+  #{:frame.system/stop :frame.audio/output-raw})
 
 (defmethod pipeline/process-frame :transport/async-output
   [type pipeline _ frame]
   (t/log! {:level :debug
            :id type}
-    ["Output frame" (:frame/data frame)])
+          ["Output frame" (:frame/data frame)])
   (let [{:transport/keys [out-ch serializer]} (:pipeline/config @pipeline)]
     (cond
       (frame/audio-output-raw? frame)

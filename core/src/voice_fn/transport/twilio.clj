@@ -7,6 +7,10 @@
    [voice-fn.transport.serializers :refer [make-twilio-serializer]]
    [voice-fn.utils.core :as u]))
 
+(defmethod pipeline/accepted-frames :transport/twilio-input
+  [_]
+  #{:frame.system/stop :frame.system/start})
+
 (defmethod pipeline/process-frame :transport/twilio-input
   [processor-type pipeline _ frame]
   (let [{:transport/keys [in-ch]} (:pipeline/config @pipeline)
@@ -34,4 +38,4 @@
       (frame/system-stop? frame)
       (do (t/log! {:level :info
                    :id processor-type} "Stopping transport input")
-        (reset! running? false)))))
+          (reset! running? false)))))

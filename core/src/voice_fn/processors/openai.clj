@@ -60,6 +60,10 @@
   [_]
   OpenAILLMConfigSchema)
 
+(defmethod pipeline/accepted-frames :llm/openai
+  [_]
+  #{:frame.context/messages})
+
 (defmethod pipeline/process-frame :llm/openai
   [_type pipeline {:llm/keys [model] :openai/keys [api-key]} frame]
   (when (frame/context-messages? frame)
@@ -67,8 +71,8 @@
     (let [out (api/create-chat-completion {:model model
                                            :messages (:frame/data frame)
                                            :stream true}
-                {:api-key api-key
-                 :version :http-2 :as :stream})]
+                                          {:api-key api-key
+                                           :version :http-2 :as :stream})]
       (a/go-loop []
         (when-let [chunk (a/<! out)]
           (if (= chunk :done)
