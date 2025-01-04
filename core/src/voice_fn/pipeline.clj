@@ -5,7 +5,7 @@
    [malli.error :as me]
    [malli.transform :as mt]
    [taoensso.telemere :as t]
-   [voice-fn.frames :as f :refer [system-frame?]]
+   [voice-fn.frame :as frame]
    [voice-fn.schema :as schema]
    [voice-fn.secrets :refer [secret]]))
 
@@ -215,7 +215,7 @@
 (defn send-frame!
   "Sends a frame to the appropriate channel based on its type"
   [pipeline frame]
-  (if (system-frame? frame)
+  (if (frame/system-frame? frame)
     (a/put! (:pipeline/system-ch @pipeline) frame)
     (a/put! (:pipeline/main-ch @pipeline) frame)))
 
@@ -266,19 +266,19 @@
       (when-let [[frame] (a/alts! [(get-in @pipeline [type :processor/system-ch])
                                    (get-in @pipeline [type :processor/in-ch])])]
         (when-let [result (process-frame type pipeline processor frame)]
-          (when (f/frame? result)
+          (when (frame/frame? result)
             (send-frame! pipeline result)))
         (recur))))
   ;; Send start frame
   (t/log! :debug "Starting pipeline")
-  (send-frame! pipeline (f/start-frame true)))
+  (send-frame! pipeline (frame/system-start true)))
 
 ;; TODO stop all pipeline channels
 (defn stop-pipeline!
   [pipeline]
   (t/log! :debug "Stopping pipeline")
   (t/log! :debug ["Conversation so far" (get-in @pipeline [:pipeline/config :llm/context])])
-  (send-frame! pipeline (f/stop-frame true)))
+  (send-frame! pipeline (frame/system-stop true)))
 
 (defn close-processor!
   [pipeline type]

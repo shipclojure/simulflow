@@ -1,7 +1,7 @@
 (ns voice-fn.processors.llm-context-aggregator
   (:require
    [malli.core :as m]
-   [voice-fn.frames :as f]
+   [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline :refer [send-frame!]]
    [voice-fn.schema :as schema]))
 
@@ -84,7 +84,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                           (get-in @pipeline [:pipeline/config :llm/context])
                           role
                           final-aggregation)]
-        (send-frame! pipeline (f/llm-messages-frame llm-context))))))
+        (send-frame! pipeline (frame/context-messages llm-context))))))
 
 (def ContextAggregatorConfig
   [:map
@@ -98,10 +98,10 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
 (def user-context-aggregator-options
   {:messages/role "user"
-   :aggregator/start-frame? f/user-started-speaking-frame?
-   :aggregator/end-frame? f/user-stopped-speaking-frame?
-   :aggregator/accumulator-frame? f/transcription-frame?
-   :aggregator/interim-results-frame? f/interim-transcription-frame?})
+   :aggregator/start-frame? frame/user-speech-start?
+   :aggregator/end-frame? frame/user-speech-stop?
+   :aggregator/accumulator-frame? frame/transcription-complete?
+   :aggregator/interim-results-frame? frame/transcription-interim?})
 
 (defmethod pipeline/processor-schema :context.aggregator/user
   [_]

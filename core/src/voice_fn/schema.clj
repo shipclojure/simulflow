@@ -3,7 +3,7 @@
    [clojure.core.async.impl.protocols :as async-protocols]
    [malli.core :as m]
    [malli.error :as me]
-   [voice-fn.frames :as f]))
+   [voice-fn.frame :as frame]))
 
 (defn flex-enum
   "Creates a flexible enum that accepts both keywords and their string versions.
@@ -360,10 +360,10 @@
 
 (def FramePredicate
   [:fn {:error/message "Must be a function that takes a frame and returns boolean"
-        :gen/fmap (fn [_] f/start-frame?)} ; Example generator
+        :gen/fmap (fn [_] frame/system-start?)} ; Example generator
    (fn [f]
      (and (fn? f)
           (try
-            (boolean? (f (f/create-frame :test/frame {})))
+            (boolean? (f (frame/create-frame :test/frame {})))
             (catch Exception _
               false))))])

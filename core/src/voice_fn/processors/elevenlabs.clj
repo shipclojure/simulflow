@@ -3,7 +3,7 @@
    [clojure.core.async :as a]
    [hato.websocket :as ws]
    [taoensso.telemere :as t]
-   [voice-fn.frames :as f]
+   [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.schema :as schema]
    [voice-fn.secrets :as secrets]
@@ -83,8 +83,13 @@
                 (t/log! :info ["Elevenlabs websocket connection open. Sending configuration message" configuration])
                 (ws/send! ws configuration)))
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                 (a/put! (:pipeline/main-ch @pipeline)
-                         (f/elevenlabs-audio-chunk-frame (str data))))
+                 (let [acc (get-in @pipeline [type :audio-accumulator] "")
+                       attempt (u/parse-if-json (str acc data))]
+                   (if (map? attempt)
+                     (when-let [audio (:audio attempt)]
+                       (swap! pipeline assoc-in [type :audio-accumulator] "")
+                       (pipeline/send-frame! pipeline (frame/audio-output-raw (u/decode-base64 audio))))
+                     (swap! pipeline assoc-in [type :audio-accumulator] attempt))))
    :on-error (fn [_ e]
                (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
    :on-close (fn [_ws code reason]
@@ -162,32 +167,16 @@
 
 (defmethod pipeline/process-frame :tts/elevenlabs
   [type pipeline processor frame]
-  (case (:frame/type frame)
-    :system/start
+  (cond
+    (frame/system-start? frame)
     (do (t/log! {:level :debug
                  :id type} "Starting text to speech engine")
         (connect-websocket! type pipeline (:processor/config processor)))
-    :system/stop (close-websocket-connection! type pipeline)
+    (frame/system-stop? frame) (close-websocket-connection! type pipeline)
 
-    :llm/output-text-sentence
+    (frame/llm-text-sentence? frame)
     (let [conn (get-in @pipeline [type :websocket/conn])
           xi-message (text-message (:frame/data frame))]
       (t/log! {:level :debug
                :id type} ["Sending websocket payload" xi-message])
       (ws/send! conn xi-message))))
-
-(defmethod pipeline/process-frame :elevenlabs/audio-assembler
-  [type pipeline _ frame]
-  (let [acc (get-in @pipeline [type :audio-accumulator] "")]
-    (case (:frame/type frame)
-      :elevenlabs/audio-chunk
-      (let [attempt (u/parse-if-json (str acc (:frame/data frame)))]
-        (if (map? attempt)
-          (when-let [audio (:audio attempt)]
-            (swap! pipeline assoc-in [type :audio-accumulator] "")
-            (a/put! (:pipeline/main-ch @pipeline)
-                    (f/audio-output-frame audio)))
-          (swap! pipeline assoc-in [type :audio-accumulator] attempt)))
-      :system/stop
-      (t/log! {:level :debug
-               :id type} ["Accumulator at the end" acc]))))

@@ -5,7 +5,7 @@
    [malli.core :as m]
    [malli.transform :as mt]
    [taoensso.telemere :as t]
-   [voice-fn.frames :as f]
+   [voice-fn.frame :as frame]
    [voice-fn.pipeline :refer [close-processor! make-processor-config process-frame processor-schema send-frame! supports-interrupt?]]
    [voice-fn.schema :as schema :refer [flex-enum]]
    [voice-fn.utils.core :as u])
@@ -100,16 +100,16 @@
                  (let [m (u/parse-if-json (str data))
                        trsc (transcript m)]
                    (cond
-                     (final-transcript? m) (send-frame! pipeline (f/transcription-frame trsc))
-                     (and trsc (not= "" trsc)) (send-frame! pipeline (send-frame! pipeline (f/interim-transcription-frame trsc)))
+                     (final-transcript? m) (send-frame! pipeline (frame/transcription-complete trsc))
+                     (and trsc (not= "" trsc)) (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc)))
                      (speech-started-event? m) (do
-                                                 (send-frame! pipeline (f/user-started-speaking-frame true))
+                                                 (send-frame! pipeline (frame/user-speech-start true))
                                                  (when (supports-interrupt? @pipeline)
-                                                   (send-frame! pipeline (f/start-interruption-frame true))))
+                                                   (send-frame! pipeline (frame/control-interrupt-start true))))
                      (utterance-end-event? m) (do
-                                                (send-frame! pipeline (f/user-stopped-speaking-frame true))
+                                                (send-frame! pipeline (frame/user-speech-stop true))
                                                 (when (supports-interrupt? @pipeline)
-                                                  (send-frame! pipeline (f/stop-interruption-frame true)))))))
+                                                  (send-frame! pipeline (frame/control-interrupt-stop true)))))))
    :on-error (fn [_ e]
                (t/log! {:level :error :id type} ["Error" e]))
    :on-close (fn [_ws code reason]
@@ -189,13 +189,12 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
                     (t/log! :debug "Stopping transcription engine")
                     (close-websocket-connection! type pipeline)
                     (close-processor! pipeline type))]
-    (case (:frame/type frame)
-      :system/start
+    (cond
+      (frame/system-start? frame)
       (do (t/log! :debug "Starting transcription engine")
           (connect-websocket! type pipeline (:processor/config processor)))
-      :system/stop (on-close!)
+      (frame/system-stop? frame) (on-close!)
 
-      :audio/raw-input
+      (frame/audio-input-raw? frame)
       (when-let [conn (get-in @pipeline [type :websocket/conn])]
-        (ws/send! conn (:data frame)))
-      nil)))
+        (ws/send! conn (:data frame))))))

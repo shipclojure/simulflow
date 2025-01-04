@@ -1,7 +1,7 @@
 (ns voice-fn.processors.openai
   (:require
    [clojure.core.async :as a]
-   [voice-fn.frames :as frames]
+   [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.schema :as schema]
    [wkok.openai-clojure.api :as api]))
@@ -61,16 +61,18 @@
   OpenAILLMConfigSchema)
 
 (defmethod pipeline/process-frame :llm/openai
-  [_type pipeline processor frame]
-  (let [{:llm/keys [model] :openai/keys [api-key]} (:processor/config processor)
-        {:llm/keys [context]} (:pipeline/config @pipeline)]
-    (case (:frame/type frame)
-      :llm/user-context-added (a/pipeline
-                                1
-                                (:pipeline/main-ch @pipeline)
-                                (comp (map token-content) (filter some?) (map frames/llm-output-text-chunk-frame))
-                                (api/create-chat-completion {:model model
-                                                             :messages context
-                                                             :stream true}
-                                                            {:api-key api-key
-                                                             :version :http-2 :as :stream})))))
+  [_type pipeline {:llm/keys [model] :openai/keys [api-key]} frame]
+  (when (frame/context-messages? frame)
+    (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
+    (let [out (api/create-chat-completion {:model model
+                                           :messages (:frame/data frame)
+                                           :stream true}
+                {:api-key api-key
+                 :version :http-2 :as :stream})]
+      (a/go-loop []
+        (when-let [chunk (a/<! out)]
+          (if (= chunk :done)
+            (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
+            (do
+              (pipeline/send-frame! pipeline (frame/llm-text-chunk (token-content chunk)))
+              (recur))))))))

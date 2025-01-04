@@ -5,7 +5,7 @@
    [taoensso.telemere :as t]
    [uncomplicate.clojure-sound.core :refer [open! read! start!]]
    [uncomplicate.clojure-sound.sampled :refer [audio-format line line-info]]
-   [voice-fn.frames :as frames]
+   [voice-fn.frame :as frame]
    [voice-fn.pipeline :refer [close-processor! process-frame]])
   (:import
    (java.util Arrays)
@@ -111,8 +111,8 @@
 
 (defmethod process-frame :transport/local-audio
   [processor-type pipeline _ frame]
-  (case (:frame/type frame)
-    :system/start
+  (cond
+    (frame/system-start? frame)
     (do
       (t/log! :debug "Starting audio capture")
       (let [{:keys [audio-chan stop-fn]} (start-audio-capture-file! (:pipeline/config @pipeline))]
@@ -121,13 +121,12 @@
         ;; Start sending audio frames
         (a/go-loop []
           (when-let [data (a/<! audio-chan)]
-            (a/>! (:pipeline/main-ch @pipeline) (frames/audio-input-frame data))
+            (a/>! (:pipeline/main-ch @pipeline) (frame/audio-input-raw data))
             (recur)))))
 
-    :system/stop
+    (frame/system-stop? frame)
     (do
       (t/log! :debug "Stopping audio capture")
       (when-let [stop-fn (get-in @pipeline [:transport/local-audio :stop-fn])]
-        (stop-fn)))
-    (close-processor! pipeline processor-type))
-  nil)
+        (stop-fn))
+      (close-processor! pipeline processor-type))))
