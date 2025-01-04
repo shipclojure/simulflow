@@ -112,3 +112,7 @@
 (defframe stop-interruption-frame
   "Frame sent when the pipeline should resume processing. Usually means the user has stopped speaking"
   :pipeline/stop-interruption)
+
+(defframe llm-messages-frame
+  "A Frame containing a list of LLM messages. Used to signal that an LLM service should run a chat completion and emit an llm-full-response-start-frame, one or more llm-output-text-frame and llm-full-response-end-frame"
+  :llm/messages)
