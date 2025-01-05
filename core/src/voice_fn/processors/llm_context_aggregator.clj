@@ -122,8 +122,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   {:messages/role "assistant"
    :aggregator/start-frame? frame/llm-full-response-start?
    :aggregator/end-frame? frame/llm-full-response-end?
-   :aggregator/accumulator-frame? frame/llm-text-sentence?
-   :aggregator/interim-results-frame? frame/llm-text-chunk?})
+   :aggregator/accumulator-frame? frame/llm-text-chunk?})
 
 (defmethod pipeline/processor-schema :context.aggregator/assistant
   [_]
