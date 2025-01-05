@@ -81,6 +81,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                           (get-in @pipeline [:pipeline/config :llm/context])
                           role
                           final-aggregation)]
+        (swap! pipeline assoc-in [:pipeline/config :llm/context] llm-context)
         (send-frame! pipeline (frame/context-messages llm-context))))))
 
 (def ContextAggregatorConfig

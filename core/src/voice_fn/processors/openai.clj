@@ -8,6 +8,10 @@
 
 (def token-content (comp :content :delta first :choices))
 
+(defn user-last-message?
+  [context]
+  (#{:user "user"} (-> context last :role)))
+
 (def OpenAILLMConfigSchema
   [:map
    {:closed true
@@ -66,7 +70,9 @@
 
 (defmethod pipeline/process-frame :llm/openai
   [_type pipeline {:llm/keys [model] :openai/keys [api-key]} frame]
-  (when (frame/context-messages? frame)
+  ;; Start request only when the last message in the context is by the user
+  (when (and (frame/context-messages? frame)
+             (user-last-message? (:frame/data frame)))
     (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
     (let [out (api/create-chat-completion {:model model
                                            :messages (:frame/data frame)

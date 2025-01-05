@@ -367,3 +367,15 @@
             (boolean? (f (frame/create-frame :test/frame {})))
             (catch Exception _
               false))))])
+
+(def FrameCreator
+  [:fn
+   {:error/message "Must be a function that takes type and data and returns a valid frame"
+    :gen/fmap (fn [_] frame/system-start)} ; Example generator
+   (fn [f]
+     (and (fn? f)
+          (try
+            (let [result (f {:test "data"})]
+              (frame/frame? result))
+            (catch Exception _
+              false))))])
