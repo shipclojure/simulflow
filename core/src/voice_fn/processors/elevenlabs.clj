@@ -171,6 +171,8 @@
 
 (defmethod pipeline/process-frame :tts/elevenlabs
   [type pipeline processor frame]
+  ;; TODO possibly look into bot started/stopped speaking to drop any
+  ;; accumulator that is still present
   (cond
     (frame/system-start? frame)
     (do (t/log! {:level :debug

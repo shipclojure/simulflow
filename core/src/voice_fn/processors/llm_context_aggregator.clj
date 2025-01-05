@@ -111,6 +111,12 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   [_ _ processor-config]
   (merge user-context-aggregator-options
          processor-config))
+(defmethod pipeline/accepted-frames :context.aggregator/user
+  [_]
+  #{:frame.user/speech-start
+    :frame.user/speech-stop
+    :frame.transcription/interim
+    :frame.transcription/complete})
 
 (defmethod pipeline/process-frame :context.aggregator/user
   [type pipeline processor frame]
@@ -132,6 +138,11 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   [_ _ processor-config]
   (merge assistant-context-aggregation-options
          processor-config))
+(defmethod pipeline/accepted-frames :context.aggregator/assistant
+  [_]
+  #{:frame.llm/response-start
+    :frame.llm/text-chunk
+    :frame.llm/response-end})
 
 (defmethod pipeline/process-frame :context.aggregator/assistant
   [type pipeline processor frame]
