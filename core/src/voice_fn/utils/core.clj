@@ -69,3 +69,46 @@
 
 (defn ends-with-sentence? [text]
   (boolean (re-find end-of-sentence-pattern text)))
+
+(defn end-sentence-pattern
+  "Escape punctuation so it can be used in regex operations"
+  [end-sentence]
+  (re-pattern (str/replace end-sentence #"([\.|\?|\!|\:|\;])" "\\\\$1")))
+
+(defn assemble-sentence
+  "Assembles text chunks into complete sentences by detecting sentence boundaries.
+   Takes an accumulator (previous incomplete text) and a new text chunk, returns
+   a map containing any complete sentence and remaining text.
+
+   Parameters:
+   - accumulator: String containing previously accumulated incomplete text
+   - llm-text-chunk-frame: New text chunk to be processed
+
+   Returns a map with:
+   - :sentence - Complete sentence including ending punctuation, or nil if no complete sentence
+   - :accumulator - Remaining text that doesn't form a complete sentence yet
+
+   Examples:
+   (assemble-sentence \"Hello, \" \"world.\")
+   ;; => {:sentence \"Hello, world.\" :accumulator \"\"}
+
+   (assemble-sentence \"Hello\" \", world\")
+   ;; => {:sentence nil :accumulator \"Hello, world\"}
+
+   (assemble-sentence \"The U.S.A. is \" \"great!\")
+   ;; => {:sentence \"The U.S.A. is great!\" :accumulator \"\"}
+
+   Note: Uses end-of-sentence-pattern to detect sentence boundaries while handling
+   special cases like abbreviations (U.S.A.), titles (Mr., Dr.), and various
+   punctuation marks (.?!:;)."
+  [accumulator llm-text-chunk-frame]
+  (let [potential-sentence (str accumulator llm-text-chunk-frame)]
+    (if-let [end-sentence-match (re-find end-of-sentence-pattern potential-sentence)]
+      ;; Found sentence boundary - split and include the ending punctuation
+      (let [[sentence new-acc]
+            (str/split potential-sentence (end-sentence-pattern end-sentence-match) 2)]
+        {:sentence (str sentence end-sentence-match)
+         :accumulator new-acc})
+      ;; No sentence boundary - accumulate text
+      {:sentence nil
+       :accumulator potential-sentence})))

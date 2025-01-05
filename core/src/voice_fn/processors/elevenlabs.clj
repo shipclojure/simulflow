@@ -167,7 +167,7 @@
 
 (defmethod pipeline/accepted-frames :tts/elevenlabs
   [_]
-  #{:frame.system/start :frame.system/stop :frame.llm/text-sentence})
+  #{:frame.system/start :frame.system/stop :frame.llm/text-chunk})
 
 (defmethod pipeline/process-frame :tts/elevenlabs
   [type pipeline processor frame]
@@ -178,9 +178,15 @@
         (connect-websocket! type pipeline (:processor/config processor)))
     (frame/system-stop? frame) (close-websocket-connection! type pipeline)
 
-    (frame/llm-text-sentence? frame)
+    (frame/llm-text-chunk? frame)
     (let [conn (get-in @pipeline [type :websocket/conn])
-          xi-message (text-message (:frame/data frame))]
-      (t/log! {:level :debug
-               :id type} ["Sending websocket payload" xi-message])
-      (ws/send! conn xi-message))))
+          acc (get-in @pipeline [type :sentence/accumulator] "")
+          {:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data frame))]
+      ;; add new accumulator first so next call of this processor doesn't race
+      ;; condition
+      (swap! pipeline assoc-in [type :sentence/accumulator] accumulator)
+      (when sentence
+        (let [xi-message (text-message (:frame/data frame))]
+          (t/log! {:level :debug
+                   :id type} ["Sending websocket payload" xi-message])
+          (ws/send! conn xi-message))))))
