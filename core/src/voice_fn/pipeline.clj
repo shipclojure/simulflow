@@ -16,7 +16,7 @@
 
 (defmethod processor-schema :default
   [_]
-  any?)
+  :any)
 
 (defmulti accepted-frames
   "Returns set of frame types this processor accepts. Each processor must

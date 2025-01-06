@@ -37,6 +37,13 @@
        ;; Include your custom model
        "gpt-4o-mini"])]
 
+   (comment
+     (require '[voice-fn.secrets :refer [secret]])
+     (api/create-chat-completion {:model "gpt-4o-mini"
+                                  :messages [{:role :system :content "You are a helpful assistant"}]}
+       {:api-key (secret [:openai :new-api-sk])
+        :version :http-2}))
+
    [:openai/api-key
     [:string
      {:description "OpenAI API key"

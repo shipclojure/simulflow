@@ -15,7 +15,7 @@
    [ring.websocket :as ws]
    [taoensso.telemere :as t]
    [voice-fn.core]
-   [voice-fn.pipeline :as vpipe]
+   [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.elevenlabs]
    [voice-fn.processors.llm-context-aggregator]
    [voice-fn.secrets :refer [secret]]
@@ -61,6 +61,7 @@
                      :audio-out/encoding :ulaw
                      :audio-out/sample-size-bits 8
                      :audio-out/channels 1
+                     :pipeline/supports-interrupt? true
                      :pipeline/language :ro
                      :llm/context [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}]
                      :transport/in-ch in
@@ -99,7 +100,7 @@
   (assert (ws/upgrade-request? req))
   (let [in (a/chan 1024)
         out (a/chan 1024)
-        pipeline (vpipe/create-pipeline (create-twilio-ai-pipeline in out))
+        pipeline (pipeline/create-pipeline (create-twilio-ai-pipeline in out))
         start-pipeline (fn [socket]
                          ;; listen on the output channel we provided to send
                          ;; that audio back to twilio
@@ -109,7 +110,7 @@
                                       :level :debug} ["Sending twilio output" output])
                              (ws/send socket output)
                              (recur)))
-                         (vpipe/start-pipeline! pipeline))]
+                         (pipeline/start-pipeline! pipeline))]
     {::ws/listener
      {:on-open (fn on-open [socket]
                  (start-pipeline socket)
@@ -118,7 +119,7 @@
       :on-message (fn on-text [_ws payload]
                     (a/put! in payload))
       :on-close (fn on-close [_ws _status-code _reason]
-                  (vpipe/stop-pipeline! pipeline))
+                  (pipeline/stop-pipeline! pipeline))
       :on-error (fn on-error [ws error]
                   (prn error)
                   (t/log! :debug error))

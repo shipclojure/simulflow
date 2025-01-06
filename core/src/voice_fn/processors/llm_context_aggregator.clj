@@ -13,13 +13,14 @@
   ([context entry]
    (concat-context context (:role entry) (:content entry)))
   ([context role content]
-   (let [last-entry (last context)]
-     (if (= (name (:role last-entry)) (name role))
+   (let [last-entry (last context)
+         last-entry-role (when (and last-entry (:role last-entry)) (name (:role last-entry)))]
+     (if (= last-entry-role (name role))
        (into (vec (butlast context))
-             [{:role role
+             [{:role (name role)
                :content (str (:content last-entry) " " content)}])
        (into context
-             [{:role role :content content}])))))
+             [{:role (name role) :content content}])))))
 
 (defn process-aggregator-frame
   "Use cases implemented:
