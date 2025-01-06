@@ -99,18 +99,18 @@
 
                    (cond
                      (final-transcript? m) (do
-                                             (t/log! {:id type :level :debug} ["Final transcription" trsc])
+                                             #_(t/log! {:id type :level :debug} ["Final transcription" trsc])
                                              (send-frame! pipeline (frame/transcription-complete trsc)))
                      (and trsc (not= "" trsc)) (do
-                                                 (t/log! {:id type :level :debug} "Sending interim result")
+                                                 #_(t/log! {:id type :level :debug} "Sending interim result")
                                                  (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc))))
                      (speech-started-event? m) (do
-                                                 (t/log! {:id type :level :debug} "Sending speech start frame")
+                                                 #_(t/log! {:id type :level :debug} "Sending speech start frame")
                                                  (send-frame! pipeline (frame/user-speech-start true))
                                                  (when (supports-interrupt? @pipeline)
                                                    (send-frame! pipeline (frame/control-interrupt-start true))))
                      (utterance-end-event? m) (do
-                                                (t/log! {:id type :level :debug} "Sending speech stop frame")
+                                                #_(t/log! {:id type :level :debug} "Sending speech stop frame")
                                                 (send-frame! pipeline (frame/user-speech-stop true))
                                                 (when (supports-interrupt? @pipeline)
                                                   (send-frame! pipeline (frame/control-interrupt-stop true)))))))

@@ -100,6 +100,11 @@
                          {:processor/type :transport/async-output
                           :processor/config {}}]})
 
+(comment
+  (pipeline/start-pipeline! (pipeline/create-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan))))
+
+  ,)
+
 ;; Using ring websocket protocols to setup a websocket server
 (defn twilio-ws-handler
   [req]
@@ -113,8 +118,6 @@
                          ;; that audio back to twilio
                          (a/go-loop []
                            (when-let [output (a/<! out)]
-                             (t/log! {:id :twilio-output
-                                      :level :debug} ["Sending twilio output" output])
                              (ws/send socket output)
                              (recur)))
                          (pipeline/start-pipeline! pipeline))]

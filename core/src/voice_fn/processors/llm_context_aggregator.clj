@@ -40,17 +40,21 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
  S I E T1 I T2 -> X
   "
   [type pipeline processor frame]
-  (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame?]
+  (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-end-frame? accumulator-frame?]
          :messages/keys [role]} (:processor/config processor)
         {:keys [aggregating? seen-interim-results? aggregation seen-end-frame?]} (get-in @pipeline [type :aggregation-state])
-        send-aggregation? (atom false)]
+        send-aggregation? (atom false)
+        reset (fn [pipeline] (assoc-in pipeline [type :aggregation-state] {:aggregation ""
+                                                                           :aggregating? false
+                                                                           :seen-start-frame? false
+                                                                           :seen-end-frame? false
+                                                                           :seen-interim-results? false}))]
     (cond
       (start-frame? frame)
       (do
         (when debug?
           (t/log! {:level :debug :id type} "Got start frame"))
-        (swap! pipeline assoc-in [type :aggregation-state] {:aggregation ""
-                                                            :aggregating? true
+        (swap! pipeline assoc-in [type :aggregation-state] {:aggregating? true
                                                             :seen-start-frame? true
                                                             :seen-end-frame? false
                                                             :seen-interim-results? false}))
@@ -78,10 +82,12 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                             ;; We received final results so reset interim results
                             :seen-interim-results? false})
 
-              ;; We received a complete sentence, so if we have seen the end frame
-              ;; and we were still aggregating, it means we should send the
-              ;; aggregation
-              (reset! send-aggregation? seen-end-frame?))
+              ;; We received a complete sentence, so if we have seen the end
+              ;; frame and we were still aggregating, it means we should send
+              ;; the aggregation. If accumulator-end-frame? is true, it means
+              ;; the accumulator also acts as an end frame
+              (reset! send-aggregation? (or seen-end-frame?
+                                            accumulator-end-frame?)))
           (swap! pipeline assoc-in [type :aggregation-state :seen-interim-results?] false)))
       (and (fn? interim-results-frame?)
            (interim-results-frame? frame))
@@ -89,16 +95,25 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         (when debug?
           (t/log! {:level :debug :id type} ["Got interim frame" (:frame/data frame)]))
         (swap! pipeline assoc-in [type :aggregation-state :seen-interim-results?] true)))
-    (when @send-aggregation?
-      (let [final-aggregation (get-in @pipeline [type :aggregation-state :aggregation])
-            llm-context (concat-context
-                          (get-in @pipeline [:pipeline/config :llm/context])
-                          role
-                          final-aggregation)]
-        (when debug?
-          (t/log! {:level :debug :id type} ["Sending new context" llm-context]))
-        (swap! pipeline assoc-in [:pipeline/config :llm/context] llm-context)
-        (send-frame! pipeline (frame/context-messages llm-context))))))
+    (let [current-aggregation (get-in @pipeline [type :aggregation-state :aggregation])]
+      (cond
+        (and @send-aggregation?
+             (not= "" current-aggregation))
+        (let [llm-context (concat-context
+                            (get-in @pipeline [:pipeline/config :llm/context])
+                            role
+                            current-aggregation)]
+          (when debug?
+            (t/log! {:level :debug :id type} ["Sending new context" llm-context]))
+          (swap! pipeline (fn [p]
+                            (-> p
+                                (assoc-in [:pipeline/config :llm/context] llm-context)
+                                reset)))
+
+          (send-frame! pipeline (frame/context-messages llm-context)))
+        (and @send-aggregation?
+             (= "" current-aggregation))
+        (swap! pipeline reset)))))
 
 (def ContextAggregatorConfig
   [:map
@@ -109,9 +124,10 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    [:aggregator/debug? {:optional true :default false} :boolean]
    [:aggregator/end-frame? schema/FramePredicate]
    [:aggregator/interim-results-frame? {:optional true} [:maybe schema/FramePredicate]]
+   [:aggregator/accumulator-final-frame? {:optional true :default false} :boolean]
    [:aggregator/accumulator-frame? schema/FramePredicate]])
 
-;; Aggregator for user
+  ;; Aggregator for user
 
 (def user-context-aggregator-options
   {:messages/role "user"
@@ -140,7 +156,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   [type pipeline processor frame]
   (process-aggregator-frame type pipeline processor frame))
 
-;; Aggregator for assistant
+  ;; Aggregator for assistant
 
 (def assistant-context-aggregation-options
   {:messages/role "assistant"

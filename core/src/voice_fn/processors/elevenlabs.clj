@@ -69,7 +69,11 @@
                :xi_api_key api-key}))
 
 (def close-stream-message
-  {:text ""})
+  (u/json-str {:text ""}))
+
+(def keep-alive-message
+  "Sent to keep the connection alive"
+  (u/json-str {:text " "}))
 
 (defn text-message
   [text]
@@ -81,7 +85,14 @@
   {:on-open (fn [ws]
               (let [configuration (begin-stream-message processor-config)]
                 (t/log! :info ["Elevenlabs websocket connection open. Sending configuration message" configuration])
-                (ws/send! ws configuration)))
+                (ws/send! ws configuration)
+                ;; Send a keepalive message every 3 seconds to maintain websocket connection
+                (a/go-loop []
+                  (a/<! (a/timeout 3000))
+                  (when (get-in @pipeline [type :websocket/conn])
+                    (t/log! {:level :debug :id type} "Sending keep-alive message")
+                    (ws/send! ws keep-alive-message)
+                    (recur)))))
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
                  (let [acc (get-in @pipeline [type :audio-accumulator] "")
                        attempt (u/parse-if-json (str acc data))]
@@ -118,7 +129,7 @@
   [type pipeline]
   (t/log! :info "Closing elevenlabs websocket connection")
   (when-let  [conn (get-in @pipeline [type :websocket/conn])]
-    (ws/send! conn (u/json-str close-stream-message))
+    (ws/send! conn close-stream-message)
     (ws/close! conn))
 
   (swap! pipeline update-in [:tts/elevenlabs] dissoc :websocket/conn))
@@ -184,11 +195,12 @@
     (let [conn (get-in @pipeline [type :websocket/conn])
           acc (get-in @pipeline [type :sentence/accumulator] "")
           {:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data frame))]
+      (t/log! :debug ["sentence" sentence "accumulator" accumulator])
       ;; add new accumulator first so next call of this processor doesn't race
       ;; condition
       (swap! pipeline assoc-in [type :sentence/accumulator] accumulator)
       (when sentence
-        (let [xi-message (text-message (:frame/data frame))]
+        (let [xi-message (text-message sentence)]
           (t/log! {:level :debug
                    :id type} ["Sending websocket payload" xi-message])
           (ws/send! conn xi-message))))))
