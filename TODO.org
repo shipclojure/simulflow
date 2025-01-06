@@ -18,9 +18,11 @@ CLOCK: [2025-01-03 Fri 11:01]--[2025-01-03 Fri 11:26] =>  0:25
 
 * TODO Add pipeline interruptions
 
-** TODO Add assembler that takes in interim transcripts based on VAD
+** DONE Add assembler that takes in interim transcripts based on VAD
+CLOSED: [2025-01-06 Mon 16:35]
 :LOGBOOK:
-CLOCK: [2025-01-06 Mon 07:37]
+CLOCK: [2025-01-06 Mon 12:28]--[2025-01-06 Mon 12:53] =>  0:25
+CLOCK: [2025-01-06 Mon 07:37]--[2025-01-06 Mon 08:02] =>  0:25
 CLOCK: [2025-01-05 Sun 09:21]--[2025-01-05 Sun 09:46] =>  0:25
 CLOCK: [2025-01-05 Sun 08:18]--[2025-01-05 Sun 08:43] =>  0:25
 CLOCK: [2025-01-04 Sat 15:22]--[2025-01-04 Sat 15:47] =>  0:25
@@ -29,6 +31,9 @@ CLOCK: [2025-01-04 Sat 07:14]--[2025-01-04 Sat 07:39] =>  0:25
 :END:
 
 ** TODO Handle Start/Stop interruption frames in LLM and TTS and other assemblers
+:LOGBOOK:
+CLOCK: [2025-01-06 Mon 16:36]
+:END:
 
 * TODO Add support for first message greeting in the pipeline
 

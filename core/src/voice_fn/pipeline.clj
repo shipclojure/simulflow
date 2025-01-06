@@ -74,7 +74,8 @@
    [:audio-out/encoding {:default :pcm-signed} schema/AudioEncoding]
    [:audio-out/sample-size-bits {:default 16} schema/SampleSizeBits]
    [:pipeline/language schema/Language]
-   [:pipeline/supports-interrupt? {:default false} :boolean]
+   [:pipeline/supports-interrupt? {:default false
+                                   :optional true} :boolean]
    [:llm/context schema/LLMContext]
    [:transport/in-ch schema/Channel]
    [:transport/out-ch schema/Channel]])

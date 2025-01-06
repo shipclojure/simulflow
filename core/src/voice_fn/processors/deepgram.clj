@@ -23,7 +23,7 @@
    :alaw :alaw})
 
 (defn make-deepgram-url
-  [{:transcription/keys [interim-results? punctuate? model sample-rate language  vad-events? smart-format? encoding channels]
+  [{:transcription/keys [interim-results? punctuate? model sample-rate utterance-end-ms language  vad-events? smart-format? encoding channels]
     :or {interim-results? false
          punctuate? false}}]
   (u/append-search-params deepgram-url {:encoding encoding
@@ -33,18 +33,14 @@
                                         :smart_format smart-format?
                                         :channels channels
                                         :vad_events vad-events?
+                                        :utterance_end_ms utterance-end-ms
                                         :interim_results interim-results?
                                         :punctuate punctuate?}))
 
-(defn transcript?
-  [m]
-  (= (:event m) "transcript"))
-
 (defn final-transcript?
   [m]
-  (let [transcript-map (-> m :channel :alternatives first)]
-    (or (:speech_final transcript-map) ;; end of speech through endpointing
-        (:is_final transcript-map))))
+  (or (:speech_final m) ;; end of speech through endpointing
+      (:is_final m)))
 
 (defn- transcript
   [m]
@@ -70,13 +66,14 @@
     (if (>= current-count max-reconnect-attempts)
       (t/log! :warn "Maximum reconnection attempts reached for Deepgram")
       (do
-        (t/log! :info (str "Attempting to connect to Deepgram (attempt " (inc current-count) "/" max-reconnect-attempts ")"))
+
         (swap! pipeline update-in [type :websocket/reconnect-count] (fnil inc 0))
         (let [websocket-url (make-deepgram-url processor-config)
               conn-config (create-connection-config
                             type
                             pipeline
                             processor-config)
+              _ (t/log! :info (str "Attempting to connect to Deepgram (attempt " (inc current-count) "/" max-reconnect-attempts ")" "url: " websocket-url))
               new-conn @(ws/websocket
                           websocket-url
                           conn-config)]
@@ -99,14 +96,21 @@
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
                  (let [m (u/parse-if-json (str data))
                        trsc (transcript m)]
+
                    (cond
-                     (final-transcript? m) (send-frame! pipeline (frame/transcription-complete trsc))
-                     (and trsc (not= "" trsc)) (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc)))
+                     (final-transcript? m) (do
+                                             (t/log! {:id type :level :debug} ["Final transcription" trsc])
+                                             (send-frame! pipeline (frame/transcription-complete trsc)))
+                     (and trsc (not= "" trsc)) (do
+                                                 (t/log! {:id type :level :debug} "Sending interim result")
+                                                 (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc))))
                      (speech-started-event? m) (do
+                                                 (t/log! {:id type :level :debug} "Sending speech start frame")
                                                  (send-frame! pipeline (frame/user-speech-start true))
                                                  (when (supports-interrupt? @pipeline)
                                                    (send-frame! pipeline (frame/control-interrupt-start true))))
                      (utterance-end-event? m) (do
+                                                (t/log! {:id type :level :debug} "Sending speech stop frame")
                                                 (send-frame! pipeline (frame/user-speech-stop true))
                                                 (when (supports-interrupt? @pipeline)
                                                   (send-frame! pipeline (frame/control-interrupt-stop true)))))))
@@ -141,8 +145,7 @@
     [:transcription/supports-interrupt? {:optional true
                                          :default false} :boolean]
     [:transcription/vad-events? {:default false} :boolean]
-    [:transcription/utterance-end-ms {:optional true
-                                      :default 1000} :int]
+    [:transcription/utterance-end-ms {:default 1000} :int]
     [:transcription/sample-rate schema/SampleRate]
     [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
     [:transcription/language {:default :en} schema/Language]

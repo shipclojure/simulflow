@@ -1,6 +1,7 @@
 (ns voice-fn.processors.openai
   (:require
    [clojure.core.async :as a]
+   [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.schema :as schema]
@@ -37,13 +38,6 @@
        ;; Include your custom model
        "gpt-4o-mini"])]
 
-   (comment
-     (require '[voice-fn.secrets :refer [secret]])
-     (api/create-chat-completion {:model "gpt-4o-mini"
-                                  :messages [{:role :system :content "You are a helpful assistant"}]}
-       {:api-key (secret [:openai :new-api-sk])
-        :version :http-2}))
-
    [:openai/api-key
     [:string
      {:description "OpenAI API key"
@@ -54,7 +48,8 @@
 ;; Example validation:
 (comment
   (require '[malli.core :as m]
-           '[malli.error :as me])
+           '[malli.error :as me]
+           '[voice-fn.secrets :refer [secret]])
   ;; Valid config
   (m/validate OpenAILLMConfigSchema
               {:llm/model :gpt-4o-mini
@@ -65,7 +60,17 @@
   (-> OpenAILLMConfigSchema
       (m/explain {:llm/model "invalid-model"
                   :openai/api-key "sk-..."})
-      me/humanize))
+      me/humanize)
+
+  (api/create-chat-completion {:model "gpt-4o-mini"
+                               :stream true
+                               :messages [{:role "system", :content "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}
+                                          {:role "user", :content "Salut care mă aud"}]}
+                              {:api-key (secret [:openai :new-api-sk])
+                               :version :http-2
+                               :as :stream})
+
+  ,)
 
 (defmethod pipeline/processor-schema :llm/openai
   [_]
@@ -76,20 +81,23 @@
   #{:frame.context/messages})
 
 (defmethod pipeline/process-frame :llm/openai
-  [_type pipeline {:llm/keys [model] :openai/keys [api-key]} frame]
-  ;; Start request only when the last message in the context is by the user
-  (when (and (frame/context-messages? frame)
-             (user-last-message? (:frame/data frame)))
-    (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
-    (let [out (api/create-chat-completion {:model model
-                                           :messages (:frame/data frame)
-                                           :stream true}
-                                          {:api-key api-key
-                                           :version :http-2 :as :stream})]
-      (a/go-loop []
-        (when-let [chunk (a/<! out)]
-          (if (= chunk :done)
-            (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
-            (do
-              (pipeline/send-frame! pipeline (frame/llm-text-chunk (token-content chunk)))
-              (recur))))))))
+  [_type pipeline processor frame]
+
+  (let [{:llm/keys [model] :openai/keys [api-key]} (:processor/config processor)]
+    ;; Start request only when the last message in the context is by the user
+    (when (and (frame/context-messages? frame)
+               (user-last-message? (:frame/data frame)))
+      (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
+      (let [out (api/create-chat-completion {:model model
+                                             :messages (:frame/data frame)
+                                             :stream true}
+                                            {:api-key api-key
+                                             :version :http-2
+                                             :as :stream})]
+        (a/go-loop []
+          (when-let [chunk (a/<! out)]
+            (if (= chunk :done)
+              (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
+              (do
+                (pipeline/send-frame! pipeline (frame/llm-text-chunk (token-content chunk)))
+                (recur)))))))))

@@ -21,6 +21,8 @@
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.twilio]))
 
+(t/set-min-level! :debug)
+
 (defn emit-xml-str
   [xml-data]
   (-> xml-data
@@ -68,6 +70,7 @@
                      :transport/out-ch out}
    :pipeline/processors [;; Twilio transport
                          {:processor/type :transport/twilio-input}
+
                          ;; Transcription with deepgram
                          {:processor/type :transcription/deepgram
                           :processor/config {:transcription/api-key (secret [:deepgram :api-key])
@@ -77,12 +80,14 @@
                                              :transcription/smart-format? true
                                              :transcription/model :nova-2}}
                          ;; Aggregate User responses
-                         {:processor/type :context.aggregator/user}
+                         {:processor/type :context.aggregator/user
+                          :processor/config {:aggregator/debug? true}}
                          {:processor/type :llm/openai
                           :processor/config {:llm/model "gpt-4o-mini"
                                              :openai/api-key (secret [:openai :new-api-sk])}}
                          ;; aggregate AI responses
-                         {:processor/type :context.aggregator/assistant}
+                         {:processor/type :context.aggregator/assistant
+                          :processor/config {}}
                          ;; text to speech elevenlabs
                          {:processor/type :tts/elevenlabs
                           :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
@@ -92,12 +97,14 @@
                                              :voice/similarity-boost 0.8
                                              :voice/use-speaker-boost? true}}
                          ;; Simple core.async channel output
-                         {:processor/type :transport/async-output}]})
+                         {:processor/type :transport/async-output
+                          :processor/config {}}]})
 
 ;; Using ring websocket protocols to setup a websocket server
 (defn twilio-ws-handler
   [req]
   (assert (ws/upgrade-request? req))
+  (prn "Got here")
   (let [in (a/chan 1024)
         out (a/chan 1024)
         pipeline (pipeline/create-pipeline (create-twilio-ai-pipeline in out))
@@ -113,7 +120,11 @@
                          (pipeline/start-pipeline! pipeline))]
     {::ws/listener
      {:on-open (fn on-open [socket]
-                 (start-pipeline socket)
+                 (prn "Got on open")
+                 (try
+                   (start-pipeline socket)
+                   (catch Exception err
+                     (prn err)))
 
                  nil)
       :on-message (fn on-text [_ws payload]
