@@ -37,13 +37,18 @@
                                         :interim_results interim-results?
                                         :punctuate punctuate?}))
 
+(defn- transcript
+  [m]
+  (-> m :channel :alternatives first :transcript))
+
 (defn final-transcript?
   [m]
   (:is_final m))
 
-(defn- transcript
+(defn interim-transcript?
   [m]
-  (-> m :channel :alternatives first :transcript))
+  (and (not (final-transcript? m))
+       (not= "" (transcript m))))
 
 (defn speech-started-event?
   [m]
@@ -101,7 +106,7 @@
 
                    (cond
                      (final-transcript? m) (send-frame! pipeline (frame/transcription trsc))
-                     (and trsc (not= "" trsc)) (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc)))
+                     (interim-transcript? m) (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc)))
                      (speech-started-event? m) (do
                                                  (send-frame! pipeline (frame/user-speech-start true))
                                                  (when (supports-interrupt? @pipeline)
