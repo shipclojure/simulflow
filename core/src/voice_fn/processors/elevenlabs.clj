@@ -61,7 +61,6 @@
     :or {stability 0.5
          similarity-boost 0.8
          use-speaker-boost? true}}]
-
   (u/json-str {:text " "
                :voice_settings {:stability stability
                                 :similarity_boost similarity-boost

@@ -41,16 +41,35 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
  S I E T1 I T2 -> X
   "
   [type pipeline processor frame]
-  (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame?]
+  (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame? handles-interrupt?]
          :messages/keys [role]} (:processor/config processor)
         {:keys [aggregating? seen-interim-results? aggregation seen-end-frame?]} (get-in @pipeline [type :aggregation-state])
         send-aggregation? (atom false)
-        reset (fn [pipeline] (assoc-in pipeline [type :aggregation-state] {:aggregation nil
+        reset (fn [pipeline] (assoc-in pipeline [type :aggregation-state] {:aggregation ""
                                                                            :aggregating? false
                                                                            :seen-start-frame? false
                                                                            :seen-end-frame? false
                                                                            :seen-interim-results? false}))
-        frame-data (:frame/data frame)]
+
+        frame-data (:frame/data frame)
+        maybe-send-aggregation!
+        (fn []
+          (let [current-aggregation (get-in @pipeline [type :aggregation-state :aggregation])]
+            (when (and (string? current-aggregation)
+                       (not= "" (str/trim current-aggregation)))
+              (let [llm-context (concat-context
+                                  (get-in @pipeline [:pipeline/config :llm/context])
+                                  role
+                                  current-aggregation)]
+                (when debug?
+                  (t/log! {:level :debug :id type} ["Sending new context" llm-context]))
+                ;; Update state first so later invocations of aggregation
+                ;; processor to have the latest result
+                (swap! pipeline (fn [p]
+                                  (-> p
+                                      (assoc-in [:pipeline/config :llm/context] llm-context)
+                                      (assoc-in [type :aggregation-state :aggregation] ""))))
+                (send-frame! pipeline (frame/context-messages llm-context))))))]
     (cond
       (start-frame? frame)
       ,(do
@@ -68,7 +87,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                  ;; interferes with aggregations from LLM token streaming,
                  ;; consider splitting the implementation between user &
                  ;; assistant aggregation
-                 :aggregation (or aggregation nil)
+                 :aggregation (or aggregation "")
                  :aggregating? true
                  :seen-start-frame? true
                  :seen-end-frame? false
@@ -112,30 +131,16 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       ,(do
          (when debug?
            (t/log! {:level :debug :id type} ["INTERIM: " (:frame/data frame)]))
-         (swap! pipeline assoc-in [type :aggregation-state :seen-interim-results?] true)))
+         (swap! pipeline assoc-in [type :aggregation-state :seen-interim-results?] true))
+      ;; handle interruptions if the aggregator supports it
+      (and (frame/control-interrupt-start? frame)
+           handles-interrupt?)
+      ,(do
+         (maybe-send-aggregation!)
+         (reset pipeline)))
 
     ;; maybe send new context
-    (let [current-aggregation (get-in @pipeline [type :aggregation-state :aggregation])]
-      (when @send-aggregation?
-        ;; Aggregation is empty string or nil
-        (if (or (nil? current-aggregation)
-                (= "" (str/trim current-aggregation)))
-          (swap! pipeline reset)
-          ;; Finally send aggregation
-          (when (string? current-aggregation)
-            (let [llm-context (concat-context
-                                (get-in @pipeline [:pipeline/config :llm/context])
-                                role
-                                current-aggregation)]
-              (when debug?
-                (t/log! {:level :debug :id type} ["Sending new context" llm-context]))
-              ;; Update state first so later invocations of aggregation
-              ;; processor to have the latest result
-              (swap! pipeline (fn [p]
-                                (-> p
-                                    (assoc-in [:pipeline/config :llm/context] llm-context)
-                                    reset)))
-              (send-frame! pipeline (frame/context-messages llm-context)))))))))
+    (when @send-aggregation? (maybe-send-aggregation!))))
 
 (def ContextAggregatorConfig
   [:map
@@ -146,6 +151,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    [:aggregator/debug? {:optional true :default false} :boolean]
    [:aggregator/end-frame? schema/FramePredicate]
    [:aggregator/interim-results-frame? {:optional true} [:maybe schema/FramePredicate]]
+   [:aggregator/handles-interrupt? {:default false} :boolean]
    [:aggregator/accumulator-frame? schema/FramePredicate]])
 
   ;; Aggregator for user
@@ -163,9 +169,11 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   ContextAggregatorConfig)
 
 (defmethod pipeline/make-processor-config :context.aggregator/user
-  [_ _ processor-config]
+  [_ pipeline-config processor-config]
   (merge user-context-aggregator-options
-         processor-config))
+         processor-config
+         {:aggregator/handles-interrupt? (:pipeline/supports-interrupt? pipeline-config)}))
+
 (defmethod pipeline/accepted-frames :context.aggregator/user
   [_]
   #{:frame.user/speech-start
@@ -190,9 +198,11 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   ContextAggregatorConfig)
 
 (defmethod pipeline/make-processor-config :context.aggregator/assistant
-  [_ _ processor-config]
+  [_ pipeline-config processor-config]
   (merge assistant-context-aggregation-options
-         processor-config))
+         processor-config
+         {:aggregator/handles-interrupt? (:pipeline/supports-interrupt? pipeline-config)}))
+
 (defmethod pipeline/accepted-frames :context.aggregator/assistant
   [_]
   #{:frame.llm/response-start
