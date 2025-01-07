@@ -39,8 +39,7 @@
 
 (defn final-transcript?
   [m]
-  (or (:speech_final m) ;; end of speech through endpointing
-      (:is_final m)))
+  (:is_final m))
 
 (defn- transcript
   [m]
@@ -81,6 +80,9 @@
 
 (def keep-alive-payload (u/json-str {:type "KeepAlive"}))
 
+(def code-reason
+  {1011 :timeout})
+
 (defn create-connection-config
   [type pipeline processor-config]
   {:headers {"Authorization" (str "Token " (:transcription/api-key processor-config))}
@@ -98,19 +100,13 @@
                        trsc (transcript m)]
 
                    (cond
-                     (final-transcript? m) (do
-                                             #_(t/log! {:id type :level :debug} ["Final transcription" trsc])
-                                             (send-frame! pipeline (frame/transcription-complete trsc)))
-                     (and trsc (not= "" trsc)) (do
-                                                 #_(t/log! {:id type :level :debug} "Sending interim result")
-                                                 (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc))))
+                     (final-transcript? m) (send-frame! pipeline (frame/transcription trsc))
+                     (and trsc (not= "" trsc)) (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc)))
                      (speech-started-event? m) (do
-                                                 #_(t/log! {:id type :level :debug} "Sending speech start frame")
                                                  (send-frame! pipeline (frame/user-speech-start true))
                                                  (when (supports-interrupt? @pipeline)
                                                    (send-frame! pipeline (frame/control-interrupt-start true))))
                      (utterance-end-event? m) (do
-                                                #_(t/log! {:id type :level :debug} "Sending speech stop frame")
                                                 (send-frame! pipeline (frame/user-speech-stop true))
                                                 (when (supports-interrupt? @pipeline)
                                                   (send-frame! pipeline (frame/control-interrupt-stop true)))))))
@@ -118,8 +114,8 @@
                (t/log! {:level :error :id type} ["Error" e]))
    :on-close (fn [_ws code reason]
                (t/log! {:level :info :id type} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason])
-               (if (= code 1011) ;; timeout
-                 (connect-websocket! type pipeline processor-config)
+               (if (= (get code-reason code) :timeout)
+                 (connect-websocket! type pipeline processor-config) ;; attempt reconnect on timeout
                  (swap! pipeline update-in [type] dissoc :websocket/conn)))})
 
 (defn- close-websocket-connection!
@@ -129,23 +125,25 @@
     (ws/close! conn))
   (swap! pipeline update-in [:transcription/deepgram] dissoc :websocket/conn))
 
-(def code-reason
-  {1011 :timeout})
-
 (def DeepgramConfig
   [:and
    [:map
     [:transcription/api-key :string]
     [:transcription/model {:default :nova-2-general}
      (flex-enum (into [:nova-2] (map #(str "nova-2-" %) #{"general" "meeting" "phonecall" "voicemail" "finance" "conversationalai" "video" "medical" "drivethru" "automotive" "atc"})))]
-    [:transcription/interim-results? {:default true} :boolean]
+    [:transcription/interim-results? {:default false
+                                      :optional true} :boolean]
     [:transcription/channels {:default 1} [:enum 1 2]]
-    [:transcription/smart-format? {:default true} :boolean]
-    [:transcription/profanity-filter? {:default true} :boolean]
+    [:transcription/smart-format? {:default true
+                                   :optional true} :boolean]
+    [:transcription/profanity-filter? {:default true
+                                       :optional true} :boolean]
     [:transcription/supports-interrupt? {:optional true
                                          :default false} :boolean]
-    [:transcription/vad-events? {:default false} :boolean]
-    [:transcription/utterance-end-ms {:default 1000} :int]
+    [:transcription/vad-events? {:default false
+                                 :optional true} :boolean]
+    [:transcription/utterance-end-ms {:default 1000
+                                      :optional true} :int]
     [:transcription/sample-rate schema/SampleRate]
     [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
     [:transcription/language {:default :en} schema/Language]

@@ -82,9 +82,10 @@
 ;; Frames for speech-to-text processing
 ;;
 
-(defframe transcription-complete
-  "Final transcription result"
-  :frame.transcription/complete)
+(defframe transcription
+  "Transcription result. NOTE: This doesn't mean it is a full transcription, but
+  a transcription chunk that the transcriptor has full confidence in."
+  :frame.transcription/result)
 
 (defframe transcription-interim
   "Interim transcription result"

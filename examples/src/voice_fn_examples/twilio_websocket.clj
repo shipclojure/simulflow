@@ -78,7 +78,8 @@
                                              :transcription/punctuate? false
                                              :transcription/vad-events? true
                                              :transcription/smart-format? true
-                                             :transcription/model :nova-2}}
+                                             :transcription/model :nova-2
+                                             :transcription/utterance-end-ms 1000}}
                          ;; Aggregate User responses
                          {:processor/type :context.aggregator/user
                           :processor/config {:aggregator/debug? true}}
@@ -101,7 +102,7 @@
                           :processor/config {}}]})
 
 (comment
-  (pipeline/start-pipeline! (pipeline/create-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan))))
+  (pipeline/create-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan)))
 
   ,)
 

@@ -11,8 +11,14 @@
               (api/list-node
                 [(api/token-node 'defn) frame-name docstring
                  (api/vector-node [(api/token-node 'data)])
-                 (api/token-node frame-type)]) ;; body returning nil
+                 (api/list-node
+                   [(api/token-node 'create-frame)
+                    frame-type
+                    (api/token-node 'data)])])
               (api/list-node
-                [(api/token-node 'defn) pred-name
-                 (api/vector-node [(api/token-node 'x)]) ;; args [x]
-                 (api/list-node [(api/token-node 'instance?) frame-name (api/token-node 'x)])])])}))
+                [(api/token-node 'defn) pred-name (str "Checks if frame is of type " frame-name)
+                 (api/vector-node [(api/token-node 'frame)])
+                 (api/list-node
+                   [(api/token-node 'instance?)
+                    frame-name
+                    (api/token-node 'frame)])])])}))
