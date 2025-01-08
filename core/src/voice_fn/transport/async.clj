@@ -4,6 +4,7 @@
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
+   [voice-fn.schema :as schema]
    [voice-fn.transport.protocols :as tp]))
 
 (defn- input->frame
@@ -24,6 +25,7 @@
   [_]
   #{:frame.system/start :frame.system/stop})
 
+;; TODO this is wrong. Don't use it yet. State should be outside the function
 (defmethod pipeline/process-frame :transport/async-input
   [processor-type pipeline _ frame]
   (let [{:transport/keys [in-ch serializer]} (:pipeline/config @pipeline)
@@ -50,16 +52,26 @@
                    :id processor-type} "Stopping transport input")
           (reset! running? false)))))
 
+(def AsyncOutputProcessorSchema
+  [:map
+   [:transport/sample-rate schema/SampleRate]
+   [:transport/sample-size-bits schema/SampleSizeBits]
+   [:transport/channels schema/AudioChannels]
+   [:transport/supports-interrupt? :boolean]
+   [:transport/audio-chunk-size :int]])
+
+(defmethod pipeline/processor-schema :transport/async-output
+  [_]
+  AsyncOutputProcessorSchema)
+
 (defmethod pipeline/accepted-frames :transport/async-output
   [_]
-  #{:frame.system/stop :frame.audio/output-raw})
+  #{:frame.system/stop :frame.audio/output-raw :frame.system/start})
 
 (defmethod pipeline/process-frame :transport/async-output
   [type pipeline _ frame]
-  (t/log! {:level :debug
-           :id type}
-          ["Output frame" (:frame/data frame)])
-  (let [{:transport/keys [out-ch serializer]} (:pipeline/config @pipeline)]
+  (let [{:transport/keys [out-ch serializer]} (:pipeline/config @pipeline)
+        audio-buffer (get-in @pipeline [type :audio-buffer] (byte-array 100))]
     (cond
       (frame/audio-output-raw? frame)
       (when-let [output (if serializer

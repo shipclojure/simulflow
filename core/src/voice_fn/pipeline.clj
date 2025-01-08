@@ -232,6 +232,9 @@
             system-ch (chan 1024) ;; High priority channel for system frames
             main-pub (a/pub main-ch :frame/type)
             system-pub (a/pub system-ch :frame/type)
+            ;; TODO: In the future when we'll need to support on the fly config
+            ;; change for a processor, we need to store them in a map for easy
+            ;; access so we can just restart that specific processor
             pipeline (atom (merge {:pipeline/main-ch main-ch
                                    :pipeline/system-ch system-ch
                                    :pipeline/main-pub main-pub}
