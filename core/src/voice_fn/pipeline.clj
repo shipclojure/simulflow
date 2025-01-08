@@ -6,8 +6,7 @@
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.protocol :as p]
-   [voice-fn.schema :as schema]
-   [voice-fn.secrets :refer [secret]]))
+   [voice-fn.schema :as schema]))
 
 (defmulti create-processor
   "Creates a new processor instance of the given type.

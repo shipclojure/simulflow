@@ -1,6 +1,5 @@
 (ns voice-fn.protocol)
 
-;; Core Protocol (fast runtime operations)
 (defprotocol Processor
   "Protocol defining the core functionality of a pipeline processor"
   (processor-id [this]
