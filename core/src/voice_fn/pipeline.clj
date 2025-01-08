@@ -3,65 +3,25 @@
    [clojure.core.async :as a :refer [chan go-loop]]
    [malli.core :as m]
    [malli.error :as me]
-   [malli.transform :as mt]
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
+   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]
    [voice-fn.secrets :refer [secret]]))
 
-(defmulti processor-schema
-  "Returns the malli schema for a processor type's configuration"
-  {:arglists '([processor-type])}
-  (fn [processor-type] processor-type))
+(defmulti create-processor
+  "Creates a new processor instance of the given type.
+   Library users can extend this multimethod to add their own
+  processors. Processors need to implement the Processor protocol from `voice-fn.protocol`"
 
-(defmethod processor-schema :default
-  [_]
-  :any)
+  (fn [id] id))
 
-(defmulti accepted-frames
-  "Returns set of frame types this processor accepts. Each processor must
-  implement this method so the pipeline can know what frames to subscribe it
-  to."
-  {:arglists '([processor-type])}
-  (fn [processor-type] processor-type))
-
-(defmethod accepted-frames :default
-  [type]
-  (throw (ex-info (str "Processor " type " must declare accepted frame types")
-                  {:type type
-                   :cause :processor.error/no-accepted-frames})))
-
-(defmulti make-processor-config
-  "Create the configuration for the processor based on the pipeline
-  configuration. Used when the final configuration for a processor requires
-  information from the global pipeline configuration. ex: audio-in encoding,
-  pipeline language, etc.
-
-  - type - the processor type
-
-  - pipeline-config - the global config of the pipeline. It contains config such
-  as the input audio-encoding, pipeline language, input and output channels and
-  more. See `voice-fn.pipeline/PipelineConfigSchema`.
-
-  - processor-config - the config of the processor as specified in the list of
-  processors from the pipeline"
-  {:arglists '([type pipeline-config processor-config])}
-  (fn [type _pipeline-config _processor-config]
-    type))
-
-(defmethod make-processor-config :default
-  [type _ processor-config]
-  (m/decode (processor-schema type) processor-config mt/default-value-transformer))
-
-(defmulti process-frame
-  "Process a frame from the pipeline.
-  - processor-type - type of processor: `:transport/local-audio` | `:transcription/deepgram`
-  - pipeline - atom containing the state of the pipeline.
-  - config - pipeline config
-  - frame - the frame to be processed by the processor"
-  {:arglists '([processor-type pipeline config frame])}
-  (fn [processor-type _state _config _frame]
-    processor-type))
+;; Default implementation that throws an informative error
+(defmethod create-processor :default
+  [id]
+  (throw (ex-info (str "Unknown processor " id)
+                  {:id id
+                   :cause :processor.error/unknown-type})))
 
 (def PipelineConfigSchema
   [:map
@@ -105,13 +65,14 @@
 
         ;; Validate each processor's config
         processor-results
-        (for [{:processor/keys [type config]} processors]
-          (let [schema (processor-schema type)
-                processor-config (make-processor-config type pipeline-config config)
+        (for [{:processor/keys [id config]} processors]
+          (let [processor (create-processor id)
+                schema (p/processor-schema processor)
+                processor-config (p/make-processor-config processor pipeline-config config)
                 processor-valid? (m/validate schema processor-config)
                 processor-errors (when-not processor-valid?
                                    (me/humanize (m/explain schema processor-config)))]
-            {:type type
+            {:id id
              :valid? processor-valid?
              :errors processor-errors}))
 
@@ -181,33 +142,7 @@
 
   (validate-pipeline test-pipeline-config)
 
-  (make-processor-config :transcription/deepgram {:audio-in/sample-rate 8000
-                                                  :audio-in/encoding :ulaw
-                                                  :audio-in/channels 1
-                                                  :audio-in/sample-size-bits 8
-                                                  :audio-out/sample-rate 8000
-                                                  :audio-out/encoding :ulaw
-                                                  :audio-out/sample-size-bits 8
-                                                  :audio-out/channels 1
-                                                  :pipeline/language :ro}
-                         {:transcription/api-key (secret [:deepgram :api-key])
-                          :transcription/interim-results? true
-                          :transcription/punctuate? false
-                          :transcription/vad-events? true
-                          :transcription/smart-format? true
-                          :transcription/model :nova-2})
-
   ,)
-
-(defn enrich-processor
-  [pipeline-config processor]
-  (assoc-in processor [:processor/config] (make-processor-config (:processor/type processor) pipeline-config (:processor/config processor))))
-
-(defn enrich-processors
-  "Add pipeline configuration to each processor config based on `make-processor-config`"
-  [pipeline]
-  (merge pipeline
-         {:pipeline/processors (mapv (partial enrich-processor (:pipeline/config pipeline)) (:pipeline/processors pipeline))}))
 
 (defn send-frame!
   "Sends a frame to the appropriate channel based on its type"
@@ -215,6 +150,20 @@
   (if (frame/system-frame? frame)
     (a/put! (:pipeline/system-ch @pipeline) frame)
     (a/put! (:pipeline/main-ch @pipeline) frame)))
+
+(defn processor-map
+  "Return a mapping of processor id to the actual processor and it's current
+  configuration"
+  [pipeline]
+  (let [pipeline-config (:pipeline/config pipeline)
+        processors-config (:pipeline/processors pipeline)]
+    (zipmap
+      (map :processor/id processors-config)
+      (map (fn [{:processor/keys [id config]}]
+             (let [processor (create-processor id)]
+               {:processor processor
+                :config (p/make-processor-config processor pipeline-config config)}))
+           processors-config))))
 
 ;; Pipeline creation logic here
 (defn create-pipeline
@@ -232,16 +181,15 @@
             system-ch (chan 1024) ;; High priority channel for system frames
             main-pub (a/pub main-ch :frame/type)
             system-pub (a/pub system-ch :frame/type)
-            ;; TODO: In the future when we'll need to support on the fly config
-            ;; change for a processor, we need to store them in a map for easy
-            ;; access so we can just restart that specific processor
-            pipeline (atom (merge {:pipeline/main-ch main-ch
-                                   :pipeline/system-ch system-ch
-                                   :pipeline/main-pub main-pub}
-                                  (enrich-processors pipeline-config)))]
+            pm (processor-map pipeline-config)
+            pipeline (atom {:pipeline/main-ch main-ch
+                            :pipeline/system-ch system-ch
+                            :pipeline/processors-m pm
+                            :pipeline/main-pub main-pub})]
         ;; Start each processor
-        (doseq [{:processor/keys [type]} (:pipeline/processors pipeline-config)]
-          (let [afs (accepted-frames type)
+        (doseq [{:processor/keys [id]} (:pipeline/processors pipeline-config)]
+          (let [{:keys [processor]} (get pm id)
+                afs (p/accepted-frames processor)
                 processor-ch (chan 1024)
                 processor-system-ch (chan 1024)]
             ;; Tap into main channel, filtering for accepted frame types
@@ -249,8 +197,8 @@
               (a/sub main-pub frame-type processor-ch)
               ;; system frames that take prioriy over other frames
               (a/sub system-pub frame-type processor-system-ch))
-            (swap! pipeline assoc-in [type] {:processor/in-ch processor-ch
-                                             :processor/system-ch processor-system-ch})))
+            (swap! pipeline assoc-in [id] {:processor/in-ch processor-ch
+                                           :processor/system-ch processor-system-ch})))
         pipeline)
       ;; Throw detailed validation error
       (throw (ex-info "Invalid pipeline configuration"
@@ -260,21 +208,23 @@
 (defn start-pipeline!
   [pipeline]
   ;; Start each processor
-  (doseq [{:processor/keys [type] :as processor} (:pipeline/processors @pipeline)]
+  (doseq [{:processor/keys [id]} (:pipeline/processors @pipeline)]
     (go-loop []
-      ;; Read from both processor system channel and processor in
-      ;; channel. system channel takes priority
-      (when-let [[frame] (a/alts! [(get-in @pipeline [type :processor/system-ch])
-                                   (get-in @pipeline [type :processor/in-ch])])]
-        (when-let [result (process-frame type pipeline processor frame)]
-          (when (frame/frame? result)
-            (send-frame! pipeline result)))
-        (recur))))
+      (let [{:keys [processor config]} (get-in @pipeline [:pipeline/processors-m id])]
+
+        ;; Read from both processor system channel and processor in
+        ;; channel. system channel takes priority
+        (when-let [[frame] (a/alts! [(get-in @pipeline [id :processor/system-ch])
+                                     (get-in @pipeline [id :processor/in-ch])])]
+          (when-let [result (p/process-frame processor pipeline config frame)]
+            (when (frame/frame? result)
+              (send-frame! pipeline result)))
+          (recur)))))
   ;; Send start frame
   (t/log! :debug "Starting pipeline")
   (send-frame! pipeline (frame/system-start true)))
 
-;; TODO stop all pipeline channels
+  ;; TODO stop all pipeline channels
 (defn stop-pipeline!
   [pipeline]
   (t/log! :debug "Stopping pipeline")
@@ -282,7 +232,7 @@
   (send-frame! pipeline (frame/system-stop true)))
 
 (defn close-processor!
-  [pipeline type]
+  [pipeline id]
   (t/log! {:level :debug
-           :id type} "Closing processor")
-  (a/close! (get-in @pipeline [type :processor/in-ch])))
+           :id id} "Closing processor")
+  (a/close! (get-in @pipeline [id :processor/in-ch])))

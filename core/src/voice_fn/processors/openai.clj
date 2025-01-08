@@ -3,6 +3,7 @@
    [clojure.core.async :as a]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
+   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]
    [wkok.openai-clojure.api :as api]))
 
@@ -71,32 +72,34 @@
 
   ,)
 
-(defmethod pipeline/processor-schema :llm/openai
-  [_]
-  OpenAILLMConfigSchema)
+(defmethod pipeline/create-processor :processor.llm/openai
+  [id]
+  (reify p/Processor
+    (processor-id [_] id)
 
-(defmethod pipeline/accepted-frames :llm/openai
-  [_]
-  #{:frame.context/messages})
+    (processor-schema [_] OpenAILLMConfigSchema)
 
-(defmethod pipeline/process-frame :llm/openai
-  [_type pipeline processor frame]
+    (accepted-frames [_] #{:frame.context/messages})
 
-  (let [{:llm/keys [model] :openai/keys [api-key]} (:processor/config processor)]
-    ;; Start request only when the last message in the context is by the user
-    (when (and (frame/context-messages? frame)
-               (user-last-message? (:frame/data frame)))
-      (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
-      (let [out (api/create-chat-completion {:model model
-                                             :messages (:frame/data frame)
-                                             :stream true}
-                                            {:api-key api-key
-                                             :version :http-2
-                                             :as :stream})]
-        (a/go-loop []
-          (when-let [chunk (a/<! out)]
-            (if (= chunk :done)
-              (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
-              (do
-                (pipeline/send-frame! pipeline (frame/llm-text-chunk (token-content chunk)))
-                (recur)))))))))
+    (make-processor-config [_ _ processor-config]
+      processor-config)
+
+    (process-frame [_ pipeline processor-config frame]
+      (let [{:llm/keys [model] :openai/keys [api-key]} processor-config]
+        ;; Start request only when the last message in the context is by the user
+        (when (and (frame/context-messages? frame)
+                   (user-last-message? (:frame/data frame)))
+          (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
+          (let [out (api/create-chat-completion {:model model
+                                                 :messages (:frame/data frame)
+                                                 :stream true}
+                                                {:api-key api-key
+                                                 :version :http-2
+                                                 :as :stream})]
+            (a/go-loop []
+              (when-let [chunk (a/<! out)]
+                (if (= chunk :done)
+                  (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
+                  (do
+                    (pipeline/send-frame! pipeline (frame/llm-text-chunk (token-content chunk)))
+                    (recur)))))))))))

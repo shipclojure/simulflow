@@ -6,7 +6,8 @@
    [malli.transform :as mt]
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :refer [accepted-frames close-processor! make-processor-config process-frame processor-schema send-frame! supports-interrupt?]]
+   [voice-fn.pipeline :refer [close-processor! create-processor send-frame! supports-interrupt?]]
+   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema :refer [flex-enum]]
    [voice-fn.utils.core :as u])
   (:import
@@ -178,33 +179,33 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
     (:pipeline/supports-interrupt? p)
     (assoc :transcription/supports-interrupt? (:pipeline/supports-interrupt? p))))
 
-(defmethod processor-schema :transcription/deepgram
-  [_]
-  DeepgramConfig)
+(defmethod create-processor :processor.transcription/deepgram
+  [id]
+  (reify p/Processor
+    (processor-id [_] id)
 
-(defmethod make-processor-config :transcription/deepgram
-  [_ pipeline-config processor-config]
-  (m/decode DeepgramConfig
-            (merge processor-config
-                   (pipeline->deepgram-config pipeline-config))
-            (mt/default-value-transformer {::mt/add-optional-keys true})))
+    (processor-schema [_] DeepgramConfig)
 
-(defmethod accepted-frames :transcription/deepgram
-  [_]
-  #{:frame.system/start :frame.system/stop :frame.audio/input-raw})
+    (accepted-frames [_] #{:frame.system/start :frame.system/stop :frame.audio/input-raw})
 
-(defmethod process-frame :transcription/deepgram
-  [type pipeline processor frame]
-  (let [on-close! (fn []
-                    (t/log! :debug "Stopping transcription engine")
-                    (close-websocket-connection! type pipeline)
-                    (close-processor! pipeline type))]
-    (cond
-      (frame/system-start? frame)
-      (do (t/log! :debug "Starting transcription engine")
-          (connect-websocket! type pipeline (:processor/config processor)))
-      (frame/system-stop? frame) (on-close!)
+    (make-processor-config [_ pipeline-config processor-config]
+      (m/decode DeepgramConfig
+                (merge processor-config
+                       (pipeline->deepgram-config pipeline-config))
+                (mt/default-value-transformer {::mt/add-optional-keys true})))
 
-      (frame/audio-input-raw? frame)
-      (when-let [conn (get-in @pipeline [type :websocket/conn])]
-        (ws/send! conn (:data frame))))))
+    (process-frame [_ pipeline processor-config frame]
+
+      (let [on-close! (fn []
+                        (t/log! :debug "Stopping transcription engine")
+                        (close-websocket-connection! id pipeline)
+                        (close-processor! pipeline id))]
+        (cond
+          (frame/system-start? frame)
+          (do (t/log! :debug "Starting transcription engine")
+              (connect-websocket! id pipeline processor-config))
+          (frame/system-stop? frame) (on-close!)
+
+          (frame/audio-input-raw? frame)
+          (when-let [conn (get-in @pipeline [id :websocket/conn])]
+            (ws/send! conn (:data frame))))))))

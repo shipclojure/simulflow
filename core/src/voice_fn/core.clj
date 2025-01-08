@@ -7,8 +7,7 @@
    [voice-fn.processors.deepgram]
    [voice-fn.processors.openai]
    [voice-fn.secrets :refer [secret]]
-   [voice-fn.transport.async]
-   [voice-fn.transport.local.audio]))
+   [voice-fn.transport.async]))
 
 (def local-transcription-log-pipeline
   {:pipeline/config {:audio-in/sample-rate 16000
@@ -104,11 +103,6 @@
                          {:processor/type :transport/async-output
                           :processor/accepted-frames #{:audio/output :system/stop}
                           :generates/frames #{}}]})
-
-(defmethod pipeline/process-frame :log/text-input
-  [_ _ _ frame]
-  (t/log! {:level :info
-           :id :log/text-input} ["Frame" (:frame/data frame)]))
 
 (t/set-min-level! :debug)
 

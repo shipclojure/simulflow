@@ -69,10 +69,10 @@
                      :transport/in-ch in
                      :transport/out-ch out}
    :pipeline/processors [;; Twilio transport
-                         {:processor/type :transport/twilio-input}
+                         {:processor/id :processor.transport/twilio-input}
 
                          ;; Transcription with deepgram
-                         {:processor/type :transcription/deepgram
+                         {:processor/id :processor.transcription/deepgram
                           :processor/config {:transcription/api-key (secret [:deepgram :api-key])
                                              :transcription/interim-results? true
                                              :transcription/punctuate? false
@@ -81,16 +81,16 @@
                                              :transcription/model :nova-2
                                              :transcription/utterance-end-ms 1000}}
                          ;; Aggregate User responses
-                         {:processor/type :context.aggregator/user
+                         {:processor/id :context.aggregator/user
                           :processor/config {:aggregator/debug? true}}
-                         {:processor/type :llm/openai
+                         {:processor/id :processor.llm/openai
                           :processor/config {:llm/model "gpt-4o-mini"
                                              :openai/api-key (secret [:openai :new-api-sk])}}
                          ;; aggregate AI responses
-                         {:processor/type :context.aggregator/assistant
+                         {:processor/id :context.aggregator/assistant
                           :processor/config {}}
                          ;; text to speech elevenlabs
-                         {:processor/type :tts/elevenlabs
+                         {:processor/id :processor.speech/elevenlabs
                           :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
                                              :elevenlabs/model-id "eleven_flash_v2_5"
                                              :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
@@ -98,11 +98,16 @@
                                              :voice/similarity-boost 0.8
                                              :voice/use-speaker-boost? true}}
                          ;; Simple core.async channel output
-                         {:processor/type :transport/async-output
-                          :processor/config {}}]})
+                         {:processor/id :processor.transport/async-output}]})
 
 (comment
+  (pipeline/validate-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan)))
+
+  (let [processors-config (:pipeline/processors (create-twilio-ai-pipeline (a/chan) (a/chan)))])
+
   (pipeline/create-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan)))
+
+  (pipeline/create-processor :processor.transport/twilio-input)
 
   ,)
 

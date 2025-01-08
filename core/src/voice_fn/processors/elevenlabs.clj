@@ -5,6 +5,7 @@
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
+   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]
    [voice-fn.secrets :as secrets]
    [voice-fn.utils.core :as u])
@@ -169,37 +170,39 @@
    [:voice/use-speaker-boost?
     [:boolean
      {:default true
-      :description "Whether to enable speaker boost enhancement"}]]])
+      :description "Whether to enable speaker beoost enhancement"}]]])
 
-(defmethod pipeline/processor-schema :tts/elevenlabs
-  [_]
-  ElevenLabsTTSConfig)
+(defmethod pipeline/create-processor :processor.speech/elevenlabs
+  [id]
+  (reify p/Processor
+    (processor-id [_] id)
 
-(defmethod pipeline/accepted-frames :tts/elevenlabs
-  [_]
-  #{:frame.system/start :frame.system/stop :frame.llm/text-chunk})
+    (processor-schema [_] ElevenLabsTTSConfig)
 
-(defmethod pipeline/process-frame :tts/elevenlabs
-  [type pipeline processor frame]
-  ;; TODO possibly look into bot started/stopped speaking to drop any
-  ;; accumulator that is still present
-  (cond
-    (frame/system-start? frame)
-    (do (t/log! {:level :debug
-                 :id type} "Starting text to speech engine")
-        (connect-websocket! type pipeline (:processor/config processor)))
-    (frame/system-stop? frame) (close-websocket-connection! type pipeline)
+    (accepted-frames [_] #{:frame.system/start :frame.system/stop :frame.llm/text-chunk})
 
-    (frame/llm-text-chunk? frame)
-    (let [conn (get-in @pipeline [type :websocket/conn])
-          acc (get-in @pipeline [type :sentence/accumulator] "")
-          {:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data frame))]
-      (t/log! :debug ["sentence" sentence "accumulator" accumulator])
-      ;; add new accumulator first so next call of this processor doesn't race
-      ;; condition
-      (swap! pipeline assoc-in [type :sentence/accumulator] accumulator)
-      (when sentence
-        (let [xi-message (text-message sentence)]
-          (t/log! {:level :debug
-                   :id type} ["Sending websocket payload" xi-message])
-          (ws/send! conn xi-message))))))
+    (make-processor-config [_ _ processor-config]
+      processor-config)
+
+    (process-frame [this pipeline processor-config frame]
+      (let [id (p/processor-id this)]
+        (cond
+          (frame/system-start? frame)
+          (do (t/log! {:level :debug
+                       :id id} "Starting text to speech engine")
+              (connect-websocket! id pipeline processor-config))
+          (frame/system-stop? frame) (close-websocket-connection! id pipeline)
+
+          (frame/llm-text-chunk? frame)
+          (let [conn (get-in @pipeline [id :websocket/conn])
+                acc (get-in @pipeline [id :sentence/accumulator] "")
+                {:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data frame))]
+            (t/log! :debug ["sentence" sentence "accumulator" accumulator])
+            ;; add new accumulator first so next call of this processor doesn't race
+            ;; condition
+            (swap! pipeline assoc-in [id :sentence/accumulator] accumulator)
+            (when sentence
+              (let [xi-message (text-message sentence)]
+                (t/log! {:level :debug
+                         :id id} ["Sending websocket payload" xi-message])
+                (ws/send! conn xi-message)))))))))
