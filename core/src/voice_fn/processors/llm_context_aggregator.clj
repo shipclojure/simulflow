@@ -162,6 +162,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    :aggregator/end-frame? frame/user-speech-stop?
    :aggregator/accumulator-frame? frame/transcription?
    :aggregator/interim-results-frame? frame/transcription-interim?
+   :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
    :aggregator/debug? true})
 
 (defmethod pipeline/processor-schema :context.aggregator/user
@@ -169,10 +170,9 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   ContextAggregatorConfig)
 
 (defmethod pipeline/make-processor-config :context.aggregator/user
-  [_ pipeline-config processor-config]
+  [_ _ processor-config]
   (merge user-context-aggregator-options
-         processor-config
-         {:aggregator/handles-interrupt? (:pipeline/supports-interrupt? pipeline-config)}))
+         processor-config))
 
 (defmethod pipeline/accepted-frames :context.aggregator/user
   [_]

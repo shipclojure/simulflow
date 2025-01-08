@@ -1,7 +1,6 @@
 (ns voice-fn.processors.openai
   (:require
    [clojure.core.async :as a]
-   [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.schema :as schema]
