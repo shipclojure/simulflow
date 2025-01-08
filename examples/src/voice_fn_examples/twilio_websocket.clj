@@ -105,11 +105,8 @@
 
   (let [processors-config (:pipeline/processors (create-twilio-ai-pipeline (a/chan) (a/chan)))])
 
-  (pipeline/create-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan)))
-
-  (pipeline/create-processor :processor.transport/twilio-input)
-
-  ,)
+  (let [pipeline (pipeline/create-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan)))]
+    (pipeline/start-pipeline! pipeline))),
 
 ;; Using ring websocket protocols to setup a websocket server
 (defn twilio-ws-handler

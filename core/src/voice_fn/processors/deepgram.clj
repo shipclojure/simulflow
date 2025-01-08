@@ -106,8 +106,7 @@
                        trsc (transcript m)]
 
                    (cond
-                     (final-transcript? m) (send-frame! pipeline (frame/transcription trsc))
-                     (interim-transcript? m) (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc)))
+
                      (speech-started-event? m) (do
                                                  (send-frame! pipeline (frame/user-speech-start true))
                                                  (when (supports-interrupt? @pipeline)
@@ -115,7 +114,9 @@
                      (utterance-end-event? m) (do
                                                 (send-frame! pipeline (frame/user-speech-stop true))
                                                 (when (supports-interrupt? @pipeline)
-                                                  (send-frame! pipeline (frame/control-interrupt-stop true)))))))
+                                                  (send-frame! pipeline (frame/control-interrupt-stop true))))
+                     (final-transcript? m) (send-frame! pipeline (frame/transcription trsc))
+                     (interim-transcript? m) (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc))))))
    :on-error (fn [_ e]
                (t/log! {:level :error :id type} ["Error" e]))
    :on-close (fn [_ws code reason]
@@ -129,7 +130,7 @@
   (when-let [conn (get-in @pipeline [type :websocket/conn])]
     (ws/send! conn close-connection-payload)
     (ws/close! conn))
-  (swap! pipeline update-in [:transcription/deepgram] dissoc :websocket/conn))
+  (swap! pipeline update-in [type] dissoc :websocket/conn))
 
 (def DeepgramConfig
   [:and

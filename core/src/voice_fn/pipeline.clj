@@ -182,10 +182,12 @@
             main-pub (a/pub main-ch :frame/type)
             system-pub (a/pub system-ch :frame/type)
             pm (processor-map pipeline-config)
-            pipeline (atom {:pipeline/main-ch main-ch
-                            :pipeline/system-ch system-ch
-                            :pipeline/processors-m pm
-                            :pipeline/main-pub main-pub})]
+            pipeline (atom (merge
+                             {:pipeline/main-ch main-ch
+                              :pipeline/system-ch system-ch
+                              :pipeline/processors-m pm
+                              :pipeline/main-pub main-pub}
+                             pipeline-config))]
         ;; Start each processor
         (doseq [{:processor/keys [id]} (:pipeline/processors pipeline-config)]
           (let [{:keys [processor]} (get pm id)

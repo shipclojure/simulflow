@@ -102,8 +102,10 @@
                        (pipeline/send-frame! pipeline (frame/audio-output-raw (u/decode-base64 audio))))
                      (swap! pipeline assoc-in [type :audio-accumulator] attempt))))
    :on-error (fn [_ e]
+               (swap! pipeline update-in [type :websocket/conn] dissoc)
                (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
    :on-close (fn [_ws code reason]
+               (swap! pipeline update-in [type :websocket/conn] dissoc)
                (t/log! :info ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))})
 
 (def max-reconnect-attempts 5)
@@ -131,8 +133,7 @@
   (when-let  [conn (get-in @pipeline [type :websocket/conn])]
     (ws/send! conn close-stream-message)
     (ws/close! conn))
-
-  (swap! pipeline update-in [:tts/elevenlabs] dissoc :websocket/conn))
+  (swap! pipeline update-in [type] dissoc :websocket/conn))
 
 (def ElevenLabsTTSConfig
   "Configuration for Elevenlabs TextToSpeech service"
