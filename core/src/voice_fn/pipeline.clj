@@ -97,53 +97,6 @@
                           :errors (:errors %)})
                       processor-results)))))
 
-(comment
-  (def in (a/chan 1))
-  (def out (a/chan 1))
-  (def test-pipeline-config {:pipeline/config {:audio-in/sample-rate 8000
-                                               :audio-in/encoding :ulaw
-                                               :audio-in/channels 1
-                                               :audio-in/sample-size-bits 8
-                                               :audio-out/sample-rate 8000
-                                               :audio-out/encoding :ulaw
-                                               :audio-out/sample-size-bits 8
-                                               :audio-out/channels 1
-                                               :pipeline/language :ro
-                                               :llm/context [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}]
-                                               :transport/in-ch in
-                                               :transport/out-ch out}
-                             :pipeline/processors
-                             [{:processor/type :transport/twilio-input}
-                              {:processor/type :transcription/deepgram
-                               :processor/config {:transcription/api-key (secret [:deepgram :api-key])
-                                                  :transcription/interim-results? true
-                                                  :transcription/punctuate? false
-                                                  :transcription/vad-events? true
-                                                  :transcription/smart-format? true
-                                                  :transcription/model :nova-2}}
-                              {:processor/type :llm/context-aggregator}
-                              {:processor/type :llm/openai
-                               :processor/config {:llm/model "gpt-4o-mini"
-                                                  :openai/api-key (secret [:openai :new-api-sk])}}
-                              {:processor/type :log/text-input
-                               :processor/config {}}
-                              {:processor/type :llm/sentence-assembler
-                               :processor/config {:sentence/end-matcher #"[.?!;:]"}}
-                              {:processor/type :tts/elevenlabs
-                               :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
-                                                  :elevenlabs/model-id "eleven_flash_v2_5"
-                                                  :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
-                                                  :voice/stability 0.5
-                                                  :voice/similarity-boost 0.8
-                                                  :voice/use-speaker-boost? true}}
-
-                              {:processor/type :transport/async-output
-                               :generates/frames #{}}]})
-
-  (validate-pipeline test-pipeline-config)
-
-  ,)
-
 (defn send-frame!
   "Sends a frame to the appropriate channel based on its type"
   [pipeline frame]
