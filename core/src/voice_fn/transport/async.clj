@@ -9,6 +9,12 @@
    [voice-fn.transport.protocols :as tp]
    [voice-fn.utils.audio :as au]))
 
+(defn mono-time
+  "Monotonic time in milliseconds. Used to check if we should send the next chunk
+  of audio."
+  []
+  (int (/ (System/nanoTime)  1e6)))
+
 (def AsyncOutputProcessorSchema
   [:map
    [:transport/sample-rate schema/SampleRate]
@@ -19,47 +25,45 @@
    [:transport/audio-chunk-size :int]
    [:transport/out-ch schema/CoreAsyncChannel]])
 
-(defn start-chunking-loop!
+(defn onto-chunks-chan!
+  "Split the audio-frame into chunks of chunk-size and put them onto chunks-ch"
+  [chunks-ch chunk-size audio-frame]
+  (a/go-loop [audio (:frame/data audio-frame)]
+    (let [audio-size (count audio)
+          chunk-actual-size (min chunk-size audio-size)
+          chunk (byte-array chunk-actual-size)]
+      ;; Copy chunk-size amount of data into next chunk
+      (System/arraycopy audio 0 chunk 0 chunk-actual-size)
+      (a/>! chunks-ch (frame/audio-output-raw chunk))
+      (when (> audio-size chunk-actual-size)
+        (let [new-audio-size (- audio-size chunk-actual-size)
+              remaining-audio (byte-array new-audio-size)]
+          (System/arraycopy audio chunk-actual-size remaining-audio 0 new-audio-size)
+          (recur remaining-audio))))))
+
+(defn start-realtime-output-loop!
   "Starts a loop that sends audio chunks at regular intervals"
   [id pipeline processor-config]
-  (let [{:transport/keys [out-ch audio-chunk-size
-                          audio-chunk-duration]} processor-config
-        chunk-interval (/ audio-chunk-duration 2)]
-
+  (let [{:transport/keys [out-ch audio-chunk-duration]} processor-config
+        sending-interval (/ audio-chunk-duration 2)]
     (a/go-loop []
-      (when (:chunking? (get @pipeline id))
-        (let [buffer (:audio-buffer (get @pipeline id))
-              buffer-size (count buffer)]
+      (let [{:keys [chunks-ch next-send-time streaming?]} (get @pipeline id)]
+        (when streaming?
+          ;; Take a frame from the chunks channel
+          (when-let [frame (a/<! chunks-ch)]
+            (let [now (mono-time)]
 
-          (when (>= buffer-size audio-chunk-size)
-            ;; Extract chunk and update buffer
-            (let [chunk (byte-array audio-chunk-size)
-                  remaining (byte-array (- buffer-size audio-chunk-size))]
+              ;; Wait sending-interval or less until we can send again
+              (a/<! (a/timeout (- next-send-time now)))
 
-              ;; Copy first chunk-size bytes to chunk
-              (System/arraycopy buffer 0 chunk 0 audio-chunk-size)
-              ;; Copy remaining bytes to new buffer
-              (System/arraycopy buffer
-                                audio-chunk-size
-                                remaining
-                                0
-                                (- buffer-size audio-chunk-size))
-
-              ;; Update buffer in state
-              (swap! pipeline assoc-in [id :audio-buffer] remaining)
-
-              ;; Send chunk
-              (when out-ch
-                (let [frame (frame/audio-output-raw chunk)
-                      serializer (get-in @pipeline [:pipeline/config :transport/serializer])]
-                  (a/put! out-ch
-                          (if serializer
-                            (tp/serialize-frame serializer frame)
-                            frame))))))
-
-          ;; Wait for next interval
-          (a/<! (a/timeout chunk-interval))
-          (recur))))))
+              (let [serializer (get-in @pipeline [:pipeline/config :transport/serializer])]
+                (a/>! out-ch
+                      (if serializer
+                        (tp/serialize-frame serializer frame)
+                        frame))
+                ;; Set next send time
+                (swap! pipeline assoc-in [id :next-send-time] (+ now sending-interval))
+                (recur)))))))))
 
 (defmethod pipeline/create-processor :processor.transport/async-output
   [id]
@@ -87,13 +91,14 @@
       (cond
         ;; Start frame - initialize chunking state and start chunking loop
         (frame/system-start? frame)
-        (do
-          (t/log! {:level :debug :id id} "Starting audio chunking")
-          (swap! pipeline update-in [id]
-                 merge {:audio-buffer (byte-array 0)
-                        :chunking? true})
-          ;; Start the independent chunking loop
-          (start-chunking-loop! id pipeline processor-config))
+        (let [now (mono-time)]
+          (do
+            (t/log! {:level :debug :id id} "Starting audio chunking")
+            (swap! pipeline update-in [id] merge {:next-send-time now
+                                                  :chunks-ch (a/chan 1024)
+                                                  :streaming? true})
+            ;; Start streaming audio output
+            (start-realtime-output-loop! id pipeline processor-config)))
 
         ;; Stop frame - clean up state and send remaining audio
         (frame/system-stop? frame)
@@ -101,20 +106,14 @@
           (t/log! {:level :debug :id id} "Stopping audio chunking")
 
           ;; Stop chunking loop by setting chunking? to false
-          (swap! pipeline update id dissoc :audio-buffer :chunking?))
+          (when-let [chunks-ch (get-in @pipeline [id :chunks-ch])]
+            (a/close! chunks-ch)
+            (swap! pipeline dissoc id))
+          (swap! pipeline update id dissoc :streaming?))
 
         ;; Audio frame - append to buffer
         (and (frame/audio-output-raw? frame)
-             (:chunking? (get @pipeline id)))
-        (let [current-buffer (:audio-buffer (get @pipeline id))
-              current-size (count current-buffer)
-              frame-audio (:frame/data frame)
-              new-buffer (byte-array (+ (count current-buffer)
-                                       (count frame-audio)))]
-          ;; Copy existing buffer content
-          (when (pos? current-size)
-            (System/arraycopy current-buffer 0 new-buffer 0 current-size))
-          ;; Append new audio data
-          (System/arraycopy frame-audio 0 new-buffer current-size (count frame-audio))
-          ;; Update buffer in state
-          (swap! pipeline assoc-in [id :audio-buffer] new-buffer))))))
+             (:streaming? (get @pipeline id)))
+        (let [chunk-size (:transport/audio-chunk-size processor-config)]
+          (when-let [chunks-ch (get-in @pipeline [id :chunks-ch])]
+            (onto-chunks-chan! chunks-ch chunk-size frame)))))))
