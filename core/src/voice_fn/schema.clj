@@ -352,7 +352,7 @@
     :error/message "Must have at least one context message"}
    LLMContextMessage])
 
-(def Channel
+(def CoreAsyncChannel
   [:fn
    {:error/message "Must be a core.async channel"
     :description "core.async channel"}

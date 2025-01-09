@@ -36,8 +36,8 @@
    [:pipeline/supports-interrupt? {:default false
                                    :optional true} :boolean]
    [:llm/context schema/LLMContext]
-   [:transport/in-ch schema/Channel]
-   [:transport/out-ch schema/Channel]])
+   [:transport/in-ch schema/CoreAsyncChannel]
+   [:transport/out-ch schema/CoreAsyncChannel]])
 
 (defn supports-interrupt?
   [pipeline]
@@ -92,7 +92,7 @@
       (seq invalid-processors)
       (assoc-in [:errors :processors]
                 (keep #(when-not (:valid? %)
-                         {:type (:type %)
+                         {:id (:id %)
                           :errors (:errors %)})
                       processor-results)))))
 
