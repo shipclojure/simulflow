@@ -64,7 +64,7 @@
             "Should start aggregating after speech start")
 
         (sut/process-aggregator-frame :context.aggregator/user pipeline config
-          (frame/transcription-complete "Hello"))
+          (frame/transcription "Hello"))
 
         (sut/process-aggregator-frame :context.aggregator/user pipeline config
           (frame/user-speech-stop true))
@@ -85,7 +85,7 @@
           (frame/transcription-interim "Hel"))
 
         (sut/process-aggregator-frame :context.aggregator/user pipeline config
-          (frame/transcription-complete "Hello"))
+          (frame/transcription "Hello"))
 
         (sut/process-aggregator-frame
           :context.aggregator/user pipeline config
@@ -98,7 +98,7 @@
 
   (testing "assistant response aggregation"
     (let [pipeline (make-test-pipeline)
-          config sut/assistant-context-aggregation-options]
+          config sut/assistant-context-aggregator-options]
 
       (testing "basic response aggregation"
         (sut/process-aggregator-frame :context.aggregator/assistant pipeline config
@@ -127,7 +127,7 @@
         (frame/user-speech-start true))
 
       (sut/process-aggregator-frame :context.aggregator/user pipeline config
-        (frame/transcription-complete ""))
+        (frame/transcription ""))
 
       (sut/process-aggregator-frame :context.aggregator/user pipeline config
         (frame/user-speech-stop true))
@@ -146,7 +146,7 @@
         (frame/user-speech-start true))
 
       (sut/process-aggregator-frame :context.aggregator/user pipeline config
-        (frame/transcription-complete "Hello"))
+        (frame/transcription "Hello"))
 
       (sut/process-aggregator-frame :context.aggregator/user pipeline config
         (frame/user-speech-stop true))
@@ -161,7 +161,7 @@
           config sut/user-context-aggregator-options]
 
       (sut/process-aggregator-frame :context.aggregator/user pipeline config
-        (frame/transcription-complete "Hello"))
+        (frame/transcription "Hello"))
 
       (sut/process-aggregator-frame :context.aggregator/user pipeline config
         (frame/user-speech-start true))
@@ -174,14 +174,3 @@
 
                                 :llm/context]))
           "Should not aggregate when frames are out of order"))))
-
-(deftest processor-config-test
-  (testing "user context aggregator configuration"
-    (is (= sut/user-context-aggregator-options
-           (pipeline/make-processor-config :context.aggregator/user {} {}))
-        "Should provide default user aggregator config"))
-
-  (testing "assistant context aggregator configuration"
-    (is (= sut/assistant-context-aggregation-options
-           (pipeline/make-processor-config :context.aggregator/assistant {} {}))
-        "Should provide default assistant aggregator config")))

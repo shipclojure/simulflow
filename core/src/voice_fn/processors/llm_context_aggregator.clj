@@ -155,7 +155,16 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    [:aggregator/handles-interrupt? {:default false} :boolean]
    [:aggregator/accumulator-frame? schema/FramePredicate]])
 
-  ;; Aggregator for user
+;; Aggregator for user
+
+(def user-context-aggregator-options
+  {:messages/role "user"
+   :aggregator/start-frame? frame/user-speech-start?
+   :aggregator/end-frame? frame/user-speech-stop?
+   :aggregator/accumulator-frame? frame/transcription?
+   :aggregator/interim-results-frame? frame/transcription-interim?
+   :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
+   :aggregator/debug? true})
 
 (defmethod pipeline/create-processor :context.aggregator/user
   [id]
@@ -170,19 +179,18 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                            :frame.transcription/result})
 
     (make-processor-config [_ _ processor-config]
-      (merge {:messages/role "user"
-              :aggregator/start-frame? frame/user-speech-start?
-              :aggregator/end-frame? frame/user-speech-stop?
-              :aggregator/accumulator-frame? frame/transcription?
-              :aggregator/interim-results-frame? frame/transcription-interim?
-              :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
-              :aggregator/debug? true}
-             processor-config))
+      (merge  user-context-aggregator-options
+              processor-config))
 
     (process-frame [this pipeline processor-config frame]
       (process-aggregator-frame (p/processor-id this) pipeline processor-config frame))))
 
 ;; Aggregator for assistant
+(def assistant-context-aggregator-options
+  {:messages/role "assistant"
+   :aggregator/start-frame? frame/llm-full-response-start?
+   :aggregator/end-frame? frame/llm-full-response-end?
+   :aggregator/accumulator-frame? frame/llm-text-chunk?})
 
 (defmethod pipeline/create-processor :context.aggregator/assistant
   [id]
@@ -198,12 +206,10 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
     (make-processor-config [_ pipeline-config processor-config]
       ;; defaults
-      (merge {:messages/role "assistant"
-              :aggregator/start-frame? frame/llm-full-response-start?
-              :aggregator/end-frame? frame/llm-full-response-end?
-              :aggregator/accumulator-frame? frame/llm-text-chunk?}
-             processor-config
-             {:aggregator/handles-interrupt? (:pipeline/supports-interrupt? pipeline-config)}))
+      (merge
+        assistant-context-aggregator-options
+        processor-config
+        {:aggregator/handles-interrupt? (:pipeline/supports-interrupt? pipeline-config)}))
 
     (process-frame [this pipeline processor-config frame]
       (process-aggregator-frame (p/processor-id this) pipeline processor-config frame))))
