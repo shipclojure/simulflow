@@ -17,6 +17,7 @@
    [voice-fn.core]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.elevenlabs]
+   [voice-fn.processors.interrupt-state]
    [voice-fn.processors.llm-context-aggregator]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.twilio]))

@@ -61,6 +61,7 @@
                       (if serializer
                         (tp/serialize-frame serializer frame)
                         frame))
+                (t/log! {:id id :level :debug} "REALTIME SENT")
                 ;; Set next send time
                 (swap! pipeline assoc-in [id :next-send-time] (+ now sending-interval))
                 (recur)))))))))
@@ -71,7 +72,7 @@
     (processor-id [_] id)
     (processor-schema [_] AsyncOutputProcessorSchema)
 
-    (accepted-frames [_] #{:frame.system/stop :frame.audio/output-raw :frame.system/start})
+    (accepted-frames [_] #{:frame.system/stop :frame.audio/output-raw :frame.system/start :frame.control/interrupt-start :frame.control/interrupt-stop})
 
     (make-processor-config [_ pipeline-config processor-config]
       (let [{:audio-out/keys [sample-size-bits sample-rate channels]} pipeline-config
@@ -87,18 +88,18 @@
                                                            :channels channels
                                                            :duration-ms duration-ms})}))
 
-    (process-frame [_ pipeline processor-config frame]
+    (process-frame [_ pipeline {:transport/keys [supports-interrupt?] :as processor-config} frame]
       (cond
+
         ;; Start frame - initialize chunking state and start chunking loop
         (frame/system-start? frame)
-        (let [now (mono-time)]
-          (do
-            (t/log! {:level :debug :id id} "Starting audio chunking")
-            (swap! pipeline update-in [id] merge {:next-send-time now
-                                                  :chunks-ch (a/chan 1024)
-                                                  :streaming? true})
-            ;; Start streaming audio output
-            (start-realtime-output-loop! id pipeline processor-config)))
+        (do
+          (t/log! {:level :debug :id id} "Starting audio chunking")
+          (swap! pipeline update-in [id] merge {:next-send-time (mono-time)
+                                                :chunks-ch (a/chan 1024)
+                                                :streaming? true})
+          ;; Start streaming audio output
+          (start-realtime-output-loop! id pipeline processor-config))
 
         ;; Stop frame - clean up state and send remaining audio
         (frame/system-stop? frame)
@@ -109,11 +110,34 @@
           (when-let [chunks-ch (get-in @pipeline [id :chunks-ch])]
             (a/close! chunks-ch)
             (swap! pipeline dissoc id))
-          (swap! pipeline update id dissoc :streaming?))
+          (swap! pipeline update-in [id] dissoc :streaming?))
 
         ;; Audio frame - append to buffer
         (and (frame/audio-output-raw? frame)
              (:streaming? (get @pipeline id)))
         (let [chunk-size (:transport/audio-chunk-size processor-config)]
           (when-let [chunks-ch (get-in @pipeline [id :chunks-ch])]
-            (onto-chunks-chan! chunks-ch chunk-size frame)))))))
+            (onto-chunks-chan! chunks-ch chunk-size frame)))
+
+        ;; Close current chunking channel and stop streaming if it's active
+        (and supports-interrupt?
+             (:streaming? (get @pipeline id))
+             (frame/control-interrupt-start? frame))
+        (do
+          (t/log! {:level :debug :id id} "STOP STREAM")
+          (when-let [chunks-ch (get-in @pipeline [id :chunks-ch])]
+            (a/close! chunks-ch))
+          (swap! pipeline assoc-in [id :streaming?] false))
+
+        ;; Resume streaming
+        (and supports-interrupt?
+             (not (:streaming? (get @pipeline id)))
+             (frame/control-interrupt-stop? frame))
+        (do
+          (t/log! {:level :debug :id id} "RESTART STREAM")
+          (swap! pipeline update-in [id] (fn [state]
+                                           (merge state
+                                                  {:streaming? true
+                                                   :chunks-ch (a/chan 1024)
+                                                   :next-send-time (mono-time)})))
+          (start-realtime-output-loop! id pipeline processor-config))))))

@@ -91,39 +91,55 @@
 
 (defn create-connection-config
   [type pipeline processor-config]
-  {:headers {"Authorization" (str "Token " (:transcription/api-key processor-config))}
-   :on-open (fn [ws]
-              ;; Send a keepalive message every 3 seconds to maintain websocket connection
-              (a/go-loop []
-                (a/<! (a/timeout 3000))
-                (when (get-in @pipeline [type :websocket/conn])
-                  (t/log! {:level :debug :id type} "Sending keep-alive message")
-                  (ws/send! ws keep-alive-payload)
-                  (recur)))
-              (t/log! :info "Deepgram websocket connection open"))
-   :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                 (let [m (u/parse-if-json (str data))
-                       trsc (transcript m)]
+  (let [send-interrupt? (atom false)]
+    {:headers {"Authorization" (str "Token " (:transcription/api-key processor-config))}
+     :on-open (fn [ws]
+                ;; Send a keepalive message every 3 seconds to maintain websocket connection
+                (a/go-loop []
+                  (a/<! (a/timeout 3000))
+                  (when (get-in @pipeline [type :websocket/conn])
+                    (t/log! {:level :debug :id type} "Sending keep-alive message")
+                    (ws/send! ws keep-alive-payload)
+                    (recur)))
+                (t/log! :info "Deepgram websocket connection open"))
+     :on-message (fn [_ws ^HeapCharBuffer data _last?]
+                   (let [m (u/parse-if-json (str data))
+                         trsc (transcript m)]
 
-                   (cond
+                     (cond
 
-                     (speech-started-event? m) (do
-                                                 (send-frame! pipeline (frame/user-speech-start true))
-                                                 (when (supports-interrupt? @pipeline)
-                                                   (send-frame! pipeline (frame/control-interrupt-start true))))
-                     (utterance-end-event? m) (do
-                                                (send-frame! pipeline (frame/user-speech-stop true))
-                                                (when (supports-interrupt? @pipeline)
-                                                  (send-frame! pipeline (frame/control-interrupt-stop true))))
-                     (final-transcript? m) (send-frame! pipeline (frame/transcription trsc))
-                     (interim-transcript? m) (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc))))))
-   :on-error (fn [_ e]
-               (t/log! {:level :error :id type} ["Error" e]))
-   :on-close (fn [_ws code reason]
-               (t/log! {:level :info :id type} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason])
-               (if (= (get code-reason code) :timeout)
-                 (connect-websocket! type pipeline processor-config) ;; attempt reconnect on timeout
-                 (swap! pipeline update-in [type] dissoc :websocket/conn)))})
+                       (speech-started-event? m)
+                       (do
+                         (send-frame! pipeline (frame/user-speech-start true))
+                         ;; Deepgram sends a lot of speech start events, many of which are false positives.
+                         ;; They have a disrupting effect on the pipeline, so instead of sending interrupt-start
+                         ;; frame, we send it on the first interim transcription event
+                         (when (supports-interrupt? @pipeline)
+                           (reset! send-interrupt? true)))
+
+                       (utterance-end-event? m)
+                       (do
+                         (send-frame! pipeline (frame/user-speech-stop true))
+                         (when (supports-interrupt? @pipeline)
+                           (send-frame! pipeline (frame/control-interrupt-stop true))))
+
+                       (final-transcript? m)
+                       (send-frame! pipeline (frame/transcription trsc))
+
+                       (interim-transcript? m)
+                       (do
+                         (send-frame! pipeline (send-frame! pipeline (frame/transcription-interim trsc)))
+                         ;; Send interrupt-start after speech-started-event
+                         (when @send-interrupt?
+                           (reset! send-interrupt? false)
+                           (send-frame! pipeline (frame/control-interrupt-start true)))))))
+     :on-error (fn [_ e]
+                 (t/log! {:level :error :id type} ["Error" e]))
+     :on-close (fn [_ws code reason]
+                 (t/log! {:level :info :id type} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason])
+                 (if (= (get code-reason code) :timeout)
+                   (connect-websocket! type pipeline processor-config) ;; attempt reconnect on timeout
+                   (swap! pipeline update-in [type] dissoc :websocket/conn)))}))
 
 (defn- close-websocket-connection!
   [type pipeline]
