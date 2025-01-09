@@ -45,7 +45,7 @@
   "Starts a loop that sends audio chunks at regular intervals"
   [id pipeline processor-config]
   (let [{:transport/keys [out-ch audio-chunk-duration]} processor-config
-        sending-interval (/ audio-chunk-duration 2)]
+        sending-interval (/ audio-chunk-duration 1.1)]
     (a/go-loop []
       (let [{:keys [chunks-ch next-send-time streaming?]} (get @pipeline id)]
         (when streaming?
@@ -108,8 +108,7 @@
 
           ;; Stop chunking loop by setting chunking? to false
           (when-let [chunks-ch (get-in @pipeline [id :chunks-ch])]
-            (a/close! chunks-ch)
-            (swap! pipeline dissoc id))
+            (a/close! chunks-ch))
           (swap! pipeline update-in [id] dissoc :streaming?))
 
         ;; Audio frame - append to buffer
