@@ -1,11 +1,11 @@
 (ns voice-fn.pipeline-test
   (:require
    [clojure.core.async :as a]
-   [clojure.test :refer [deftest is testing use-fixtures]]
-   [malli.core :as m]
+   [clojure.test :refer [deftest is testing]]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as sut]
-   [voice-fn.protocol :as p]))
+   [voice-fn.protocol :as p]
+   [voice-fn.test-system :refer [create-test-pipeline valid-pipeline?]]))
 
 ;; Test Fixtures and Helpers
 
@@ -27,18 +27,6 @@
     :llm/context [{:role "system" :content "Test system"}]
     :transport/in-ch nil
     :transport/out-ch nil}})
-
-;; Mock Processor Implementation
-(defmethod sut/create-processor :test/processor
-  [id]
-  (reify p/Processor
-    (processor-id [_] id)
-    (processor-schema [_] [:map [:test/config :string]])
-    (accepted-frames [_] #{:frame.test/type :frame.system/start :frame.system/stop})
-    (make-processor-config [_ _ processor-config] processor-config)
-    (process-frame [_ pipeline _ frame]
-      (swap! pipeline update-in [:test/processor :processed-frames] (fn [pf] (conj (or pf []) frame)))
-      (frame/create-frame :frame.test/processed (:frame/data frame)))))
 
 ;; Tests
 
@@ -80,19 +68,11 @@
 
 (deftest pipeline-creation-test
   (testing "creates pipeline with valid config"
-    (let [channels (make-test-channels)
-          config (-> (make-minimal-config)
-                     (assoc-in [:pipeline/config :transport/in-ch] (:in channels))
-                     (assoc-in [:pipeline/config :transport/out-ch] (:out channels))
-                     (assoc :pipeline/processors
-                            [{:processor/id :test/processor
-                              :processor/config {:test/config "test"}}]))
-          pipeline (sut/create-pipeline config)]
-      (is (some? pipeline) "Pipeline should be created")
-      (is (instance? clojure.lang.Atom pipeline) "Pipeline should be an atom")
-      (is (get-in @pipeline [:pipeline/main-ch]) "Should have main channel")
-      (is (get-in @pipeline [:pipeline/system-ch]) "Should have system channel")
-      (is (get-in @pipeline [:test/processor]) "Should initialize processor state")))
+    (let [pipeline (create-test-pipeline {:transport/in-ch (a/chan)
+                                          :transport/out-ch (a/chan)}
+                     [{:processor/id :test/processor
+                       :processor/config {:test/config "test"}}])]
+      (valid-pipeline? pipeline)))
 
   (testing "throws on invalid config"
     (is (thrown-with-msg?
@@ -103,14 +83,11 @@
 
 (deftest pipeline-frame-processing-test
   (testing "processes frames through processor chain"
-    (let [channels (make-test-channels)
-          config (-> (make-minimal-config)
-                   (assoc-in [:pipeline/config :transport/in-ch] (:in channels))
-                   (assoc-in [:pipeline/config :transport/out-ch] (:out channels))
-                   (assoc :pipeline/processors
-                          [{:processor/id :test/processor
-                            :processor/config {:test/config "test"}}]))
-          pipeline (sut/create-pipeline config)
+    (let [pipeline (create-test-pipeline
+                     {:transport/in-ch (a/chan)
+                      :transport/out-ch (a/chan)}
+                     [{:processor/id :test/processor
+                       :processor/config {:test/config "test"}}])
           test-frame (frame/create-frame :frame.test/type "test-data")]
 
       (sut/start-pipeline! pipeline)
@@ -124,14 +101,11 @@
           "Frame should be processed")))
 
   (testing "handles system frames with priority"
-    (let [channels (make-test-channels)
-          config (-> (make-minimal-config)
-                     (assoc-in [:pipeline/config :transport/in-ch] (:in channels))
-                     (assoc-in [:pipeline/config :transport/out-ch] (:out channels))
-                     (assoc :pipeline/processors
-                            [{:processor/id :test/processor
-                              :processor/config {:test/config "test"}}]))
-          pipeline (sut/create-pipeline config)
+    (let [pipeline (create-test-pipeline
+                     {:transport/in-ch (a/chan)
+                      :transport/out-ch (a/chan)}
+                     [{:processor/id :test/processor
+                       :processor/config {:test/config "test"}}])
           system-frame (frame/system-start true)]
 
       (sut/start-pipeline! pipeline)
@@ -146,14 +120,11 @@
 
 (deftest pipeline-lifecycle-test
   (testing "pipeline start/stop"
-    (let [channels (make-test-channels)
-          config (-> (make-minimal-config)
-                     (assoc-in [:pipeline/config :transport/in-ch] (:in channels))
-                     (assoc-in [:pipeline/config :transport/out-ch] (:out channels))
-                     (assoc :pipeline/processors
-                            [{:processor/id :test/processor
-                              :processor/config {:test/config "test"}}]))
-          pipeline (sut/create-pipeline config)]
+    (let [pipeline (create-test-pipeline
+                     {:transport/in-ch (a/chan)
+                      :transport/out-ch (a/chan)}
+                     [{:processor/id :test/processor
+                       :processor/config {:test/config "test"}}])]
 
       (sut/start-pipeline! pipeline)
       (Thread/sleep 100)
@@ -171,14 +142,11 @@
 
 (deftest processor-management-test
   (testing "processor channel closure"
-    (let [channels (make-test-channels)
-          config (-> (make-minimal-config)
-                   (assoc-in [:pipeline/config :transport/in-ch] (:in channels))
-                   (assoc-in [:pipeline/config :transport/out-ch] (:out channels))
-                   (assoc :pipeline/processors
-                          [{:processor/id :test/processor
-                            :processor/config {:test/config "test"}}]))
-          pipeline (sut/create-pipeline config)]
+    (let [pipeline (create-test-pipeline
+                     {:transport/in-ch (a/chan)
+                      :transport/out-ch (a/chan)}
+                     [{:processor/id :test/processor
+                       :processor/config {:test/config "test"}}])]
 
       (sut/close-processor! pipeline :test/processor)
 
@@ -187,14 +155,11 @@
 
 (deftest pipeline-error-handling-test
   (testing "handles processor errors gracefully"
-    (let [channels (make-test-channels)
-          config (-> (make-minimal-config)
-                   (assoc-in [:pipeline/config :transport/in-ch] (:in channels))
-                   (assoc-in [:pipeline/config :transport/out-ch] (:out channels))
-                   (assoc :pipeline/processors
-                          [{:processor/id :test/processor
-                            :processor/config {:test/config "test"}}]))
-          pipeline (sut/create-pipeline config)]
+    (let [pipeline (create-test-pipeline
+                     {:transport/in-ch (a/chan)
+                      :transport/out-ch (a/chan)}
+                     [{:processor/id :test/processor
+                       :processor/config {:test/config "test"}}])]
 
       ;; Override process-frame method to simulate error
       (with-redefs [p/process-frame

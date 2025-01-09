@@ -35,6 +35,7 @@
                   (let [data (u/parse-if-json input)]
                     (case (:event data)
                       "start" (let [stream-sid (:streamSid data)]
+                                ;; TODO send a frame of pipeline config change
                                 (swap! pipeline update-in  [:pipeline/config]
                                        assoc :twilio/stream-sid stream-sid :transport/serializer (make-twilio-serializer stream-sid)))
                       "media" (a/put! (:pipeline/main-ch @pipeline)
