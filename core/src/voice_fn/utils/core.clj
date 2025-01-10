@@ -26,11 +26,13 @@
 
 (defn parse-if-json
   "Parses a string as JSON if possible, otherwise returns the string."
-  [s]
+  [s & {:keys [throw-on-error?]}]
   (try
     (json/read-value s json-object-mapper)
-    (catch Exception _
-      s)))
+    (catch Exception e
+      (if throw-on-error?
+        (throw e)
+        s))))
 
 (defn json-str
   [m]
