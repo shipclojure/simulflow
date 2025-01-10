@@ -169,7 +169,8 @@
         ;; Read from both processor system channel and processor in
         ;; channel. system channel takes priority
         (when-let [[frame] (a/alts! [(get-in @pipeline [id :processor/system-ch])
-                                     (get-in @pipeline [id :processor/in-ch])])]
+                                     (get-in @pipeline [id :processor/in-ch])]
+                                    :priority true)]
           (when-let [result (p/process-frame processor pipeline config frame)]
             (when (frame/frame? result)
               (send-frame! pipeline result)))
