@@ -94,13 +94,14 @@
                     (ws/send! ws keep-alive-message)
                     (recur)))))
    :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                 (let [acc (get-in @pipeline [type :audio-accumulator] "")
-                       attempt (u/parse-if-json (str acc data))]
-                   (if (map? attempt)
-                     (when-let [audio (:audio attempt)]
-                       (swap! pipeline assoc-in [type :audio-accumulator] "")
-                       (pipeline/send-frame! pipeline (frame/audio-output-raw (u/decode-base64 audio))))
-                     (swap! pipeline assoc-in [type :audio-accumulator] attempt))))
+                 (when-not (:pipeline/interrupted? @pipeline)
+                   (let [acc (get-in @pipeline [type :audio/accumulator] "")
+                         attempt (u/parse-if-json (str acc data))]
+                     (if (map? attempt)
+                       (when-let [audio (:audio attempt)]
+                         (swap! pipeline assoc-in [type :audio/accumulator] "")
+                         (pipeline/send-frame! pipeline (frame/audio-output-raw (u/decode-base64 audio))))
+                       (swap! pipeline assoc-in [type :audio/accumulator] attempt)))))
    :on-error (fn [_ e]
                (swap! pipeline update-in [type :websocket/conn] dissoc)
                (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
@@ -180,7 +181,10 @@
 
     (processor-schema [_] ElevenLabsTTSConfig)
 
-    (accepted-frames [_] #{:frame.system/start :frame.system/stop :frame.llm/text-chunk})
+    (accepted-frames [_] #{:frame.system/start
+                           :frame.system/stop
+                           :frame.llm/text-chunk
+                           :frame.control/interrupt-start})
 
     (make-processor-config [_ _ processor-config]
       processor-config)
@@ -194,7 +198,8 @@
               (connect-websocket! id pipeline processor-config))
           (frame/system-stop? frame) (close-websocket-connection! id pipeline)
 
-          (frame/llm-text-chunk? frame)
+          (and (frame/llm-text-chunk? frame)
+               (not (:pipeline/interrupted? @pipeline)))
           (let [conn (get-in @pipeline [id :websocket/conn])
                 acc (get-in @pipeline [id :sentence/accumulator] "")
                 {:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data frame))]
@@ -206,4 +211,9 @@
               (let [xi-message (text-message sentence)]
                 (t/log! {:level :debug
                          :id id} ["Sending websocket payload" xi-message])
-                (ws/send! conn xi-message)))))))))
+                (ws/send! conn xi-message))))
+
+          ;; reset accumulator when pipeline gets interrupted
+          (frame/control-interrupt-start? frame)
+          (swap! pipeline update-in [id] (merge {:audio/accumulator ""
+                                                 :sentence/accumulator ""})))))))

@@ -66,7 +66,6 @@
 
               (let [next-byte-coll (concat byte-coll (seq byte-arr))
                     data (slurp (byte-array next-byte-coll))]
-                (println "Putting data" data)
                 (if-let [es (not-empty (re-seq event-mask data))]
                   (if (every? true? (map #(a/>!! events %) es))
                     (recur (drop (apply + (map #(count (.getBytes ^String %)) es))

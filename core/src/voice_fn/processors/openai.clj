@@ -1,17 +1,33 @@
 (ns voice-fn.processors.openai
   (:require
    [clojure.core.async :as a]
+   [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]
-   [wkok.openai-clojure.api :as api]))
+   [voice-fn.utils.core :as u]
+   [voice-fn.utils.request :as request]))
 
 (def token-content (comp :content :delta first :choices))
+
+(def openai-completions-url "https://api.openai.com/v1/chat/completions")
 
 (defn user-last-message?
   [context]
   (#{:user "user"} (-> context last :role)))
+
+(defn stream-openai-chat-completion
+  [{:keys [api-key messages model]}]
+  (:body (request/sse-request {:request {:url openai-completions-url
+                                         :headers {"Authorization" (str "Bearer " api-key)
+                                                   "Content-Type" "application/json"}
+
+                                         :method :post
+                                         :body (u/json-str {:messages messages
+                                                            :stream true
+                                                            :model model})}
+                               :params {:stream/close? true}})))
 
 (def OpenAILLMConfigSchema
   [:map
@@ -62,14 +78,6 @@
                   :openai/api-key "sk-..."})
       me/humanize)
 
-  (api/create-chat-completion {:model "gpt-4o-mini"
-                               :stream true
-                               :messages [{:role "system", :content "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}
-                                          {:role "user", :content "Salut care mă aud"}]}
-                              {:api-key (secret [:openai :new-api-sk])
-                               :version :http-2
-                               :as :stream})
-
   ,)
 
 (defmethod pipeline/create-processor :processor.llm/openai
@@ -79,7 +87,7 @@
 
     (processor-schema [_] OpenAILLMConfigSchema)
 
-    (accepted-frames [_] #{:frame.context/messages})
+    (accepted-frames [_] #{:frame.context/messages :frame.control/interrupt-start})
 
     (make-processor-config [_ _ processor-config]
       processor-config)
@@ -87,19 +95,29 @@
     (process-frame [_ pipeline processor-config frame]
       (let [{:llm/keys [model] :openai/keys [api-key]} processor-config]
         ;; Start request only when the last message in the context is by the user
-        (when (and (frame/context-messages? frame)
-                   (user-last-message? (:frame/data frame)))
-          (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
-          (let [out (api/create-chat-completion {:model model
-                                                 :messages (:frame/data frame)
-                                                 :stream true}
-                                                {:api-key api-key
-                                                 :version :http-2
-                                                 :as :stream})]
-            (a/go-loop []
-              (when-let [chunk (a/<! out)]
-                (if (= chunk :done)
-                  (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
-                  (do
-                    (pipeline/send-frame! pipeline (frame/llm-text-chunk (token-content chunk)))
-                    (recur)))))))))))
+        (cond
+          (and (frame/context-messages? frame)
+               (user-last-message? (:frame/data frame))
+               (not (:pipeline/interrupted? @pipeline)))
+          (do
+            (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
+            (let [stream-ch (stream-openai-chat-completion {:model model
+                                                            :api-key api-key
+                                                            :messages (:frame/data frame)})]
+              (swap! pipeline assoc-in [id :stream-ch] stream-ch)
+              (a/go-loop []
+                (when-let [chunk (a/<! stream-ch)]
+                  (if (= chunk :done)
+                    (do
+                      (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
+                      (swap! pipeline update-in [id] dissoc :stream-ch))
+                    (do
+                      (pipeline/send-frame! pipeline (frame/llm-text-chunk (token-content chunk)))
+                      (recur)))))))
+
+          ;; If interrupt-start frame is sent, we cancel the current token
+          ;; generation if one is in progress
+          (frame/control-interrupt-start? frame)
+          (when-let [stream-ch (get-in @pipeline [id :stream-ch])]
+            (a/close! stream-ch)
+            (swap! pipeline update-in [id] dissoc :stream-ch)))))))

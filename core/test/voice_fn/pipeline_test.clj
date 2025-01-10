@@ -174,3 +174,15 @@
         ;; Pipeline should continue running despite error
         (is (some? (get-in @pipeline [:pipeline/main-ch]))
             "Pipeline should remain operational after error")))))
+
+(deftest pipeline-interruption-processor
+  (let [pipeline (create-test-pipeline
+                   {:transport/in-ch (a/chan)
+                    :transport/out-ch (a/chan)
+                    :pipeline/supports-interrupt? true}
+                   [{:processor/id :test/processor
+                     :processor/config {:test/config "test"}}])
+        interruptor (get-in @pipeline [:pipeline/processors-m :processor.system/pipeline-interruptor :processor])]
+    (testing "pipeline adds interruption handling processor if interruption is supported"
+      (prn (get-in @pipeline [:pipeline/processors-m]))
+      (is (satisfies? p/Processor interruptor)))))

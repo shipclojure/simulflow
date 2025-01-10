@@ -117,6 +117,23 @@
                 :config (p/make-processor-config processor pipeline-config config)}))
            processors-config))))
 
+(defn processors-set
+  [pipeline]
+  (set (map :processor/id (:pipeline/processors pipeline))))
+
+(defn maybe-add-pipeline-interruptor
+  "Add pipeline interruptor processor if not already present in config and
+  pipeline supports interruptions."
+  [pipeline]
+  (let [processors (processors-set pipeline)
+        has-interruptor? (contains? processors
+                                    :processor.system/pipeline-interruptor)
+        supports-interrupt? (get-in pipeline [:pipeline/config :pipeline/supports-interrupt?])]
+    (if (and supports-interrupt? (not has-interruptor?))
+      (update-in pipeline [:pipeline/processors]
+                 conj {:processor/id :processor.system/pipeline-interruptor})
+      pipeline)))
+
 ;; Pipeline creation logic here
 (defn create-pipeline
   "Creates a new pipeline from the provided configuration.
@@ -126,13 +143,14 @@
    information.
 
    Returns an atom containing the initialized pipeline state."
-  [pipeline-config]
-  (let [validation-result (validate-pipeline pipeline-config)]
+  [config-input]
+  (let [validation-result (validate-pipeline config-input)]
     (if (:valid? validation-result)
       (let [main-ch (chan 1024)
             system-ch (chan 1024) ;; High priority channel for system frames
             main-pub (a/pub main-ch :frame/type)
             system-pub (a/pub system-ch :frame/type)
+            pipeline-config (maybe-add-pipeline-interruptor config-input)
             pm (processor-map pipeline-config)
             pipeline (atom (merge
                              {:pipeline/main-ch main-ch
@@ -141,7 +159,7 @@
                               :pipeline/main-pub main-pub}
                              pipeline-config))]
         ;; Start each processor
-        (doseq [{:processor/keys [id]} (:pipeline/processors pipeline-config)]
+        (doseq [{:processor/keys [id]} (:pipeline/processors @pipeline)]
           (let [{:keys [processor]} (get pm id)
                 afs (p/accepted-frames processor)
                 processor-ch (chan 1024)
