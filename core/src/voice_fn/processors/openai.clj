@@ -98,7 +98,7 @@
         (cond
           (and (frame/context-messages? frame)
                (user-last-message? (:frame/data frame))
-               (not (:pipeline/interrupted? @pipeline)))
+               (not (pipeline/interrupted? @pipeline)))
           (do
             (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
             (let [stream-ch (stream-openai-chat-completion {:model model

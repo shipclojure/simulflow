@@ -43,6 +43,10 @@
   [pipeline]
   (get-in pipeline [:pipeline/config :pipeline/supports-interrupt?]))
 
+(defn interrupted?
+  [pipeline]
+  (boolean (get-in pipeline [:processor.system/pipeline-interruptor :pipeline/interrupted?])))
+
 (defn validate-pipeline
   "Validates the pipeline configuration and all processor configs.
    Returns a map with :valid? boolean and :errors containing any validation errors.

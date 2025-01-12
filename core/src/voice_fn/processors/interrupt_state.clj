@@ -22,9 +22,9 @@
         (frame/control-interrupt-start? frame)
         (do
           (t/log! {:level :debug :id type} "Setting pipeline interrupt state")
-          (swap! pipeline assoc :pipeline/interrupted? true))
+          (swap! pipeline assoc-in [id :pipeline/interrupted?] true))
 
         (frame/control-interrupt-stop? frame)
         (do
           (t/log! {:level :debug :id type} "Clearing pipeline interrupt state")
-          (swap! pipeline assoc :pipeline/interrupted? false))))))
+          (swap! pipeline assoc-in [id :pipeline/interrupted?] false))))))

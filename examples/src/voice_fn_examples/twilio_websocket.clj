@@ -3,6 +3,7 @@
    [clojure.core.async :as a]
    [clojure.data.xml :as xml]
    [muuntaja.core :as m]
+   [portal.api :as p]
    [reitit.core]
    [reitit.dev.pretty :as pretty]
    [reitit.ring :as ring]
@@ -23,6 +24,9 @@
    [voice-fn.transport.twilio]))
 
 (t/set-min-level! :debug)
+(comment
+  (p/open)
+  (add-tap #'p/submit))
 
 (defn emit-xml-str
   [xml-data]
@@ -107,7 +111,9 @@
   (let [processors-config (:pipeline/processors (create-twilio-ai-pipeline (a/chan) (a/chan)))])
 
   (let [pipeline (pipeline/create-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan)))]
-    (pipeline/start-pipeline! pipeline)))
+    (pipeline/start-pipeline! pipeline))
+
+  ,)
 
 ;; Using ring websocket protocols to setup a websocket server
 (defn twilio-ws-handler
