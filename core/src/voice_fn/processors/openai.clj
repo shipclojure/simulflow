@@ -1,7 +1,6 @@
 (ns voice-fn.processors.openai
   (:require
    [clojure.core.async :as a]
-   [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.protocol :as p]
@@ -9,13 +8,7 @@
    [voice-fn.utils.core :as u]
    [voice-fn.utils.request :as request]))
 
-(def token-content (comp :content :delta first :choices))
-
 (def openai-completions-url "https://api.openai.com/v1/chat/completions")
-
-(defn user-last-message?
-  [context]
-  (#{:user "user"} (-> context last :role)))
 
 (defn stream-openai-chat-completion
   [{:keys [api-key messages model]}]
@@ -97,7 +90,7 @@
         ;; Start request only when the last message in the context is by the user
         (cond
           (and (frame/context-messages? frame)
-               (user-last-message? (:frame/data frame))
+               (u/user-last-message? (:frame/data frame))
                (not (pipeline/interrupted? @pipeline)))
           (do
             (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
@@ -112,7 +105,7 @@
                       (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
                       (swap! pipeline update-in [id] dissoc :stream-ch))
                     (do
-                      (pipeline/send-frame! pipeline (frame/llm-text-chunk (token-content chunk)))
+                      (pipeline/send-frame! pipeline (frame/llm-text-chunk (u/token-content chunk)))
                       (recur)))))))
 
           ;; If interrupt-start frame is sent, we cancel the current token

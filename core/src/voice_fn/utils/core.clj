@@ -114,3 +114,9 @@
       ;; No sentence boundary - accumulate text
       {:sentence nil
        :accumulator potential-sentence})))
+
+(defn user-last-message?
+  [context]
+  (#{:user "user"} (-> context last :role)))
+
+(def token-content "Extract token content from streaming chat completions" (comp :content :delta first :choices))
