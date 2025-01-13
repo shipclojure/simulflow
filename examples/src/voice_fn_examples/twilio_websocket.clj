@@ -88,9 +88,9 @@
                          ;; Aggregate User responses
                          {:processor/id :context.aggregator/user
                           :processor/config {:aggregator/debug? true}}
-                         {:processor/id :processor.llm/openai
-                          :processor/config {:llm/model "gpt-4o-mini"
-                                             :openai/api-key (secret [:openai :new-api-sk])}}
+                         {:processor/id :processor.llm/groq
+                          :processor/config {:llm/model "llama-3.3-70b-versatile"
+                                             :groq/api-key (secret [:groq :api-key])}}
                          ;; aggregate AI responses
                          {:processor/id :context.aggregator/assistant
                           :processor/config {}}

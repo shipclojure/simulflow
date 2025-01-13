@@ -27,13 +27,12 @@
 
 (comment
 
-  (a/<!! (a/into [] (stream-groq-chat-completion
-                      {:model "llama3-8b-8192"
-                       :api-key (secret [:groq :api-key])
-                       :messages [{:role "system" :content "You are a helpful assistant."}
-                                  {:role "user" :content "Who won the world series in 2020?"}
-                                  {:role "assistant" :content "The Los Angeles Dodgers won the World Series in 2020."}
-                                  {:role "user" :content "Where was it played?"}]})))
+  (map u/token-content (a/<!! (a/into [] (stream-groq-chat-completion
+                                           {:model "llama-3.3-70b-versatile"
+                                            :api-key (secret [:groq :api-key])
+                                            :messages [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}
+                                                       {:role "user" :content "Salutare ma auzi?"}]}))))
+
   ,)
 
 (comment
@@ -41,10 +40,10 @@
   (->> (http/get (str groq-api-url "/models")
                  {:headers {"Authorization" (str "Bearer " (secret [:groq :api-key]))
                             "Content-Type" "application/json"}})
-    :body
-    u/parse-if-json
-    :data
-    (map :id))
+       :body
+       u/parse-if-json
+       :data
+       (map :id))
   ,)
 
 (def GroqLLMConfigSchema
@@ -56,7 +55,7 @@
     (schema/flex-enum
       {:description "Groq model identifier"
        :error/message "Must be a valid Groq model"
-       :default "llama3-8b-8192"}
+       :default "llama-3.3-70b-versatile"}
       ["llama-3.2-3b-preview"
        "llama-3.1-8b-instant"
        "llama-3.3-70b-versatile"
@@ -94,7 +93,7 @@
       processor-config)
 
     (process-frame [_ pipeline processor-config frame]
-      (let [{:llm/keys [model] :openai/keys [api-key]} processor-config]
+      (let [{:llm/keys [model] :groq/keys [api-key]} processor-config]
         ;; Start request only when the last message in the context is by the user
         (cond
           (and (frame/context-messages? frame)
