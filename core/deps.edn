@@ -5,6 +5,9 @@
         metosin/malli {:mvn/version "0.17.0"}
         org.clojure/core.async {:mvn/version "1.7.701"}
         metosin/jsonista {:mvn/version "0.3.8"}
+        com.microsoft.onnxruntime/onnxruntime {:mvn/version "1.20.0"}
+        com.microsoft.onnxruntime/onnxruntime_gpu {:mvn/version "1.20.0"}
+        org.clojure/java.data {:mvn/version "1.2.107"}
         ring/ring-core {:mvn/version "1.13.0"}
         hato/hato {:mvn/version "1.0.0"}
         net.clojars.wkok/openai-clojure {:mvn/version "0.22.0"}}
@@ -18,7 +21,9 @@
                      criterium/criterium {:mvn/version "0.4.6"}
                      clj-kondo/clj-kondo {:mvn/version "2024.11.14"}}}
   :cider-clj {:extra-deps {cider/cider-nrepl {:mvn/version "0.51.1"}}
-              :main-opts ["-m" "nrepl.cmdline" "--middleware" "[cider.nrepl/cider-middleware]"]}
+              :main-opts ["-m" "nrepl.cmdline"
+                          "--middleware" "[cider.nrepl/cider-middleware]"
+                          "--port" "52158"]}
   :test {:extra-paths ["test"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
                       midje/midje {:mvn/version "1.10.10"}
