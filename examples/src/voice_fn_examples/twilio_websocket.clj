@@ -2,8 +2,10 @@
   (:require
    [clojure.core.async :as a]
    [clojure.data.xml :as xml]
+   [malli.core :as malli]
+   [malli.error :as me]
    [muuntaja.core :as m]
-   [portal.api :as p]
+   [portal.api :as portal]
    [reitit.core]
    [reitit.dev.pretty :as pretty]
    [reitit.ring :as ring]
@@ -18,15 +20,17 @@
    [voice-fn.core]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.elevenlabs]
+   [voice-fn.processors.groq]
    [voice-fn.processors.interrupt-state]
    [voice-fn.processors.llm-context-aggregator]
+   [voice-fn.protocol :as p]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.twilio]))
 
 (t/set-min-level! :debug)
 (comment
-  (p/open)
-  (add-tap #'p/submit))
+  (portal/open)
+  (add-tap #'portal/submit))
 
 (defn emit-xml-str
   [xml-data]
@@ -69,8 +73,8 @@
                      :audio-out/sample-size-bits 8
                      :audio-out/channels 1
                      :pipeline/supports-interrupt? true
-                     :pipeline/language :ro
-                     :llm/context [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}]
+                     :pipeline/language :en
+                     :llm/context [{:role "system" :content  "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}]
                      :transport/in-ch in
                      :transport/out-ch out}
    :pipeline/processors [;; Twilio transport
@@ -88,9 +92,9 @@
                          ;; Aggregate User responses
                          {:processor/id :context.aggregator/user
                           :processor/config {:aggregator/debug? true}}
-                         {:processor/id :processor.llm/groq
-                          :processor/config {:llm/model "llama-3.3-70b-versatile"
-                                             :groq/api-key (secret [:groq :api-key])}}
+                         {:processor/id :processor.llm/openai
+                          :processor/config {:llm/model "gpt-4o-mini"
+                                             :openai/api-key (secret [:openai :new-api-sk])}}
                          ;; aggregate AI responses
                          {:processor/id :context.aggregator/assistant
                           :processor/config {}}
@@ -106,6 +110,15 @@
                          {:processor/id :processor.transport/async-output}]})
 
 (comment
+
+  (def openaip (pipeline/create-processor :processor.llm/openai))
+
+  (tap> (me/humanize
+          (malli/explain
+            (p/processor-schema openaip)
+            (p/make-processor-config openaip {} {:llm/model "gpt-4o-mini"
+                                                 :openai/api-key (secret [:openai :new-api-sk])}))))
+
   (pipeline/validate-pipeline (create-twilio-ai-pipeline (a/chan) (a/chan)))
 
   (let [processors-config (:pipeline/processors (create-twilio-ai-pipeline (a/chan) (a/chan)))])

@@ -15,7 +15,9 @@
 
   (make-processor-config [this pipeline-config processor-config]
     "Create the configuration for the processor based on the pipeline
-  configuration. Used when the final configuration for a processor requires
+  configuration or include defaults.
+
+  Used when the final configuration for a processor requires
   information from the global pipeline configuration. ex: audio-in encoding,
   pipeline language, etc.
 

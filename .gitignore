@@ -32,3 +32,6 @@
 /core/.clj-kondo/.cache
 /core/.lsp/
 /examples/.calva/
+/.idea/
+/core/.idea/
+/core/core.iml

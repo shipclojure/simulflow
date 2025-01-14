@@ -30,7 +30,8 @@ CLOCK: [2025-01-04 Sat 11:04]--[2025-01-04 Sat 11:29] =>  0:25
 CLOCK: [2025-01-04 Sat 07:14]--[2025-01-04 Sat 07:39] =>  0:25
 :END:
 
-** TODO Handle Start/Stop interruption frames in LLM and TTS and other assemblers
+** DONE Handle Start/Stop interruption frames in LLM and TTS and other assemblers
+CLOSED: [2025-01-13 Mon 07:53]
 :LOGBOOK:
 CLOCK: [2025-01-10 Vin 16:29]--[2025-01-10 Vin 16:54] =>  0:25
 CLOCK: [2025-01-10 Vin 14:15]--[2025-01-10 Vin 14:41] =>  0:26
@@ -57,9 +58,17 @@ CLOCK: [2025-01-08 Wed 10:45]--[2025-01-08 Wed 11:10] =>  0:25
 CLOCK: [2025-01-08 Wed 08:29]--[2025-01-08 Wed 08:54] =>  0:25
 :END:
 * TODO Add support for first message greeting in the pipeline
-
+* TODO Add tools calls support
+:LOGBOOK:
+CLOCK: [2025-01-14 Tue 07:09]--[2025-01-14 Tue 07:34] =>  0:25
+CLOCK: [2025-01-14 Tue 06:25]--[2025-01-14 Tue 06:50] =>  0:25
+:END:
 * TODO Add support for [[https://github.com/fixie-ai/ultravox][ultravox]]
 
+* TODO Add support for Silero VAD
+:LOGBOOK:
+CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
+:END:
 * TODO Add support for google gemini
 
 * TODO Add support for telnyx transport

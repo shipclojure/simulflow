@@ -109,7 +109,9 @@
 
 (defn processor-map
   "Return a mapping of processor id to the actual processor and it's current
-  configuration"
+  configuration
+  {:processor.type/id {:processor ReifiedProcessorProtocol
+                       :config {:config of the processor}}}"
   [pipeline]
   (let [pipeline-config (:pipeline/config pipeline)
         processors-config (:pipeline/processors pipeline)]
@@ -125,7 +127,7 @@
   [pipeline]
   (set (map :processor/id (:pipeline/processors pipeline))))
 
-(defn maybe-add-pipeline-interruptor
+(defn- maybe-add-pipeline-interruptor
   "Add pipeline interruptor processor if not already present in config and
   pipeline supports interruptions."
   [pipeline]

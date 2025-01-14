@@ -1,6 +1,8 @@
 (ns voice-fn.processors.openai
   (:require
    [clojure.core.async :as a]
+   [malli.core :as m]
+   [malli.transform :as mt]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.protocol :as p]
@@ -24,8 +26,7 @@
 
 (def OpenAILLMConfigSchema
   [:map
-   {:closed true
-    :description "OpenAI LLM configuration"}
+   {:description "OpenAI LLM configuration"}
 
    [:llm/model
     (schema/flex-enum
@@ -46,6 +47,48 @@
        "davinci-002"
        ;; Include your custom model
        "gpt-4o-mini"])]
+   [:llm/temperature {:optional true}
+    [:float
+     {:description "Sampling temperature (0-2)"
+      :default 0.7
+      :min 0.0
+      :max 2.0}]]
+
+   [:llm/max-tokens {:optional true}
+    [:int
+     {:description "Maximum number of tokens to generate"
+      :min 1}]]
+
+   [:llm/frequency-penalty {:optional true}
+    [:float
+     {:description "Frequency penalty (-2.0 to 2.0)"
+      :min -2.0
+      :max 2.0}]]
+
+   [:llm/presence-penalty {:optional true}
+    [:float
+     {:description "Presence penalty (-2.0 to 2.0)"
+      :min -2.0
+      :max 2.0}]]
+
+   [:llm/top-p {:optional true}
+    [:float
+     {:description "Nucleus sampling threshold"
+      :min 0.0
+      :max 1.0}]]
+
+   [:llm/seed {:optional true}
+    [:int
+     {:description "Random seed for deterministic sampling"}]]
+
+   [:llm/max-completion-tokens {:optional true}
+    [:int
+     {:description "Maximum tokens in completion"
+      :min 1}]]
+
+   [:llm/extra {:optional true}
+    [:map
+     {:description "Additional model parameters"}]]
 
    [:openai/api-key
     [:string
@@ -58,6 +101,7 @@
 (comment
   (require '[malli.core :as m]
            '[malli.error :as me]
+
            '[voice-fn.secrets :refer [secret]])
   ;; Valid config
   (m/validate OpenAILLMConfigSchema
@@ -73,6 +117,8 @@
 
   ,)
 
+(tap> OpenAILLMConfigSchema)
+
 (defmethod pipeline/create-processor :processor.llm/openai
   [id]
   (reify p/Processor
@@ -83,7 +129,7 @@
     (accepted-frames [_] #{:frame.context/messages :frame.control/interrupt-start})
 
     (make-processor-config [_ _ processor-config]
-      processor-config)
+      (m/decode OpenAILLMConfigSchema processor-config mt/default-value-transformer))
 
     (process-frame [_ pipeline processor-config frame]
       (let [{:llm/keys [model] :openai/keys [api-key]} processor-config]
