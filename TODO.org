@@ -62,6 +62,8 @@ CLOCK: [2025-01-08 Wed 08:29]--[2025-01-08 Wed 08:54] =>  0:25
 * TODO Add support for first message greeting in the pipeline
 * TODO Add tools calls support
 :LOGBOOK:
+CLOCK: [2025-01-15 Wed 08:53]
+CLOCK: [2025-01-15 Wed 08:16]--[2025-01-15 Wed 08:41] =>  0:25
 CLOCK: [2025-01-15 Wed 06:30]--[2025-01-15 Wed 06:55] =>  0:25
 CLOCK: [2025-01-14 Tue 07:09]--[2025-01-14 Tue 07:34] =>  0:25
 CLOCK: [2025-01-14 Tue 06:25]--[2025-01-14 Tue 06:50] =>  0:25
@@ -81,3 +83,5 @@ CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
 * TODO Add support for openai realtime API
 
 * TODO Research webrtc support
+
+* TODO Add LLM usage metrics based on chunks responses [[https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage][API docs for usage]]

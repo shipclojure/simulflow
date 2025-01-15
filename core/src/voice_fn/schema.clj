@@ -438,10 +438,20 @@
    [:type (flex-enum [:boolean])]
    [:description :string]])
 
+(def LLMFunctionCallParameterArrayProperty
+  [:map
+   [:type (flex-enum [:array])]
+   [:description :string]
+   [:items [:or LLMFunctionCallParameterStringProperty
+            LLMFunctionCallParameterNumberProperty
+            LLMFunctionCallParameterBooleanProperty]]])
+
 (def LLMFunctionCallParameterProperty
-  [:or LLMFunctionCallParameterStringProperty
-       LLMFunctionCallParameterNumberProperty
-       LLMFunctionCallParameterBooleanProperty])
+  [:or
+   LLMFunctionCallParameterStringProperty
+   LLMFunctionCallParameterNumberProperty
+   LLMFunctionCallParameterBooleanProperty
+   LLMFunctionCallParameterArrayProperty])
 
 (defn- check-missing-params [params]
   (let [available-properties (set (map name (keys (:properties params))))

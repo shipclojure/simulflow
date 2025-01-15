@@ -1,6 +1,7 @@
 (ns voice-fn.processors.openai
   (:require
    [clojure.core.async :as a]
+   [hato.client :as http]
    [malli.core :as m]
    [malli.transform :as mt]
    [voice-fn.frame :as frame]
@@ -13,16 +14,56 @@
 (def openai-completions-url "https://api.openai.com/v1/chat/completions")
 
 (defn stream-openai-chat-completion
-  [{:keys [api-key messages model]}]
+  [{:keys [api-key messages tools model]}]
   (:body (request/sse-request {:request {:url openai-completions-url
                                          :headers {"Authorization" (str "Bearer " api-key)
                                                    "Content-Type" "application/json"}
 
                                          :method :post
-                                         :body (u/json-str {:messages messages
-                                                            :stream true
-                                                            :model model})}
+                                         :body (u/json-str (cond-> {:messages messages
+                                                                    :stream true
+                                                                    :model model}
+                                                             tools (assoc :tools tools)))}
                                :params {:stream/close? true}})))
+(defn normal-chat-completion
+  [{:keys [api-key messages tools model]}]
+  (http/request {:url openai-completions-url
+                 :headers {"Authorization" (str "Bearer " api-key)
+                           "Content-Type" "application/json"}
+
+                 :throw-on-error? false
+                 :method :post
+                 :body (u/json-str (cond-> {:messages messages
+                                            :stream true
+                                            :model model}
+                                     tools (assoc :tools tools)))}))
+
+(def dummy-tool-call-response
+  [{:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:role "assistant", :content nil, :refusal nil, :tool_calls [{:index 0, :type "function", :function {:arguments "", :name "retrieve_latest_stock_data"}, :id "call_frPVnoe8ruDicw50T8sLHki7"}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "{\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "ticker"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\":\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "MS"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "FT"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\",\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "fields"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\":[\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "price"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\",\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "volume"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\"],"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "date"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\":\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "202"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "3"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "-"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "10"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "-"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "10"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\"}"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837, :choices [{:finish_reason "tool_calls", :index 0, :logprobs nil, :delta {}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   :done])
 
 (def OpenAILLMConfigSchema
   [:map

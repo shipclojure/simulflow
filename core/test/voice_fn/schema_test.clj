@@ -54,19 +54,32 @@
 
 ;; Tool Definition
 
-(fact "LLMFunctionCallParameterSchema checks if required parameters are defined"
+(facts "about llm functions parameters"
+  (fact "LLMFunctionCallParameterSchema checks if required parameters are defined"
 
-      (let [valid-parameters {:type :object
-                              :description "Function to close a Twilio call"
-                              :required [:call_sid]
-                              :properties {:call_sid {:type :string
-                                                      :description "The unique identifier of the call to be closed"}}}
-            missing-required (assoc valid-parameters :required [:missing])
-            not-missing (assoc-in missing-required [:properties :missing] {:type :number
-                                                                           :description "This is a missing property"})]
-        (m/validate sut/LLMFunctionCallParameters valid-parameters) => true
-        (me/humanize (m/explain sut/LLMFunctionCallParameters missing-required)) => ["Required parameters are not defined"]
-        (m/validate sut/LLMFunctionCallParameters not-missing) => true))
+        (let [valid-parameters {:type :object
+                                :description "Function to close a Twilio call"
+                                :required [:call_sid]
+                                :properties {:call_sid {:type :string
+                                                        :description "The unique identifier of the call to be closed"}}}
+              missing-required (assoc valid-parameters :required [:missing])
+              not-missing (assoc-in missing-required [:properties :missing] {:type :number
+                                                                             :description "This is a missing property"})]
+          (m/validate sut/LLMFunctionCallParameters valid-parameters) => true
+          (me/humanize (m/explain sut/LLMFunctionCallParameters missing-required)) => ["Required parameters are not defined"]
+          (m/validate sut/LLMFunctionCallParameters not-missing) => true))
+  (fact "llms accept array type parameters"
+        (m/validate sut/LLMFunctionCallParameters {:type :object
+                                                   :required [:ticker :fields :date]
+                                                   :properties {:ticker {:type :string
+                                                                         :description "Stock ticker symbol for which to retrieve data"}
+                                                                :fields {:type :array
+                                                                         :description "Fields to retrieve for the stock data"
+                                                                         :items {:type :string
+                                                                                 :description "Field name to retrieve (e.g 'price' 'volume')"}}
+                                                                :date {:type :string
+                                                                       :description "Date for which to retrieve stock data in the format 'YYYY-MM-DD'"}}})
+        => true))
 
 (fact "LLMFunctionToolDefinition"
       (let [valid-function
@@ -81,7 +94,24 @@
                                                            :description "The reason for closing the call"}}
                                      :additionalProperties false}
                         :strict true}}
-            invalid-required (update-in valid-function [:function :parameters :properties] dissoc :reason)]
+            invalid-required (update-in valid-function [:function :parameters :properties] dissoc :reason)
+            stocks-function {:type :function
+                             :function
+                             {:name "retrieve_latest_stock_data"
+                              :description "Retrive latest stock data for the current day"
+                              :parameters {:type :object
+                                           :required [:ticker :fields :date]
+                                           :properties {:ticker {:type :string
+                                                                 :description "Stock ticker symbol for which to retrieve data"}
+                                                        :fields {:type :array
+                                                                 :description "Fields to retrieve for the stock data"
+                                                                 :items {:type :string
+                                                                         :description "Field name to retrieve (e.g 'price' 'volume')"}}
+                                                        :date {:type :string
+                                                               :description "Date for which to retrieve stock data in the format 'YYYY-MM-DD'"}}
+                                           :additionalProperties false}
+                              :strict true}}]
         (m/validate sut/LLMFunctionToolDefinition valid-function) => true
 
-        (me/humanize (m/explain sut/LLMFunctionToolDefinition invalid-required)) => {:function {:parameters ["Required parameters are not defined"]}}))
+        (me/humanize (m/explain sut/LLMFunctionToolDefinition invalid-required)) => {:function {:parameters ["Required parameters are not defined"]}}
+        (m/validate sut/LLMFunctionToolDefinition stocks-function) => true))
