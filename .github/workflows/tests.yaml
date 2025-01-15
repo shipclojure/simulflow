@@ -44,5 +44,5 @@ jobs:
         working-directory: ./core
 
       - name: Run Clj Unit tests
-        run: bb test-clj
+        run: bb test
         working-directory: ./core
