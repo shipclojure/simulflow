@@ -45,4 +45,4 @@ jobs:
 
       - name: Run Clj Unit tests
         run: bb test-clj
-        :working-directory: ./core
+        working-directory: ./core
