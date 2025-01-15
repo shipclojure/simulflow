@@ -186,6 +186,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       (process-aggregator-frame (p/processor-id this) pipeline processor-config frame))))
 
 ;; Aggregator for assistant
+;; TODO should handle interrupt
 (def assistant-context-aggregator-options
   {:messages/role "assistant"
    :aggregator/start-frame? frame/llm-full-response-start?

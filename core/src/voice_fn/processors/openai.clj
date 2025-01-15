@@ -117,8 +117,6 @@
 
   ,)
 
-(tap> OpenAILLMConfigSchema)
-
 (defmethod pipeline/create-processor :processor.llm/openai
   [id]
   (reify p/Processor

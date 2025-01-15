@@ -57,9 +57,12 @@ CLOCK: [2025-01-09 Thu 06:29]--[2025-01-09 Thu 06:54] =>  0:25
 CLOCK: [2025-01-08 Wed 10:45]--[2025-01-08 Wed 11:10] =>  0:25
 CLOCK: [2025-01-08 Wed 08:29]--[2025-01-08 Wed 08:54] =>  0:25
 :END:
+
+** TODO Make assistant context aggregator support interrupt
 * TODO Add support for first message greeting in the pipeline
 * TODO Add tools calls support
 :LOGBOOK:
+CLOCK: [2025-01-15 Wed 06:30]
 CLOCK: [2025-01-14 Tue 07:09]--[2025-01-14 Tue 07:34] =>  0:25
 CLOCK: [2025-01-14 Tue 06:25]--[2025-01-14 Tue 06:50] =>  0:25
 :END:

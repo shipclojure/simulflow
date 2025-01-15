@@ -344,6 +344,66 @@
    [:role LLMContextessageRole]
    [:content [:string {:min 1}]]])
 
+(def LLMFunctionCallParameterStringProperty
+  [:map
+   [:type (flex-enum [:string])]
+   [:description :string]
+   [:enum {:optional true} [:vector :string]]])
+
+(def LLMFunctionCallParameterNumberProperty
+  [:map
+   [:type (flex-enum [:number])]
+   [:description :string]
+   [:enum {:optional true} [:vector :int]]])
+
+(def LLMFunctionCallParameterBooleanProperty
+  [:map
+   [:type (flex-enum [:boolean])]
+   [:description :string]])
+
+(def LLMFunctionCallParameterProperty
+  [:or LLMFunctionCallParameterStringProperty
+       LLMFunctionCallParameterNumberProperty
+       LLMFunctionCallParameterBooleanProperty])
+
+(defn- check-missing-params [params]
+  (let [available-properties (set (map name (keys (:properties params))))
+        required-properties (map name (:required params))]
+    (every? #(contains? available-properties %) required-properties)))
+
+(def LLMFunctionCallParameters
+  [:and
+   [:map
+    [:type (flex-enum [:object])]
+    [:required [:vector [:or :string :keyword]]]
+    [:properties [:map-of :keyword LLMFunctionCallParameterProperty]]
+    [:additionalProperties {:optional true} :boolean]]
+   [:fn {:error/message "Required parameters are not defined"}
+    check-missing-params]])
+
+(def ToolChoiceEnum
+  (flex-enum [:none :auto :required]))
+
+(def ToolChoice
+  [:or
+   ToolChoiceEnum
+   [:map
+    {:closed true}
+    [:type (flex-enum [:function])]
+    [:function
+     [:map
+      {:closed true}
+      [:name :string]]]]])
+
+(def LLMFunctionToolDefinition
+  [:map {:closed true}
+   [:type (flex-enum [:function])]
+   [:function [:map
+               [:name :string]
+               [:description :string]
+               [:parameters LLMFunctionCallParameters]
+               [:strict {:optional true} :boolean]]]])
+
 (def LLMContext
   [:vector
    {:min 1
