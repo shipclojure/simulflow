@@ -332,6 +332,8 @@
 (def LLMMessageContentType
   (flex-enum ["text"]))
 
+(def LLMContextMessageRole (flex-enum [:user :assistant :tool :developer :systemb]))
+
 (def LLMTextMessage
   "This is the modern openai text message format
   Example: the :content from this map

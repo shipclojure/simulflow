@@ -35,7 +35,7 @@
    [:pipeline/language schema/Language]
    [:pipeline/supports-interrupt? {:default false
                                    :optional true} :boolean]
-   [:llm/context schema/LLMContext]
+   [:llm/context schema/LLMContextMessages]
    [:transport/in-ch schema/CoreAsyncChannel]
    [:transport/out-ch schema/CoreAsyncChannel]])
 

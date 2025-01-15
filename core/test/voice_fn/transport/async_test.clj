@@ -2,15 +2,12 @@
   (:require
    [clojure.core.async :as a]
    [clojure.test :refer [are deftest is testing]]
+   [voice-fn.core]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.test-system :refer [create-test-pipeline default-pipeline-config valid-pipeline?]]
    [voice-fn.transport.async :as sut]
    [voice-fn.utils.audio :as au]))
-
-(comment
-  (p/open)
-  (add-tap #'p/submit))
 
 (defn create-test-audio
   "Creates a byte array of specified size filled with a repeating pattern

@@ -147,7 +147,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   [:map
    {:closed true
     :description "Configuration for the LLM context aggregator processor"}
-   [:messages/role schema/LLMContextessageRole]
+   [:messages/role schema/LLMContextMessageRole]
    [:aggregator/start-frame? schema/FramePredicate]
    [:aggregator/debug? {:optional true :default false} :boolean]
    [:aggregator/end-frame? schema/FramePredicate]

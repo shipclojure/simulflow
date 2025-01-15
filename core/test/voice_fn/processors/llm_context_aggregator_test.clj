@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as a]
    [clojure.test :refer [deftest is testing]]
+   [voice-fn.core]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.llm-context-aggregator :as sut]))

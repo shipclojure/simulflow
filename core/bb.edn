@@ -4,4 +4,4 @@
  {current/deps {:local/root "."}}
 
  :tasks
- {test (shell "clojure -M:test-clj -m kaocha.runner :unit")}}
+ {test (shell "clojure -M:test -m kaocha.runner :unit")}}

@@ -1,6 +1,7 @@
 (ns voice-fn.test-system
   (:require
    [clojure.test :refer [is]]
+   [voice-fn.core]
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.protocol :as p]))
