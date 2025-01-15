@@ -39,10 +39,12 @@
           (m/validate sut/LLMUserMessage user-msg-deprecated) => true
           (me/humanize (m/explain sut/LLMUserMessage {:role :user
                                                       :content [{:type :hello
-                                                                 :content "hello world"}]})) => {:content ["should be a string"]}
+                                                                 :content "hello world"}]}))
+          => {:content ["should be a string"]}
           (me/humanize (m/explain sut/LLMUserMessage {:role :user
                                                       :content [{:type "text"
-                                                                 :content 123}]})) =>  {:content ["should be a string"]})
+                                                                 :content 123}]}))
+          =>  {:content ["should be a string"]})
 
     (fact "full set of messages is valid"
           (m/validate sut/LLMContextMessages messages) => true)
