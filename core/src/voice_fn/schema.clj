@@ -328,21 +328,96 @@
      ;; Zulu
      "zu" "zu-ZA"]))
 
-(def LLMContextessageRole
-  (flex-enum
-    {:description "Role of the message participant"
-     :error/message "Role must be system, assistant, or user"}
-    ["system"
-     "assistant"
-     "user"]))
+;;; LLM Chat messages
+(def LLMMessageContentType
+  (flex-enum ["text"]))
 
-(def LLMContextMessage
+(def LLMTextMessage
+  "This is the modern openai text message format
+  Example: the :content from this map
+  {:role \"user\"
+   :content [{:type \"text\"
+              :text \"Hello World\"}]}"
+  [:vector {:min 1 :max 1} [:map
+                            {:closed true}
+                            [:type LLMMessageContentType]
+                            [:text :string]]])
+
+(def LLMToolCallMessage
+  [:vector {:min 1 :max 1}
+   [:map
+    {:closed true}
+    [:id :string]
+    [:type (flex-enum ["function"])]
+    [:function
+     [:map
+      {:closed true}
+      [:name :string]
+      [:arguments :string]]]]])
+
+(def LLMDeveloperMessage
+  "Developer messages are the new system messages for the newer openai models like
+  o1"
   [:map
-   {:description "Message from the LLM Context"
-    :error/message "Invalid message format"
-    :closed true} ;; No additional fields allowed
-   [:role LLMContextessageRole]
-   [:content [:string {:min 1}]]])
+   {:closed true
+    :description "Developer-provided instructions that the model should follow, regardless of messages sent by the user"}
+   [:role (flex-enum ["developer"])]
+   [:content [:or :string LLMTextMessage]]])
+
+(def LLMSystemMessage
+  "System messages tell the model how to behave"
+  [:map
+   {:closed true
+    :description "Developer-provided instructions that the model should follow. Deprecated with o1 models - use developer messages instead"}
+   [:role (flex-enum ["system"])]
+   [:content [:or :string LLMTextMessage]]])
+
+(def LLMUserMessage
+  "Messages sent to the llm by the end user"
+  [:map
+   {:closed true}
+   [:role (flex-enum ["user"])]
+   [:content [:or :string LLMTextMessage]]])
+
+(def LLMAssistantMessage
+  "Messages sent by the model in response to user messages"
+  [:map
+   {:closed true
+    :description "Messages sent by the model in response to user messages"}
+   [:role (flex-enum ["assistant"])]
+   [:content {:optional true} [:or :string LLMTextMessage]]
+   [:refusal {:optional true} [:maybe :string]]
+   [:audio {:optional true} [:maybe :map]]
+   [:tool_calls {:optional true} LLMToolCallMessage]
+   [:function_call {:optional true}
+    [:map
+     {:closed true}
+     [:name :string]
+     [:arguments :string]]]])
+
+(def LLMToolMessage
+  "Messages that contain results to function calls for the model to use."
+  [:map
+   {:closed true}
+   [:role (flex-enum ["tool"])]
+   [:content [:or :string LLMTextMessage]]
+   [:tool_call_id :string]])
+
+(def LLMMessage
+  [:or
+   LLMDeveloperMessage
+   LLMSystemMessage
+   LLMUserMessage
+   LLMAssistantMessage
+   LLMToolMessage])
+
+(def LLMContextMessages
+  [:vector
+   {:min 1
+    :description "Vector of context messages"}
+   LLMMessage])
+
+;;; Tool function declaration
 
 (def LLMFunctionCallParameterStringProperty
   [:map
@@ -403,14 +478,6 @@
                [:description :string]
                [:parameters LLMFunctionCallParameters]
                [:strict {:optional true} :boolean]]]])
-
-(def LLMContext
-  [:vector
-   {:min 1
-    :max 100 ;; Optional max limit
-    :description "Vector of context messages"
-    :error/message "Must have at least one context message"}
-   LLMContextMessage])
 
 (def CoreAsyncChannel
   [:fn
