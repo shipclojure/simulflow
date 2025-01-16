@@ -119,4 +119,8 @@
   [context]
   (#{:user "user"} (-> context last :role)))
 
+(defn assistant-last-message?
+  [context]
+  (#{:assistant "assistant"} (-> context last :role)))
+
 (def token-content "Extract token content from streaming chat completions" (comp :content :delta first :choices))

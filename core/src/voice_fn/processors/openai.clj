@@ -38,32 +38,7 @@
                                             :model model}
                                      tools (assoc :tools tools)))}))
 
-(def dummy-tool-call-response
-  [{:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:role "assistant", :content nil, :refusal nil, :tool_calls [{:index 0, :type "function", :function {:arguments "", :name "retrieve_latest_stock_data"}, :id "call_frPVnoe8ruDicw50T8sLHki7"}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "{\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "ticker"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\":\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "MS"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "FT"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\",\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "fields"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\":[\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "price"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\",\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "volume"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\"],"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "date"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\":\""}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "202"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "3"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "-"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "10"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "-"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "10"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\"}"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason "tool_calls", :index 0, :logprobs nil, :delta {}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   :done])
+(def argument-chunk (comp :arguments :function first :tool_calls :delta first :choices))
 
 (def OpenAILLMConfigSchema
   [:map
@@ -77,8 +52,8 @@
       [;; GPT-4 Models
        "gpt-4"
        "gpt-4-32k"
-       "gpt-4-1106-preview"   ;; GPT-4 Turbo
-       "gpt-4-vision-preview" ;; GPT-4 Vision
+       "gpt-4-1106-preview"    ;; GPT-4 Turbo
+       "gpt-4-vision-preview"  ;; GPT-4 Vision
        ;; GPT-3.5 Models
        "gpt-3.5-turbo"
        "gpt-3.5-turbo-16k"
@@ -140,14 +115,11 @@
 
 ;; Example validation:
 (comment
-  (require '[malli.core :as m]
-           '[malli.error :as me]
-
-           '[voice-fn.secrets :refer [secret]])
+  (require
+    '[malli.error :as me])
   ;; Valid config
   (m/validate OpenAILLMConfigSchema
-              {:llm/model :gpt-4o-mini
-               :openai/api-key "sk-12312312312312312312312312312312312312312313..."})
+              {:openai/api-key "sk-12312312312312312312312312312312312312312313..."})
   ;; => true
 
   ;; Invalid model
@@ -157,6 +129,71 @@
       me/humanize)
 
   ,)
+
+(def delta (comp  :delta first :choices))
+
+(defn process-context-frame
+  "Handle completion requests for OpenAI LLM models"
+  [id pipeline processor-config frame]
+  (let [{:llm/keys [model] :openai/keys [api-key]} processor-config]
+    ;; Start request only when the last message in the context is by the user
+
+    (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
+    (let [stream-ch (stream-openai-chat-completion {:model model
+                                                    :api-key api-key
+                                                    :messages (:frame/data frame)})]
+      (swap! pipeline assoc-in [id :stream-ch] stream-ch)
+      (a/go-loop [function-name nil
+                  function-arguments nil
+                  tool-call-id nil]
+        (when-let [chunk (a/<! stream-ch)]
+          (let [d (delta chunk)
+                tool-call (first (:tool_calls d))]
+            (cond
+              (= chunk :done)
+              (do
+                (swap! pipeline update-in [id] dissoc :stream-ch)
+                ;; When this is a tool call completion and we are done
+                ;; parsing tool call completion, send a tool-call
+                ;; request frame to the aggregators so we get the result in the context
+
+                (let [parsed-args (u/parse-if-json function-arguments)]
+                  (when
+                    (and function-name
+                         (map? parsed-args))
+                    (pipeline/send-frame!
+                      pipeline
+                      (frame/llm-tools-call-request
+                        {:function-name function-name
+                         :arguments parsed-args
+                         :tool-call-id tool-call-id}))))
+                (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
+                nil)                    ; explicit nil return when done
+
+              ;; text completion chunk
+              (:content d)
+              (do
+                (pipeline/send-frame! pipeline (frame/llm-text-chunk (:content d)))
+                (recur function-name function-arguments tool-call-id))
+
+              ;;  We're streaming the LLM response to enable the fastest response times.
+              ;;  For text, we just send each chunk as we receive it and count on consumers
+              ;;  to do whatever coalescing they need (eg. to pass full sentences to TTS)
+              ;;
+              ;;  If the LLM response is a function call, we'll do some coalescing here.
+              ;;  We accumulate all the arguments for the rest of the streamed response, then when
+              ;;  the response is done, we package up all the arguments and the function name and
+              ;;  send a frame containing the function name and the arguments.
+              tool-call
+              (let [{:keys [arguments name]} (:function tool-call)
+                    tci (:id tool-call)]
+                (recur (or function-name name)
+                       (str function-arguments arguments)
+                       (or tool-call-id tci)))
+
+              ;; Should never get to this point
+              :else
+              (recur function-name function-arguments tool-call-id))))))))
 
 (defmethod pipeline/create-processor :processor.llm/openai
   [id]
@@ -171,31 +208,17 @@
       (m/decode OpenAILLMConfigSchema processor-config mt/default-value-transformer))
 
     (process-frame [_ pipeline processor-config frame]
-      (let [{:llm/keys [model] :openai/keys [api-key]} processor-config]
-        ;; Start request only when the last message in the context is by the user
-        (cond
-          (and (frame/context-messages? frame)
-               (u/user-last-message? (:frame/data frame))
-               (not (pipeline/interrupted? @pipeline)))
-          (do
-            (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
-            (let [stream-ch (stream-openai-chat-completion {:model model
-                                                            :api-key api-key
-                                                            :messages (:frame/data frame)})]
-              (swap! pipeline assoc-in [id :stream-ch] stream-ch)
-              (a/go-loop []
-                (when-let [chunk (a/<! stream-ch)]
-                  (if (= chunk :done)
-                    (do
-                      (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
-                      (swap! pipeline update-in [id] dissoc :stream-ch))
-                    (do
-                      (pipeline/send-frame! pipeline (frame/llm-text-chunk (u/token-content chunk)))
-                      (recur)))))))
+      (cond
+        (and (frame/context-messages? frame)
+             ;; LLM shouldn't respond to itself
+             (not (u/assistant-last-message? (:frame/data frame)))
+             (not (pipeline/interrupted? @pipeline)))
+        (process-context-frame id pipeline processor-config frame)
 
-          ;; If interrupt-start frame is sent, we cancel the current token
-          ;; generation if one is in progress
-          (frame/control-interrupt-start? frame)
-          (when-let [stream-ch (get-in @pipeline [id :stream-ch])]
-            (a/close! stream-ch)
-            (swap! pipeline update-in [id] dissoc :stream-ch)))))))
+        ;; If interrupt-start frame is sent, we cancel the current token
+        ;; generation if one is in progress
+        (frame/control-interrupt-start? frame)
+        (when-let [stream-ch (get-in @pipeline [id :stream-ch])]
+          ;; Closing the stream-ch, prevents new events to be put on it
+          (a/close! stream-ch)
+          (swap! pipeline update-in [id] dissoc :stream-ch))))))

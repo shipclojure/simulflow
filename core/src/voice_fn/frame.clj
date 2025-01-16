@@ -121,6 +121,18 @@
   "Indicates the end of an LLM response"
   :frame.llm/response-end)
 
+(defframe llm-tools-call-request
+  "Frame containing a tool call request. Used when the LLM assistant wants to
+  invoke a function to answer a user question. A tool-call-request should contain:
+  - :function-name - name of the function to call (this needs to be registered at pipeline creation)
+
+  - :arguments - map of arguments (as described in the function registration)
+
+  - :tool-call-id - the call-id. When the result is pushed back to the LLM
+    assistant, it will recognize the results based on this ID
+"
+  :frame.llm/tool-request)
+
 ;;
 ;; User Interaction Frames
 ;; Frames for handling user speech events

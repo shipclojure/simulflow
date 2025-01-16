@@ -10,6 +10,7 @@
         org.clojure/java.data {:mvn/version "1.2.107"}
         ring/ring-core {:mvn/version "1.13.0"}
         hato/hato {:mvn/version "1.0.0"}
+        better-cond/better-cond {:mvn/version "2.1.5"}
         net.clojars.wkok/openai-clojure {:mvn/version "0.22.0"}}
  :aliases
  {:build {:deps {io.github.clojure/tools.build {:mvn/version "0.9.4"}
@@ -17,7 +18,8 @@
           :ns-default build}
   :run {:main-opts ["-m" "voice-fn.transport.local.audio"]
         :exec-fn voice-fn.transport.local.audio/main}
-  :dev {:extra-deps {djblue/portal {:mvn/version "0.58.5"}
+  :dev {:extra-paths ["dev"]
+        :extra-deps {djblue/portal {:mvn/version "0.58.5"}
                      criterium/criterium {:mvn/version "0.4.6"}
                      clj-kondo/clj-kondo {:mvn/version "2024.11.14"}}}
   :cider-clj {:extra-deps {cider/cider-nrepl {:mvn/version "0.51.1"}}
@@ -30,6 +32,10 @@
                       midje/midje {:mvn/version "1.10.10"}
                       lambdaisland/kaocha           {:mvn/version "1.0.732"}
                       lambdaisland/kaocha-junit-xml {:mvn/version "0.0.76"}}}
+  :with-examples {:extra-deps {org.clojure/data.xml {:mvn/version "0.0.8"}
+                               ring/ring-jetty-adapter {:mvn/version "1.13.0"}
+                               metosin/reitit {:mvn/version "0.7.2"}}
+                  :extra-paths ["../examples/src"]}
   :clj-kondo
   {:replace-deps {clj-kondo/clj-kondo {:mvn/version "RELEASE"}}
    :main-opts ["-m" "clj-kondo.main"]}}}
