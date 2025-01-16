@@ -74,7 +74,20 @@
                      :audio-out/channels 1
                      :pipeline/supports-interrupt? true
                      :pipeline/language :en
-                     :llm/context [{:role "system" :content  "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}]
+                     :llm/context {:messages [{:role "system"
+                                               :content  "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}]
+                                   :tools [{:type :function
+                                            :function
+                                            {:name "get_weather"
+                                             :description "Get the current weather of a location"
+                                             :parameters {:type :object
+                                                          :required [:town]
+                                                          :properties {:town {:type :string
+                                                                              :description "Town for which to retrieve the current weather"}}
+                                                          :additionalProperties false}
+                                             :strict true}}]}
+                     :llm/registered-functions {"get_weather" (fn [params]
+                                                                (str "The weather in " (:town params) " is 23 Celsius and sunny"))}
                      :transport/in-ch in
                      :transport/out-ch out}
    :pipeline/processors [;; Twilio transport

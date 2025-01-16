@@ -491,6 +491,12 @@
                [:parameters LLMFunctionCallParameters]
                [:strict {:optional true} :boolean]]]])
 
+(def LLMContext
+  [:map
+   [:messages LLMContextMessages]
+   [:tools {:optional true} [:vector LLMFunctionToolDefinition]]
+   [:tool-choice {:optional true :default :auto} ToolChoice]])
+
 (def CoreAsyncChannel
   [:fn
    {:error/message "Must be a core.async channel"
