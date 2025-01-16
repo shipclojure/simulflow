@@ -21,24 +21,28 @@
 
 (facts
   "About the openai llm"
-  (let [in (a/chan 1024)
-        out (a/chan 1024)
-        pipeline (ts/create-test-pipeline
-                   {:transport/in-ch in
-                    :transport/out-ch out}
-                   [{:processor/id :test/processor-observer}
-                    {:processor/id :processor.llm/openai
-                     :processor/config {:openai/api-key "sk-123123123123123123123123123123123123123123123123"}}])]
-    (fact
-      "processor puts a tool-request-frame on the pipeline"
-      (with-redefs [sut/stream-openai-chat-completion (fn [_params]
-                                                        (let [stream-ch (a/chan 1024)]
-                                                          (a/onto-chan! stream-ch mock/mock-tool-call-response)
-                                                          stream-ch))]
+
+  (fact
+    "processor puts a tool-request-frame on the pipeline"
+    (with-redefs [sut/stream-openai-chat-completion (fn [_params]
+                                                      (let [stream-ch (a/chan 1024)]
+                                                        (a/onto-chan! stream-ch mock/mock-tool-call-response)
+                                                        stream-ch))]
+      (let [in (a/chan 1024)
+            out (a/chan 1024)
+            pipeline (ts/create-test-pipeline
+                       {:transport/in-ch in
+                        :transport/out-ch out}
+                       [{:processor/id :test/processor-observer}
+                        {:processor/id :processor.llm/openai
+                         :processor/config {:openai/api-key "sk-123123123123123123123123123123123123123123123123"}}])]
         (pipeline/start-pipeline! pipeline)
         (pipeline/send-frame! pipeline (frame/context-messages [{:role :user :content "hello"}]))
         (a/<!! (a/timeout 200)) ;; let llm process the tool call chunks
-        (get-in @pipeline [:test/processor :processed-frames 0 :frame/data]) => {:arguments {:date "2023-10-10" :fields ["price" "volume"] :ticker "MSFT"}
-                                                                                 :function-name "retrieve_latest_stock_data"
-                                                                                 :tool-call-id "call_frPVnoe8ruDicw50T8sLHki7"}
+        (let [frame (get-in @pipeline [:test/processor :processed-frames 0])]
+          (frame/llm-tools-call-request? frame) => true
+          (:frame/data frame)  => {:arguments {:date "2023-10-10" :fields ["price" "volume"] :ticker "MSFT"}
+                                   :function-name "retrieve_latest_stock_data"
+                                   :tool-call-id "call_frPVnoe8ruDicw50T8sLHki7"})
+
         (pipeline/stop-pipeline! pipeline)))))
