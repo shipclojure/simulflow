@@ -16,7 +16,7 @@ CLOCK: [2025-01-03 Fri 15:36]--[2025-01-03 Fri 16:01] =>  0:25
 CLOCK: [2025-01-03 Fri 11:01]--[2025-01-03 Fri 11:26] =>  0:25
 :END:
 
-* TODO Add pipeline interruptions
+* TODO Add pipeline interruptions :mvp:
 
 ** DONE Add assembler that takes in interim transcripts based on VAD
 CLOSED: [2025-01-06 Mon 16:35]
@@ -58,10 +58,12 @@ CLOCK: [2025-01-08 Wed 10:45]--[2025-01-08 Wed 11:10] =>  0:25
 CLOCK: [2025-01-08 Wed 08:29]--[2025-01-08 Wed 08:54] =>  0:25
 :END:
 
-** TODO Make assistant context aggregator support interrupt
-* TODO Add support for first message greeting in the pipeline
-* TODO Add tools calls support
+** TODO Make assistant context aggregator support interrupt :mvp:
+* TODO Add support for first message greeting in the pipeline :mvp:
+* TODO Add tools calls support :mvp:
+DEADLINE: <2025-01-17 Fri>
 :LOGBOOK:
+CLOCK: [2025-01-18 Sat 06:36]--[2025-01-18 Sat 06:41] =>  0:05
 CLOCK: [2025-01-16 Thu 19:19]--[2025-01-16 Thu 19:44] =>  0:25
 CLOCK: [2025-01-15 Wed 08:53]--[2025-01-15 Wed 09:18] =>  0:25
 CLOCK: [2025-01-15 Wed 08:16]--[2025-01-15 Wed 08:41] =>  0:25
@@ -72,14 +74,13 @@ CLOCK: [2025-01-14 Tue 06:25]--[2025-01-14 Tue 06:50] =>  0:25
 * TODO Add support for [[https://github.com/fixie-ai/ultravox][ultravox]]
 
 * TODO Add support for Silero VAD
+DEADLINE: <2025-01-20 Mon 20:00>
 :LOGBOOK:
 CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
 :END:
 * TODO Add support for google gemini
 
 * TODO Add support for telnyx transport
-
-* TODO Add support for xAI text LLM
 
 * TODO Add support for openai realtime API
 
