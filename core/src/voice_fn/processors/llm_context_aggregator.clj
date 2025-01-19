@@ -7,23 +7,25 @@
    [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]))
 
-(defn concat-context
+(defn concat-context-messages
   "Concat to context a new message. If the last message from the context is from
   the same role, concattenate in the same context object.
   (concat-context [{:role :system :content \"Hello\"}] :system \", world\")
   ;; => [{:role :system :content \"Hello, world\"}]
   "
   ([context entry]
-   (concat-context context (:role entry) (:content entry)))
+   (if (vector? entry)
+     (reduce concat-context-messages context entry)
+     (concat-context-messages context (:role entry) (:content entry))))
   ([context role content]
    (let [last-entry (last context)
          last-entry-role (when (and last-entry (:role last-entry)) (name (:role last-entry)))]
      (if (= last-entry-role (name role))
        (into (vec (butlast context))
-             [{:role (name role)
+             [{:role role
                :content (str (:content last-entry) " " content)}])
        (into context
-             [{:role (name role) :content content}])))))
+             [{:role role :content content}])))))
 
 (defn process-aggregator-frame
   "Use cases implemented:
@@ -58,19 +60,20 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
           (let [current-aggregation (get-in @pipeline [type :aggregation-state :aggregation])]
             (when (and (string? current-aggregation)
                        (not= "" (str/trim current-aggregation)))
-              (let [llm-context (concat-context
-                                  (get-in @pipeline [:pipeline/config :llm/context])
-                                  role
-                                  current-aggregation)]
+              (let [old-context (get-in @pipeline [:pipeline/config :llm/context])
+                    llm-messages (concat-context-messages
+                                   (:messages old-context)
+                                   role
+                                   current-aggregation)]
                 (when debug?
-                  (t/log! {:level :debug :id type} ["Sending new context" llm-context]))
+                  (t/log! {:level :debug :id type} ["Sending new context messages" llm-messages]))
                 ;; Update state first so later invocations of aggregation
                 ;; processor to have the latest result
                 (swap! pipeline (fn [p]
                                   (-> p
-                                      (assoc-in [:pipeline/config :llm/context] llm-context)
+                                      (assoc-in [:pipeline/config :llm/context :messages] llm-messages)
                                       (assoc-in [type :aggregation-state :aggregation] ""))))
-                (send-frame! pipeline (frame/context-messages llm-context))))))]
+                (send-frame! pipeline (frame/context-messages old-context))))))]
     (cond
       (start-frame? frame)
       ,(do
@@ -143,6 +146,22 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
     ;; maybe send new context
     (when @send-aggregation? (maybe-send-aggregation!))))
 
+(defn handle-tool-call
+  "Calls the registered function associated with the tool-call request if one
+  exists. Emits a context frame with the added call result if it succeeded.
+
+  pipeline - pipeline state snapshot
+  frame - llm-tool-call-request frame"
+  [pipeline frame]
+  (let [registered-tools (get-in pipeline [:pipeline/config :llm/registered-functions])
+        tool (:frame/data frame)]
+    (when-let [f (get registered-tools (:funtion-name tool))]
+      (try
+        (let [tool-result (f (:arguments tool))]
+          (frame/context-messages)
+          ())
+        (catch Exception e)))))
+
 (def ContextAggregatorConfig
   [:map
    {:closed true
@@ -203,7 +222,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
     (accepted-frames [_]
       #{:frame.llm/response-start
         :frame.llm/text-chunk
-        :frame.llm/response-end})
+        :frame.llm/response-end
+        :frame.llm/tool-request})
 
     (make-processor-config [_ pipeline-config processor-config]
       ;; defaults
@@ -212,5 +232,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         processor-config
         {:aggregator/handles-interrupt? (:pipeline/supports-interrupt? pipeline-config)}))
 
-    (process-frame [this pipeline processor-config frame]
-      (process-aggregator-frame (p/processor-id this) pipeline processor-config frame))))
+    (process-frame [_ pipeline processor-config frame]
+
+      (cond
+        (frame/llm-tools-call-request? frame) (handle-tool-call @pipeline frame)
+        :else (process-aggregator-frame id pipeline processor-config frame)))))

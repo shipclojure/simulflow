@@ -2,46 +2,49 @@
   (:require
    [clojure.core.async :as a]
    [clojure.test :refer [deftest is testing]]
+   [midje.sweet :refer [fact facts]]
    [voice-fn.core]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.llm-context-aggregator :as sut]))
 
-(deftest concat-context-test
-  (testing "concatenates new message when role differs"
-    (is (= [{:role "system" :content "Hello"}
-            {:role "user" :content "World"}]
-           (sut/concat-context
-             [{:role "system" :content "Hello"}]
-             :user
-             "World"))))
+(facts "about concat-context"
+  (fact "concatenates new message when role differs"
+        (sut/concat-context-messages
+          [{:role "system" :content "Hello"}]
+          :user
+          "World") => [{:role "system", :content "Hello"} {:role :user, :content "World"}])
 
-  (testing "combines messages with same role"
-    (is (= [{:role "system" :content "Hello World"}]
-           (sut/concat-context
-             [{:role "system" :content "Hello"}]
-             :system
-             "World"))))
+  (fact "combines messages with same role"
+    (sut/concat-context-messages
+      [{:role "system" :content "Hello"}]
+      :system
+      "World") => [{:role :system, :content "Hello World"}])
 
-  (testing "handles empty context"
-    (is (= [{:role "user" :content "Hello"}]
-           (sut/concat-context
-             []
-             :user
-             "Hello"))))
+  (fact "handles empty context"
+    (sut/concat-context-messages
+      []
+      :user
+      "Hello") => [{:role :user, :content "Hello"}])
 
-  (testing "accepts both keyword and string roles"
-    (is (= [{:role "system" :content "Hello World"}]
-           (sut/concat-context
-             [{:role "system" :content "Hello"}]
-             :system
-             "World")))
+  (fact "accepts both keyword and string roles"
+    (sut/concat-context-messages
+      [{:role "system" :content "Hello"}]
+      :system
+      "World") => [{:role :system, :content "Hello World"}]
 
-    (is (= [{:role "system" :content "Hello World"}]
-           (sut/concat-context
-             [{:role :system :content "Hello"}]
-             "system"
-             "World")))))
+    (sut/concat-context-messages
+      [{:role :system :content "Hello"}]
+      "system"
+      "World") => [{:role "system", :content "Hello World"}])
+
+  (fact
+    "accepts array as entry with multiple entries"
+    (sut/concat-context-messages
+      [{:role :system :content "Hello"}]
+      [{:role :user :content "Hi there"}
+       {:role :assistant :content "How are you doing?"}]) => [{:role :system :content "Hello"}
+                                                              {:role :user :content "Hi there"}
+                                                              {:role :assistant :content "How are you doing?"}]))
 
 (defn make-test-pipeline []
   (let [in-ch (a/chan 1)

@@ -86,8 +86,9 @@
                                                                               :description "Town for which to retrieve the current weather"}}
                                                           :additionalProperties false}
                                              :strict true}}]}
-                     :llm/registered-functions {"get_weather" (fn [params]
-                                                                (str "The weather in " (:town params) " is 23 Celsius and sunny"))}
+                     :llm/registered-functions {"get_weather"
+                                                (fn [params]
+                                                  (str "The weather in " (:town params) " is 23 Celsius and sunny"))}
                      :transport/in-ch in
                      :transport/out-ch out}
    :pipeline/processors [;; Twilio transport

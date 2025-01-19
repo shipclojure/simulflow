@@ -8,25 +8,26 @@
 
 ;; LLM Messages
 
-(facts "about schema for openai format llm messages"
-  (let []
-    (fact "about user messages"
-          (m/validate sut/LLMUserMessage mock/stock-trade-user-msg) => true
-          (m/validate sut/LLMUserMessage mock/stock-trade-user-msg-deprecated) => true
-          (me/humanize (m/explain sut/LLMUserMessage {:role :user
-                                                      :content [{:type :hello
-                                                                 :content "hello world"}]}))
-          => {:content ["should be a string"]}
-          (me/humanize (m/explain sut/LLMUserMessage {:role :user
-                                                      :content [{:type "text"
-                                                                 :content 123}]}))
-          =>  {:content ["should be a string"]})
+(facts
+  "about schema for openai format llm messages"
 
-    (fact "full set of messages is valid"
-          (m/validate sut/LLMContextMessages mock/stock-trade-conversation) => true)
-    (fact "invalid message is called out"
-          (me/humanize (m/explain sut/LLMContextMessages (conj mock/stock-trade-conversation :invalid)))
-          => [nil nil nil nil nil ["invalid type" "invalid type" "invalid type" "invalid type" "invalid type"]])))
+  (fact "about user messages"
+        (m/validate sut/LLMUserMessage mock/stock-trade-user-msg) => true
+        (m/validate sut/LLMUserMessage mock/stock-trade-user-msg-deprecated) => true
+        (me/humanize (m/explain sut/LLMUserMessage {:role :user
+                                                    :content [{:type :hello
+                                                               :content "hello world"}]}))
+        => {:content ["should be a string"]}
+        (me/humanize (m/explain sut/LLMUserMessage {:role :user
+                                                    :content [{:type "text"
+                                                               :content 123}]}))
+        =>  {:content ["should be a string"]})
+
+  (fact "full set of messages is valid"
+        (m/validate sut/LLMContextMessages mock/stock-trade-conversation) => true)
+  (fact "invalid message is called out"
+        (me/humanize (m/explain sut/LLMContextMessages (conj mock/stock-trade-conversation :invalid)))
+        => [nil nil nil nil nil ["invalid type" "invalid type" "invalid type" "invalid type" "invalid type"]]))
 
 ;; Tool Definition
 
