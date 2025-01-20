@@ -209,7 +209,7 @@
 
     (process-frame [_ pipeline processor-config frame]
       (cond
-        (and (frame/context-messages? frame)
+        (and (frame/llm-context? frame)
              ;; LLM shouldn't respond to itself
              (not (u/assistant-last-message? (:frame/data frame)))
              (not (pipeline/interrupted? @pipeline)))

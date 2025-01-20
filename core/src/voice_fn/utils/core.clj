@@ -36,7 +36,9 @@
 
 (defn json-str
   [m]
-  (json/write-value-as-string m))
+  (if (string? m)
+    m
+    (json/write-value-as-string m)))
 
 (defn search-params
   [url]

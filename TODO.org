@@ -63,7 +63,8 @@ CLOCK: [2025-01-08 Wed 08:29]--[2025-01-08 Wed 08:54] =>  0:25
 * TODO Add tools calls support :mvp:
 DEADLINE: <2025-01-17 Fri>
 :LOGBOOK:
-CLOCK: [2025-01-19 Dum 07:56]
+CLOCK: [2025-01-20 Lun 07:26]--[2025-01-20 Lun 07:51] =>  0:25
+CLOCK: [2025-01-19 Dum 07:56]--[2025-01-19 Dum 08:21] =>  0:25
 CLOCK: [2025-01-18 Sat 06:36]--[2025-01-18 Sat 06:41] =>  0:05
 CLOCK: [2025-01-16 Thu 19:19]--[2025-01-16 Thu 19:44] =>  0:25
 CLOCK: [2025-01-15 Wed 08:53]--[2025-01-15 Wed 09:18] =>  0:25
@@ -88,3 +89,16 @@ CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
 * TODO Research webrtc support
 
 * TODO Add LLM usage metrics based on chunks responses [[https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage][API docs for usage]]
+
+* DONE Research a way to add clj-kondo schema type hints for frames in the macro
+CLOSED: [2025-01-20 Lun 07:43]
+#+begin_src clojure
+(defframe my-cool-frame
+  "This is a cool frame"
+  {:type :frame.cool/hello
+   :schema [:map
+            [:messages LLMContextMessages]
+            [:tools LLMTools]]})
+#+end_src
+
+* TODO research [[https://github.com/phronmophobic/clj-media][clojure-media]] for dedicated ffmpeg support for media conversion

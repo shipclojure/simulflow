@@ -37,7 +37,7 @@
                         {:processor/id :processor.llm/openai
                          :processor/config {:openai/api-key "sk-123123123123123123123123123123123123123123123123"}}])]
         (pipeline/start-pipeline! pipeline)
-        (pipeline/send-frame! pipeline (frame/context-messages [{:role :user :content "hello"}]))
+        (pipeline/send-frame! pipeline (frame/llm-context {:messages [{:role :user :content "hello"}]}))
         (a/<!! (a/timeout 200)) ;; let llm process the tool call chunks
         (let [frame (get-in @pipeline [:test/processor :processed-frames 0])]
           (frame/llm-tools-call-request? frame) => true

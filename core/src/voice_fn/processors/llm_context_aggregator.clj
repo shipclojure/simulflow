@@ -5,7 +5,8 @@
    [voice-fn.frame :as frame]
    [voice-fn.pipeline :as pipeline :refer [send-frame!]]
    [voice-fn.protocol :as p]
-   [voice-fn.schema :as schema]))
+   [voice-fn.schema :as schema]
+   [voice-fn.utils.core :as u]))
 
 (defn concat-context-messages
   "Concat to context a new message. If the last message from the context is from
@@ -73,7 +74,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                                   (-> p
                                       (assoc-in [:pipeline/config :llm/context :messages] llm-messages)
                                       (assoc-in [type :aggregation-state :aggregation] ""))))
-                (send-frame! pipeline (frame/context-messages old-context))))))]
+                (send-frame! pipeline (frame/llm-context (assoc old-context :messages llm-messages)))))))]
     (cond
       (start-frame? frame)
       ,(do
@@ -146,6 +147,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
     ;; maybe send new context
     (when @send-aggregation? (maybe-send-aggregation!))))
 
+;; TODO This should be async
 (defn handle-tool-call
   "Calls the registered function associated with the tool-call request if one
   exists. Emits a context frame with the added call result if it succeeded.
@@ -154,13 +156,30 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   frame - llm-tool-call-request frame"
   [pipeline frame]
   (let [registered-tools (get-in pipeline [:pipeline/config :llm/registered-functions])
-        tool (:frame/data frame)]
+        old-context (get-in pipeline [:pipeline/config :llm/context])
+        tool (:frame/data frame)
+        tool-id (:tool-call-id tool)
+        tool-call-message {:role :assistant
+                           :tool_calls [{:id tool-id
+                                         :type :function
+                                         :function {:name (:function-name tool)
+                                                    :arguments (:arguments tool)}}]}]
     (when-let [f (get registered-tools (:funtion-name tool))]
       (try
-        (let [tool-result (f (:arguments tool))]
-          (frame/context-messages)
-          ())
-        (catch Exception e)))))
+        (let [tool-result (f (:arguments tool))
+              new-messages [tool-call-message
+                            {:role :tool
+                             :content [{:type :text
+                                        :text (u/json-str tool-result)}]
+                             :tool_call_id tool-id}]]
+          (frame/llm-context (update-in old-context [:messages] concat-context-messages new-messages)))
+        (catch Exception e
+          (let [error-messages [tool-call-message
+                                {:role :tool
+                                 :content [{:type :text
+                                            :text (str "Something went wrong getting. Error: " (.getMessage e))}]
+                                 :tool_call_id tool-id}]]
+            (frame/llm-context (update-in old-context [:messages] concat-context-messages error-messages))))))))
 
 (def ContextAggregatorConfig
   [:map
