@@ -139,9 +139,9 @@
     ;; Start request only when the last message in the context is by the user
 
     (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
-    (let [stream-ch (stream-openai-chat-completion {:model model
-                                                    :api-key api-key
-                                                    :messages (:frame/data frame)})]
+    (let [stream-ch (stream-openai-chat-completion (merge {:model model
+                                                           :api-key api-key}
+                                                          (:frame/data frame)))]
       (swap! pipeline assoc-in [id :stream-ch] stream-ch)
       (a/go-loop [function-name nil
                   function-arguments nil
