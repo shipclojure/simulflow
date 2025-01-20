@@ -25,7 +25,7 @@
     :audio-out/encoding :pcm-signed
     :audio-out/sample-size-bits 16
     :pipeline/language :en
-    :llm/context [{:role "system" :content "Test system"}]
+    :llm/context {:messages [{:role "system" :content "Test system"}]}
     :transport/in-ch nil
     :transport/out-ch nil}})
 
