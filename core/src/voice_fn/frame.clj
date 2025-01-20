@@ -90,6 +90,28 @@
   {:type :frame.system/start
    :schema :boolean})
 
+(def FramePredicate
+  [:fn {:error/message "Must be a function that takes a frame and returns boolean"
+        :gen/fmap (fn [_] system-start?)} ; Example generator
+   (fn [f]
+     (and (fn? f)
+          (try
+            (boolean? (f (create-frame :test/frame {})))
+            (catch Exception _
+              false))))])
+
+(def FrameCreator
+  [:fn
+   {:error/message "Must be a function that takes type and data and returns a valid frame"
+    :gen/fmap (fn [_] system-start)} ; Example generator
+   (fn [f]
+     (and (fn? f)
+          (try
+            (let [result (f {:test "data"})]
+              (frame? result))
+            (catch Exception _
+              false))))])
+
 (defframe system-stop
   "Frame sent when the pipeline stops"
   {:type :frame.system/stop})

@@ -96,7 +96,7 @@
       (let [{:llm/keys [model] :groq/keys [api-key]} processor-config]
         ;; Start request only when the last message in the context is by the user
         (cond
-          (and (frame/context-messages? frame)
+          (and (frame/llm-context? frame)
                (u/user-last-message? (:frame/data frame))
                (not (pipeline/interrupted? @pipeline)))
           (do

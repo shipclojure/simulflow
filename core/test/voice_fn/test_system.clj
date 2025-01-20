@@ -28,7 +28,7 @@
                               :audio-out/channels 2
                               :pipeline/supports-interrupt? true
                               :pipeline/language :en
-                              :llm/context [{:role "system" :content  "You are a helpful assistant. Respond concisely."}]})
+                              :llm/context {:messages [{:role "system" :content  "You are a helpful assistant. Respond concisely."}]}})
 
 (defn create-test-pipeline
   ([config]

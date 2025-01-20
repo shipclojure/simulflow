@@ -2,8 +2,7 @@
   (:require
    [clojure.core.async.impl.protocols :as async-protocols]
    [malli.core :as m]
-   [malli.error :as me]
-   [voice-fn.frame :as frame]))
+   [malli.error :as me]))
 
 (defn flex-enum
   "Creates a flexible enum that accepts both keywords and their string versions.
@@ -502,25 +501,3 @@
    {:error/message "Must be a core.async channel"
     :description "core.async channel"}
    #(satisfies? async-protocols/Channel %)])
-
-(def FramePredicate
-  [:fn {:error/message "Must be a function that takes a frame and returns boolean"
-        :gen/fmap (fn [_] frame/system-start?)} ; Example generator
-   (fn [f]
-     (and (fn? f)
-          (try
-            (boolean? (f (frame/create-frame :test/frame {})))
-            (catch Exception _
-              false))))])
-
-(def FrameCreator
-  [:fn
-   {:error/message "Must be a function that takes type and data and returns a valid frame"
-    :gen/fmap (fn [_] frame/system-start)} ; Example generator
-   (fn [f]
-     (and (fn? f)
-          (try
-            (let [result (f {:test "data"})]
-              (frame/frame? result))
-            (catch Exception _
-              false))))])

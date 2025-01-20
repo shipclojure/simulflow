@@ -186,12 +186,12 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    {:closed true
     :description "Configuration for the LLM context aggregator processor"}
    [:messages/role schema/LLMContextMessageRole]
-   [:aggregator/start-frame? schema/FramePredicate]
+   [:aggregator/start-frame? frame/FramePredicate]
    [:aggregator/debug? {:optional true :default false} :boolean]
-   [:aggregator/end-frame? schema/FramePredicate]
-   [:aggregator/interim-results-frame? {:optional true} [:maybe schema/FramePredicate]]
+   [:aggregator/end-frame? frame/FramePredicate]
+   [:aggregator/interim-results-frame? {:optional true} [:maybe frame/FramePredicate]]
    [:aggregator/handles-interrupt? {:default false} :boolean]
-   [:aggregator/accumulator-frame? schema/FramePredicate]])
+   [:aggregator/accumulator-frame? frame/FramePredicate]])
 
 ;; Aggregator for user
 
