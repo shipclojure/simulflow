@@ -114,11 +114,17 @@
 
 (defframe system-stop
   "Frame sent when the pipeline stops"
-  {:type :frame.system/stop})
+  {:type :frame.system/stop
+   :schema :boolean})
 
 (defframe system-error
   "General error frame"
   {:type :frame.system/error})
+
+(defframe system-config-change
+  "Frame with configuration changes for the running pipeline"
+  {:type :frame.system/config-change
+   :schema schema/PartialConfigSchema})
 
 ;;
 ;; Audio Frames
@@ -127,7 +133,8 @@
 
 (defframe audio-input-raw
   "Raw audio input frame from input transport"
-  {:type :frame.audio/input-raw})
+  {:type :frame.audio/input-raw
+   :schema schema/ByteArray})
 
 (defframe audio-output-raw
   "Raw audio output frame for playback through output transport"

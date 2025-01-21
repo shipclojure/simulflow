@@ -4,6 +4,7 @@
    [jsonista.core :as json])
   (:import
    (java.util Base64)))
+;; => nil
 
 (defmulti encode-base64 (fn [s] (class s)))
 
@@ -126,3 +127,26 @@
   (#{:assistant "assistant"} (-> context last :role)))
 
 (def token-content "Extract token content from streaming chat completions" (comp :content :delta first :choices))
+
+(defn without-nils
+  "Given a map, return a map removing key-value
+  pairs when value is `nil`."
+  ([]
+   (remove (comp nil? val)))
+  ([data]
+   (reduce-kv (fn [data k v]
+                (if (nil? v)
+                  (dissoc data k)
+                  data))
+              data
+              data)))
+
+(defn deep-merge [& maps]
+  (letfn [(reconcile-keys [val-in-result val-in-latter]
+            (if (and (map? val-in-result)
+                     (map? val-in-latter))
+              (merge-with reconcile-keys val-in-result val-in-latter)
+              val-in-latter))
+          (reconcile-maps [result latter]
+            (merge-with reconcile-keys result latter))]
+    (reduce reconcile-maps maps)))
