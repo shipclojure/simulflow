@@ -23,22 +23,22 @@
    :ulaw :mulaw
    :alaw :alaw})
 
-(defn make-deepgram-url
+(defn make-websocket-url
   [{:transcription/keys [interim-results? punctuate? model sample-rate utterance-end-ms language  vad-events? smart-format? encoding channels]
     :or {interim-results? false
          punctuate? false}}]
-  (u/append-search-params deepgram-url {:encoding encoding
-                                        :language language
-                                        :sample_rate sample-rate
-                                        :model model
-                                        :smart_format smart-format?
-                                        :channels channels
-                                        :vad_events vad-events?
-                                        :utterance_end_ms utterance-end-ms
-                                        :interim_results interim-results?
-                                        :punctuate punctuate?}))
+  (u/append-search-params deepgram-url (u/without-nils {:encoding encoding
+                                                        :language language
+                                                        :sample_rate sample-rate
+                                                        :model model
+                                                        :smart_format smart-format?
+                                                        :channels channels
+                                                        :vad_events vad-events?
+                                                        :utterance_end_ms utterance-end-ms
+                                                        :interim_results interim-results?
+                                                        :punctuate punctuate?})))
 
-(defn- transcript
+(defn transcript
   [m]
   (-> m :channel :alternatives first :transcript))
 
@@ -73,7 +73,7 @@
       (do
 
         (swap! pipeline update-in [type :websocket/reconnect-count] (fnil inc 0))
-        (let [websocket-url (make-deepgram-url processor-config)
+        (let [websocket-url (make-websocket-url processor-config)
               conn-config (create-connection-config
                             type
                             pipeline

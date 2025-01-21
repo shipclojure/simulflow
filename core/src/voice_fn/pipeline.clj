@@ -46,9 +46,9 @@
   [{pipeline-config :pipeline/config
     processors :pipeline/processors}]
   (let [;; Validate main pipeline config
-        pipeline-valid? (m/validate PipelineConfigSchema pipeline-config)
+        pipeline-valid? (m/validate schema/PipelineConfigSchema pipeline-config)
         pipeline-errors (when-not pipeline-valid?
-                          (me/humanize (m/explain PipelineConfigSchema pipeline-config)))
+                          (me/humanize (m/explain schema/PipelineConfigSchema pipeline-config)))
 
         ;; Validate each processor's config
         processor-results
