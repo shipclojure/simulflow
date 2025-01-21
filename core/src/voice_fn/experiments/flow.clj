@@ -92,10 +92,21 @@
                                          (t/log! {:level :error :id :deepgram-transcriptor} ["Error" e]))
                              :on-close (fn [_ws code reason]
                                          (t/log! {:level :info :id :deepgram-transcriptor} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason]))}
+                _ (t/log! "Connecting to transcription websocket")
                 ws-conn @(ws/websocket
                            websocket-url
                            conn-config)]
             {:websocket/conn ws-conn}))
+
+        ;; Close ws when pipeline stops
+        :transition (fn [{conn :websocket/conn} transition]
+                      (prn "This got called")
+                      (when (and (= transition ::flow/stop)
+                                 conn)
+                        (t/log! {:id :deepgram-transcriptor :level :debug} "Closing transcription websocket connection")
+                        (ws/send! conn deepgram/close-connection-payload)
+                        (ws/close! conn)))
+
         :transform (fn [{:websocket/keys [conn]} in-name frame]
                      (cond
                        (frame/audio-input-raw? frame)
@@ -108,5 +119,13 @@
                              (t/log! {:id :print-sink :level :info} ["Transcript: " (:frame/data frame)])))})}}
    :conns [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
            [[:transport-in :out] [:deepgram-transcriptor :in]]
-           [[:deepgram-transcriptor :out]] [[:print-sink :in]]]
+           [[:deepgram-transcriptor :out] [:print-sink :in]]]
    :args {:deepgram/api-key (secret [:deepgram :api-key])}})
+
+(comment
+  (def g (flow/create-flow real-gdef))
+
+  (def res (flow/start g))
+
+  (flow/resume g)
+  (flow/stop g))
