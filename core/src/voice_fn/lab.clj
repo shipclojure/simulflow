@@ -1,4 +1,5 @@
 (ns voice-fn.lab
+  "This is a gist demonstrating basic usage of clojure.core.async.flow"
   (:require
    [clojure.core.async :as async]
    [clojure.core.async.flow :as flow]
