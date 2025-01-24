@@ -58,43 +58,41 @@
 
 (facts
   "about user speech aggregation"
-  (let [pipeline (make-test-pipeline)
-        config sut/user-context-aggregator-options]
+  (let [config {:messages/role "user"
+                :llm/context {:messages [{:role :assistant :content "You are a helpful assistant"}]}
+                :aggregator/start-frame? frame/user-speech-start?
+                :aggregator/end-frame? frame/user-speech-stop?
+                :aggregator/accumulator-frame? frame/transcription?
+                :aggregator/interim-results-frame? frame/transcription-interim?
+                :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
+                :aggregator/debug? false}
+        state (partial merge config)
+        start-frame-state (state {:aggregating? true
+                                  :aggregation ""
+                                  :seen-end-frame? false
+                                  :seen-interim-results? false
+                                  :seen-start-frame? true})
+        first-aggregation-state (state {:aggregating? true
+                                        :aggregation "Hello there"
+                                        :seen-end-frame? false
+                                        :seen-interim-results? false
+                                        :seen-start-frame? true})]
 
-    (sut/process-aggregator-frame :context.aggregator/user pipeline config
-                                  (frame/user-speech-start true))
-    (fact "starts aggregation after user-speech-start frame"
-      (get-in @pipeline [:context.aggregator/user :aggregation-state :aggregating?])  => true)
+    (sut/aggregator-transform config nil
+      (frame/user-speech-start true)) => [start-frame-state]
 
-    (sut/process-aggregator-frame :context.aggregator/user pipeline config
-                                  (frame/transcription "Hello"))
-
-    (sut/process-aggregator-frame :context.aggregator/user pipeline config
-                                  (frame/user-speech-stop true))
-
-    (fact "handles basic aggregation correctly"
-          (get-in @pipeline [:pipeline/config :llm/context]) => [{:role "system" :content "Initial context"}
-                                                                 {:role "user" :content "Hello"}])
-
-    (fact "handles interim results correctly"
-      (let [pipeline (make-test-pipeline)
-            config sut/user-context-aggregator-options]
-
-        (sut/process-aggregator-frame :context.aggregator/user pipeline config
-                                      (frame/user-speech-start true))
-
-        (sut/process-aggregator-frame :context.aggregator/user pipeline config
-                                      (frame/transcription-interim "Hel"))
-
-        (sut/process-aggregator-frame :context.aggregator/user pipeline config
-                                      (frame/transcription "Hello"))
-
-        (sut/process-aggregator-frame
-          :context.aggregator/user pipeline config
-          (frame/user-speech-stop true))
-
-        (get-in @pipeline [:pipeline/config :llm/context]) => [{:role "system" :content "Initial context"}
-                                                               {:role "user" :content "Hello"}]))))
+    (sut/aggregator-transform start-frame-state nil (frame/transcription "Hello there")) => [first-aggregation-state]
+    (let [[next-state {:keys [out]}] (sut/aggregator-transform first-aggregation-state nil (frame/user-speech-stop true))
+          frame (first out)]
+      next-state => (state {:aggregating? false
+                            :aggregation ""
+                            :seen-end-frame? false
+                            :seen-interim-results? false
+                            :seen-start-frame? false
+                            :llm/context {:messages [{:content "You are a helpful assistant"
+                                                      :role :assistant}
+                                                     {:content "Hello there" :role :user}]}})
+      (:frame/type frame) => :frame.llm/context)))
 
 (facts "about assistant response aggregation"
        (let [pipeline (make-test-pipeline)

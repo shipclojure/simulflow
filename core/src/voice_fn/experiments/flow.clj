@@ -151,6 +151,7 @@
                                    :transcription/sample-rate 8000}}
     :user-context-aggregator  {:proc context-aggregator-process
                                :args {:messages/role "user"
+                                      :llm/context {:messages [{:role :assistant :content "You are a helpful assistant"}]}
                                       :aggregator/start-frame? frame/user-speech-start?
                                       :aggregator/end-frame? frame/user-speech-stop?
                                       :aggregator/accumulator-frame? frame/transcription?

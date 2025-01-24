@@ -147,16 +147,17 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
     ;; maybe send new context
     (when @send-aggregation? (maybe-send-aggregation!))))
 
-(defn create-agg-frame
-  [{:keys [context aggregation-buf role new-aggregation]}]
-  (let [agg (str aggregation-buf new-aggregation)]
-    (when (and (string? agg)
-               (not= "" (str/trim agg)))
-      (frame/llm-context (assoc context
-                                :messages (concat-context-messages
-                                            (:messages context)
-                                            role
-                                            agg))))))
+(defn valid-aggregation?
+  [a]
+  (and (string? a)
+       (not= " "(str/trim a))))
+
+(defn next-context
+  [{:keys [context role aggregation]}]
+  (assoc context :messages (concat-context-messages
+                             (:messages context)
+                             role
+                             aggregation)))
 
 (defn aggregator-transform
   "Use cases implemented:
@@ -175,6 +176,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
  S I E T1 I T2 -> X
   "
   [state _ frame]
+  (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)})
+
   (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame? handles-interrupt?]
          :messages/keys [role]
          :llm/keys [context]
@@ -186,8 +189,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                       :seen-end-frame? false
                       :seen-interim-results? false)
 
-        frame-data (:frame/data frame)
-        aggregation-frame (create-agg-frame {:context context :role role :aggregation-buf aggregation})]
+        frame-data (:frame/data frame)]
     (cond
       (start-frame? frame)
       ,(do
@@ -216,11 +218,12 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
          ;; (i.e we have seen interim results but not the final
          ;; S E       -> No aggregation (len == 0), keep aggregating
          ;; S I E T   -> No aggregation when E arrives, keep aggregating until T
-         (let [aggregating? (or seen-interim-results? (zero? (count aggregation)))
+         (let [keep-aggregating? (or seen-interim-results? (zero? (count aggregation)))
                ;; Send the aggregation if we're not aggregating anymore (no more interim results)
-               send-aggregation? (not aggregating?)]
-           (if send-aggregation?
-             [(reset state) {:out [aggregation-frame]}]
+               send-agg? (not keep-aggregating?)]
+           (if send-agg?
+             (let [nc (next-context {:context context :aggregation aggregation :role role})]
+               [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
              [(assoc state
                      :seen-end-frame? true
                      :seen-start-frame? false
@@ -237,10 +240,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
          (if aggregating?
            (if seen-end-frame?
              ;; send aggregtation
-             [(reset state) {:out [(create-agg-frame {:context context
-                                                      :role role
-                                                      :new-aggregation new-agg
-                                                      :aggregation-buf aggregation})]}]
+             (let [nc (next-context {:context context :aggregation (str aggregation new-agg) :role role})]
+               [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
              [(assoc state
                      :aggregation (str aggregation new-agg)
                      :seen-interim-results? false)])
@@ -255,7 +256,10 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       ;; handle interruptions if the aggregator supports it
       (and (frame/control-interrupt-start? frame)
            handles-interrupt?)
-      ,[(reset state) (when aggregation-frame {:out [aggregation-frame]})]
+      ,(let [nc (next-context {:context context :aggregation aggregation :role role})
+             v? (valid-aggregation? aggregation)
+             next-state (if v? (assoc state :llm/context nc) state)]
+         [(reset next-state) (when (valid-aggregation? aggregation) {:out [(frame/llm-context nc)]})])
       :else [state])))
 
 ;; TODO This should be async
