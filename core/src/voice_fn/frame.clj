@@ -33,12 +33,6 @@
         (= frame-type :frame.control/interrupt-start)
         (= frame-type :frame.control/interrupt-stop))))
 
-(def BaseFrameSchema
-  [:map
-   [:frame/type :keyword]
-   [:frame/data :any]
-   [:frame/ts :int]])
-
 (defmacro defframe
   "Define a frame creator function and its predicate with schema validation.
    Usage: (defframe audio-input
@@ -46,12 +40,10 @@
                     {:type :frame.audio/input-raw
                      :schema [:map [:data AudioData]])}"
   [name docstring {:keys [type schema]}]
-  (let [frame-schema (if schema
-                       [:map
-                        [:frame/type [:= type]]
-                        [:frame/data schema]
-                        [:frame/ts :int]]
-                       BaseFrameSchema)
+  (let [frame-schema [:map
+                      [:frame/type [:= type]]
+                      [:frame/data (or schema :any)]
+                      [:frame/ts :any]]
         frame-schema-name (symbol (str name "-schema"))
         pred-name (symbol (str name "?"))]
     `(do
@@ -208,11 +200,13 @@
 
 (defframe user-speech-start
   "User started speaking"
-  {:type :frame.user/speech-start})
+  {:type :frame.user/speech-start
+   :schema :boolean})
 
 (defframe user-speech-stop
   "User stopped speaking"
-  {:type :frame.user/speech-stop})
+  {:type :frame.user/speech-stop
+   :scheam :boolean})
 
 ;;
 ;; Control Frames
@@ -221,15 +215,18 @@
 
 (defframe control-bot-interrupt
   "Bot should be interrupted"
-  {:type :frame.control/bot-interrupt})
+  {:type :frame.control/bot-interrupt
+   :schema :boolean})
 
 (defframe control-interrupt-start
   "Start pipeline interruption"
-  {:type :frame.control/interrupt-start})
+  {:type :frame.control/interrupt-start
+   :schema :boolean})
 
 (defframe control-interrupt-stop
   "Stop pipeline interruption"
-  {:type :frame.control/interrupt-stop})
+  {:type :frame.control/interrupt-stop
+   :schema :boolean})
 
 ;;
 ;; Input/Output Text Frames
