@@ -58,7 +58,7 @@
                    ws-read-chan (a/chan 1024)
                    ws-write-chan (a/chan 1024)
                    alive? (atom true)
-                   conn-config {:headers {"Authorization" (str "Token " (:deepgram/api-key args))}
+                   conn-config {:headers {"Authorization" (str "Token " (:transcription/api-key args))}
                                 :on-open (fn [_]
                                            (t/log! :info "Deepgram websocket connection open"))
                                 :on-message (fn [_ws ^HeapCharBuffer data _last?]
@@ -116,7 +116,8 @@
                       [state {:out frames}])
                     (cond
                       (frame/audio-input-raw? msg)
-                      [state {:ws-write [msg]}])))}))
+                      [state {:ws-write [msg]}]
+                      :else [state])))}))
 
 (def context-aggregator-process
   (flow/process
@@ -145,7 +146,7 @@
                                    :transcription/smart-format? true
                                    :transcription/model :nova-2
                                    :transcription/utterance-end-ms 1000
-                                   :transcription/language :ro
+                                   :transcription/language :en
                                    :transcription/encoding :mulaw
                                    :transcription/sample-rate 8000}}
     :user-context-aggregator  {:proc context-aggregator-process
@@ -155,7 +156,7 @@
                                       :aggregator/accumulator-frame? frame/transcription?
                                       :aggregator/interim-results-frame? frame/transcription-interim?
                                       :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
-                                      :aggregator/debug? true}}
+                                      :aggregator/debug? false}}
 
     :print-sink {:proc (flow/process
                          {:describe (fn [] {:ins {:in "Channel for receiving transcriptions"}})
