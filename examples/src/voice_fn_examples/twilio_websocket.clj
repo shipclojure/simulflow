@@ -1,6 +1,7 @@
 (ns voice-fn-examples.twilio-websocket
   (:require
    [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
    [clojure.data.xml :as xml]
    [malli.core :as malli]
    [malli.error :as me]
@@ -18,6 +19,7 @@
    [ring.websocket :as ws]
    [taoensso.telemere :as t]
    [voice-fn.core]
+   [voice-fn.experiments.flow :refer [gdef]]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.elevenlabs]
    [voice-fn.processors.groq]
@@ -145,8 +147,7 @@
 ;; Using ring websocket protocols to setup a websocket server
 (defn twilio-ws-handler
   [req]
-  (assert (ws/upgrade-request? req))
-  (prn "Got here")
+  (assert (ws/upgrade-request? req) "Must be a websocket request")
   (let [in (a/chan 1024)
         out (a/chan 1024)
         pipeline (pipeline/create-pipeline (create-twilio-ai-pipeline in out))
@@ -177,11 +178,31 @@
       :on-ping (fn on-ping [ws payload]
                  (ws/send ws payload))}}))
 
+(defn twilio-ws-handler-flow
+  [req]
+  (assert (ws/upgrade-request? req) "Must be a websocket request")
+  (let [fl (flow/create-flow gdef)]
+    {::ws/listener
+     {:on-open (fn on-open [socket]
+                 (flow/start fl)
+                 (flow/resume fl)
+                 nil)
+      :on-message (fn on-text [_ws payload]
+                    (flow/inject fl [:transport-in :in] [payload]))
+      :on-close (fn on-close [_ws _status-code _reason]
+                  (t/log! "Call closed")
+                  (flow/stop fl))
+      :on-error (fn on-error [ws error]
+                  (prn error)
+                  (t/log! :debug error))
+      :on-ping (fn on-ping [ws payload]
+                 (ws/send ws payload))}}))
+
 (def routes
   [["/inbound-call" {:summary "Webhook where a call is made"
                      :post {:handler twilio-inbound-handler}}]
    ["/ws" {:summary "Websocket endpoint to receive a twilio call"
-           :get {:handler twilio-ws-handler}}]])
+           :get {:handler twilio-ws-handler-flow}}]])
 
 (def app
   (ring/ring-handler

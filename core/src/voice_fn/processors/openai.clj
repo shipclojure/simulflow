@@ -202,7 +202,7 @@
 
     (processor-schema [_] OpenAILLMConfigSchema)
 
-    (accepted-frames [_] #{:frame.context/messages :frame.control/interrupt-start})
+    (accepted-frames [_] #{:frame.llm/context :frame.control/interrupt-start})
 
     (make-processor-config [_ _ processor-config]
       (m/decode OpenAILLMConfigSchema processor-config mt/default-value-transformer))

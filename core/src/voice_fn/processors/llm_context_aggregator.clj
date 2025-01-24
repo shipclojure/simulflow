@@ -147,6 +147,117 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
     ;; maybe send new context
     (when @send-aggregation? (maybe-send-aggregation!))))
 
+(defn create-agg-frame
+  [{:keys [context aggregation-buf role new-aggregation]}]
+  (let [agg (str aggregation-buf new-aggregation)]
+    (when (and (string? agg)
+               (not= "" (str/trim agg)))
+      (frame/llm-context (assoc context
+                                :messages (concat-context-messages
+                                            (:messages context)
+                                            role
+                                            agg))))))
+
+(defn aggregator-transform
+  "Use cases implemented:
+S: Start, E: End, T: Transcription, I: Interim, X: Text
+
+         S E -> None
+       S T E -> X
+     S I T E -> X
+     S I E T -> X
+   S I E I T -> X
+       S E T -> X
+     S E I T -> X
+
+ The following case would not be supported:
+
+ S I E T1 I T2 -> X
+  "
+  [state _ frame]
+  (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame? handles-interrupt?]
+         :messages/keys [role]
+         :llm/keys [context]
+         :keys [aggregating? seen-interim-results? aggregation seen-end-frame?]} state
+        reset #(assoc %
+                      :aggregation ""
+                      :aggregating? false
+                      :seen-start-frame? false
+                      :seen-end-frame? false
+                      :seen-interim-results? false)
+
+        frame-data (:frame/data frame)
+        aggregation-frame (create-agg-frame {:context context :role role :aggregation-buf aggregation})]
+    (cond
+      (start-frame? frame)
+      ,(do
+         (when debug?
+           (t/log! {:level :debug :id type} "START FRAME"))
+         [(assoc state
+                 ;; NOTE: On start, we don't reset the aggregation. This is for
+                 ;; a specific reason with deepgram where it tends to send
+                 ;; multiple start speech events before we get an end utterance
+                 ;; event. In the future it might be possible that we change
+                 ;; this behaviour to fully reset the aggregation on start
+                 ;; events based on the behaviour of other VAD systems. If this
+                 ;; interferes with aggregations from LLM token streaming,
+                 ;; consider splitting the implementation between user &
+                 ;; assistant aggregation
+                 :aggregation (or aggregation "")
+                 :aggregating? true
+                 :seen-start-frame? true
+                 :seen-end-frame? false
+                 :seen-interim-results? false)])
+      (end-frame? frame)
+      ,(do
+         (when debug?
+           (t/log! {:level :debug :id type} "END FRAME"))
+         ;; WE might have received the end frame but we might still be aggregating
+         ;; (i.e we have seen interim results but not the final
+         ;; S E       -> No aggregation (len == 0), keep aggregating
+         ;; S I E T   -> No aggregation when E arrives, keep aggregating until T
+         (let [aggregating? (or seen-interim-results? (zero? (count aggregation)))
+               ;; Send the aggregation if we're not aggregating anymore (no more interim results)
+               send-aggregation? (not aggregating?)]
+           (if send-aggregation?
+             [(reset state) {:out [aggregation-frame]}]
+             [(assoc state
+                     :seen-end-frame? true
+                     :seen-start-frame? false
+                     :aggregation aggregation)])))
+
+      (and (accumulator-frame? frame)
+           (not (nil? frame-data))
+           (not= "" (str/trim frame-data)))
+      ,(let [new-agg (:frame/data frame)]
+         (when debug?
+           (t/log! {:level :debug :id type} ["FRAME: " new-agg]))
+         ;; if we seen end frame, we send aggregation
+         ;; else
+         (if aggregating?
+           (if seen-end-frame?
+             ;; send aggregtation
+             [(reset state) {:out [(create-agg-frame {:context context
+                                                      :role role
+                                                      :new-aggregation new-agg
+                                                      :aggregation-buf aggregation})]}]
+             [(assoc state
+                     :aggregation (str aggregation new-agg)
+                     :seen-interim-results? false)])
+           [(assoc state :seen-interim-results? false)]))
+      (and (fn? interim-results-frame?)
+           (interim-results-frame? frame))
+      ,(do
+         (when debug?
+           (t/log! {:level :debug :id type} ["INTERIM: " (:frame/data frame)]))
+         [(assoc state :seen-interim-results? true)])
+
+      ;; handle interruptions if the aggregator supports it
+      (and (frame/control-interrupt-start? frame)
+           handles-interrupt?)
+      ,[(reset state) (when aggregation-frame {:out [aggregation-frame]})]
+      :else [state])))
+
 ;; TODO This should be async
 (defn handle-tool-call
   "Calls the registered function associated with the tool-call request if one
