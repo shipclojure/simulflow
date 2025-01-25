@@ -39,22 +39,13 @@
                              :output_format (encoding->elevenlabs encoding sample-rate)})))
 
 (comment
-  (make-elevenlabs-url {:audio-in/sample-rate 8000
-                        :audio-in/encoding :ulaw
-                        :audio-in/channels 1
-                        :audio-in/sample-size-bits 8
-                        :audio-out/sample-rate 8000
-                        :audio-out/encoding :ulaw
-                        :audio-out/bitrate 64000
-                        :audio-out/sample-size-bits 8
-                        :audio-out/channels 1
-                        :pipeline/language :ro}
-                       {:elevenlabs/api-key (secrets/secret [:elevenlabs :api-key])
-                        :elevenlabs/model-id "eleven_flash_v2_5"
-                        :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
-                        :voice/stability 0.5
-                        :voice/similarity-boost 0.8
-                        :voice/use-speaker-boost? true}))
+  (make-elevenlabs-ws-url
+    {:elevenlabs/api-key (secrets/secret [:elevenlabs :api-key])
+     :elevenlabs/model-id "eleven_flash_v2_5"
+     :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+     :voice/stability 0.5
+     :voice/similarity-boost 0.8
+     :voice/use-speaker-boost? true}))
 
 (defn begin-stream-message
   [{:voice/keys [stability similarity-boost use-speaker-boost?]
@@ -123,7 +114,7 @@
                             type
                             pipeline
                             processor-config)
-              new-conn @(ws/websocket (make-elevenlabs-url (:pipeline/config @pipeline) processor-config)
+              new-conn @(ws/websocket (make-elevenlabs-ws-url processor-config)
                                       conn-config)]
           (swap! pipeline assoc-in [type :websocket/conn] new-conn)
           (t/log! :debug "Elevenlabs connection ready"))))))

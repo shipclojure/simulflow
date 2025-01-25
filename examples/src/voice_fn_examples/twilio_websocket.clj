@@ -19,7 +19,7 @@
    [ring.websocket :as ws]
    [taoensso.telemere :as t]
    [voice-fn.core]
-   [voice-fn.experiments.flow :refer [gdef]]
+   [voice-fn.experiments.flow :refer [make-twilio-flow]]
    [voice-fn.pipeline :as pipeline]
    [voice-fn.processors.elevenlabs]
    [voice-fn.processors.groq]
@@ -187,7 +187,9 @@
 (defn twilio-ws-handler-flow
   [req]
   (assert (ws/upgrade-request? req) "Must be a websocket request")
-  (let [fl (flow/create-flow gdef)]
+  (let [in (a/chan 1024)
+        out (a/chan 1024)
+        fl (flow/create-flow (make-twilio-flow in out))]
     (reset! dbg-flow fl)
     {::ws/listener
      {:on-open (fn on-open [socket]
@@ -196,14 +198,20 @@
                      (when-let [[msg c] (a/alts! [report-chan error-chan])]
                        (when (map? msg)
                          (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
+                       (recur)))
+                   (a/go-loop []
+                     (when-let [output (a/<! out)]
+                       (ws/send socket output)
                        (recur))))
                  (flow/resume fl)
                  nil)
       :on-message (fn on-text [_ws payload]
-                    (flow/inject fl [:transport-in :in] [payload]))
+                    (a/put! in payload))
       :on-close (fn on-close [_ws _status-code _reason]
                   (t/log! "Call closed")
-                  (flow/stop fl))
+                  (flow/stop fl)
+                  (a/close! in)
+                  (a/close! out))
       :on-error (fn on-error [ws error]
                   (prn error)
                   (t/log! :debug error))

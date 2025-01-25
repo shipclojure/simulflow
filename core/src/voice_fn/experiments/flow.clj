@@ -327,8 +327,8 @@
   "Processor that streams audio out in real time so we can account for
   interruptions."
   (flow/process
-    {:describe (fn [] {:ins {:in "Channel for audio output frames "}
-                       :outs {:out "Channel on which serialized buffered output is put"}})
+    {:describe (fn [] {:ins {:in "Channel for audio output frames "
+                             :sys-in "Channel for system messages"}})
      :params {:transport/out-chan "Channel on which to put buffered serialized audio"
               :audio.out/duration-ms "Duration of each audio chunk. Defaults to 20ms"
               :transport/supports-interrupt? "Whether the processor supports interrupt or not"}
@@ -369,9 +369,11 @@
 
                     :else [state]))}))
 
-(def gdef
+(defn make-twilio-flow
+  [in out]
   {:procs
-   {:transport-in {:proc twilio-transport-in}
+   {:transport-in {:proc twilio-transport-in
+                   :args {:transport/in-ch in}}
     :deepgram-transcriptor {:proc deepgram-processor
                             :args {:transcription/api-key (secret [:deepgram :api-key])
                                    :transcription/interim-results? true
@@ -418,13 +420,7 @@
                             :audio.out/channels 1
                             :audio.out/duration-ms 20}}
     :realtime-out {:proc realtime-transport-out-processor
-                   :args {:transport/out-chan (a/chan 1024)}}
-
-    :print-sink {:proc (flow/process
-                         {:describe (fn [] {:ins {:in "Channel for receiving transcriptions"}})
-                          :transform (fn [_ _ frame]
-                                       (when (frame/audio-output-raw? frame)
-                                         (t/log! {:id :print-sink :level :info} ["RESULT: " (:frame/data frame)])))})}}
+                   :args {:transport/out-chan out}}}
 
    :conns [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
            [[:transport-in :out] [:deepgram-transcriptor :in]]
@@ -440,6 +436,7 @@
            [[:llm-sentence-assembler :out] [:tts :in]]
 
            [[:tts :out] [:audio-splitter :in]]
+           [[:transport-in :sys-out] [:realtime-out :sys-in]]
            [[:audio-splitter :out] [:realtime-out :in]]]})
 
 (comment
