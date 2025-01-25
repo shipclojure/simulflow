@@ -4,10 +4,13 @@
    [clojure.core.async.flow :as flow]
    [clojure.datafy :refer [datafy]]
    [hato.websocket :as ws]
+   [malli.core :as m]
+   [malli.transform :as mt]
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.processors.deepgram :as deepgram]
    [voice-fn.processors.llm-context-aggregator :as ca]
+   [voice-fn.processors.openai :as openai :refer [OpenAILLMConfigSchema]]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport.serializers :refer [make-twilio-serializer]]
    [voice-fn.utils.core :as u])
@@ -26,14 +29,14 @@
                   (let [data (u/parse-if-json input)]
                     (case (:event data)
                       "start" (when-let [stream-sid (:streamSid data)]
-                                [state {:system [(frame/system-config-change {:twilio/stream-sid stream-sid
-                                                                              :transport/serializer (make-twilio-serializer stream-sid)})]}])
+                                [state {:sys-out [(frame/system-config-change {:twilio/stream-sid stream-sid
+                                                                               :transport/serializer (make-twilio-serializer stream-sid)})]}])
                       "media"
                       [state {:out [(frame/audio-input-raw
                                       (u/decode-base64 (get-in data [:media :payload])))]}]
 
                       "close"
-                      [state {:system [(frame/system-stop true)]}]
+                      [state {:sys-out [(frame/system-stop true)]}]
                       nil)))}))
 
 (def deepgram-processor
@@ -129,11 +132,50 @@
               :aggregator/end-frame? "Predicate checking if the frame is a end-frame?"
               :aggregator/accumulator-frame? "Predicate checking the main type of frame we are aggregating"
               :aggregator/interim-results-frame? "Optional predicate checking if the frame is an interim results frame"
-              :aggregator/handles-interrupt? "Wether this aggregator should handle or not interrupts"
-              :aggregator/debug? "When true, debug logs will be called"}
+              :aggregator/handles-interrupt? "Optional Wether this aggregator should handle or not interrupts"
+              :aggregator/debug? "Optional When true, debug logs will be called"}
      :workload :compute
      :init identity
      :transform ca/aggregator-transform}))
+
+(def openai-llm-process
+  (flow/process
+    {:describe (fn [] {:ins {:in "Channel for incoming context aggregations"}
+                       :outs {:out "Channel where streaming responses will go"}})
+     :parmas {:llm/model "Openai model used"
+              :openai/api-key "OpenAI Api key"
+              :llm/temperature "Optional temperature parameter for the llm inference"
+              :llm/max-tokens "Optional max tokens to generate"
+              :llm/presence-penalty "Optional (-2.0 to 2.0)"
+              :llm/top-p "Optional nucleus sampling threshold"
+              :llm/seed "Optional seed used for deterministic sampling"
+              :llm/max-completion-tokens "Optional Max tokens in completion"
+              :llm/extra "Optional extra model parameters"}
+     :workload :io
+     :init (fn [params]
+             (let [state (m/decode OpenAILLMConfigSchema params mt/default-value-transformer)
+                   llm-write (a/chan 100)
+                   llm-read (a/chan 1024)
+                   write-to-llm #(loop []
+                                   (t/log! {:level :info :id :llm} "Starting LLM loop")
+                                   (if-let [msg (a/<!! llm-write)]
+                                     (do
+                                       (t/log! {:level :debug :id :llm} ["LLM CONTEXT" msg])
+                                       (assert (or (frame/llm-context? msg)
+                                                   (frame/control-interrupt-start? msg)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
+                                       (openai/flow-do-completion! state llm-read msg)
+                                       (recur))
+                                     (t/log! {:level :info :id :llm} "Closing llm loop")))]
+               ((flow/futurize write-to-llm :exec :io))
+               {::flow/in-ports {:llm-read llm-read}
+                ::flow/out-ports {:llm-write llm-write}}))
+
+     :transform (fn [state in msg]
+                  (if (= in :llm-read)
+                    [state {:out [msg]}]
+                    (cond
+                      (frame/llm-context? msg)
+                      [state {:llm-write [msg]}])))}))
 
 (def gdef
   {:procs
@@ -156,18 +198,34 @@
                                       :aggregator/end-frame? frame/user-speech-stop?
                                       :aggregator/accumulator-frame? frame/transcription?
                                       :aggregator/interim-results-frame? frame/transcription-interim?
-                                      :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
-                                      :aggregator/debug? false}}
+                                      :aggregator/handles-interrupt? false}} ;; User speaking shouldn't be interrupted
+    :assistant-context-aggregator {:proc context-aggregator-process
+                                   :args {:messages/role "assistant"
+                                          :llm/context {:messages [{:role :assistant :content "You are a helpful assistant"}]}
+                                          :aggregator/start-frame? frame/llm-full-response-start?
+                                          :aggregator/end-frame? frame/llm-full-response-end?
+                                          :aggregator/accumulator-frame? frame/llm-text-chunk?}}
+    :llm {:proc openai-llm-process
+          :args {:openai/api-key (secret [:openai :new-api-sk])
+                 :llm/model "gpt-4o-mini"}}
 
     :print-sink {:proc (flow/process
                          {:describe (fn [] {:ins {:in "Channel for receiving transcriptions"}})
                           :transform (fn [_ _ frame]
-                                       (t/log! {:id :print-sink :level :info} ["RESULT: " (:frame/data frame)]))})}}
+                                       (when (frame/llm-context? frame)
+                                         (t/log! {:id :print-sink :level :info} ["RESULT: " (:frame/data frame)])))})}}
 
    :conns [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
            [[:transport-in :out] [:deepgram-transcriptor :in]]
            [[:deepgram-transcriptor :out] [:user-context-aggregator :in]]
-           [[:user-context-aggregator :out] [:print-sink :in]]]})
+           [[:user-context-aggregator :out] [:llm :in]]
+           [[:llm :out] [:assistant-context-aggregator :in]]
+
+           ;; cycle so that context aggregators are in sync
+           [[:assistant-context-aggregator :out] [:user-context-aggregator :in]]
+           [[:user-context-aggregator :out] [:assistant-context-aggregator :in]]
+
+           [[:assistant-context-aggregator :out] [:print-sink :in]]]})
 
 (comment
   (datafy (:proc (:deepgram-transcriptor (:procs gdef))))
@@ -176,6 +234,7 @@
 
   (def res (flow/start g))
 
+  ;; TODO When weird things happen, check the error & report channels
   res
 
   (flow/resume g)

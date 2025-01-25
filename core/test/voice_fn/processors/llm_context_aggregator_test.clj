@@ -122,7 +122,12 @@
             next-state => (state stestate)
             (:frame/type frame) => :frame.llm/context
             (:frame/data frame) => {:messages [{:content "You are a helpful assistant" :role :assistant}
-                                               {:content "Hello there" :role "user"}]}))))
+                                               {:content "Hello there" :role "user"}]}))
+    (fact "updates current context if a frame is received"
+          (let [new-context {:messages [{:content "You are a helpful assistant" :role :assistant}
+                                        {:content "Hello there" :role "user"}
+                                        {:content "How can I help" :role :assistant}]}]
+            (sut/aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))))
 
 (facts
   "about assistant response aggregation"
@@ -230,4 +235,10 @@
                                                {:role "user"
                                                 :content "Hello there"}
                                                {:role "assistant"
-                                                :content expected-response}]}))))
+                                                :content expected-response}]}))
+
+    (fact "updates current context if a frame is received"
+          (let [new-context {:messages [{:content "You are a helpful assistant" :role :assistant}
+                                        {:content "Hello there" :role "user"}
+                                        {:content "How can I help" :role :assistant}]}]
+            (sut/aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))))

@@ -103,3 +103,8 @@ CLOSED: [2025-01-20 Lun 07:43]
 #+end_src
 
 * TODO research [[https://github.com/phronmophobic/clj-media][clojure-media]] for dedicated ffmpeg support for media conversion
+
+* TODO add core.async.flow support
+:LOGBOOK:
+CLOCK: [2025-01-25 Sat 09:50]--[2025-01-25 Sat 10:15] =>  0:25
+:END:

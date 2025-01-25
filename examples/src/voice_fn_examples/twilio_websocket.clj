@@ -178,13 +178,25 @@
       :on-ping (fn on-ping [ws payload]
                  (ws/send ws payload))}}))
 
+(def dbg-flow (atom nil))
+
+(comment
+  (flow/ping @dbg-flow)
+  ,)
+
 (defn twilio-ws-handler-flow
   [req]
   (assert (ws/upgrade-request? req) "Must be a websocket request")
   (let [fl (flow/create-flow gdef)]
+    (reset! dbg-flow fl)
     {::ws/listener
      {:on-open (fn on-open [socket]
-                 (flow/start fl)
+                 (let [{:keys [report-chan error-chan]} (flow/start fl)]
+                   (a/go-loop []
+                     (when-let [[msg c] (a/alts! [report-chan error-chan])]
+                       (when (map? msg)
+                         (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
+                       (recur))))
                  (flow/resume fl)
                  nil)
       :on-message (fn on-text [_ws payload]

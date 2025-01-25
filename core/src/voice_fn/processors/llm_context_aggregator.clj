@@ -176,7 +176,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
  S I E T1 I T2 -> X
   "
   [state _ frame]
-  (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)})
+  (when (:aggregator/debug? state)
+    (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)}))
 
   (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame? handles-interrupt?]
          :messages/keys [role]
@@ -189,12 +190,19 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                       :seen-end-frame? false
                       :seen-interim-results? false)
 
-        frame-data (:frame/data frame)]
+        frame-data (:frame/data frame)
+        id (str "context-aggregator-" (name role))]
     (cond
+      (frame/llm-context? frame)
+      (do
+        (when debug?
+          (t/log! {:level :debug :id id} ["CONTEXT FRAME" frame-data]))
+        [(assoc state :llm/context frame-data)])
+
       (start-frame? frame)
       ,(do
          (when debug?
-           (t/log! {:level :debug :id type} "START FRAME"))
+           (t/log! {:level :debug :id id} "START FRAME"))
          [(assoc state
                  ;; NOTE: On start, we don't reset the aggregation. This is for
                  ;; a specific reason with deepgram where it tends to send
@@ -213,7 +221,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       (end-frame? frame)
       ,(do
          (when debug?
-           (t/log! {:level :debug :id type} "END FRAME"))
+           (t/log! {:level :debug :id id} "END FRAME"))
          ;; WE might have received the end frame but we might still be aggregating
          ;; (i.e we have seen interim results but not the final
          ;; S E       -> No aggregation (len == 0), keep aggregating
@@ -234,7 +242,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
            (not= "" (str/trim frame-data)))
       ,(let [new-agg (:frame/data frame)]
          (when debug?
-           (t/log! {:level :debug :id type} ["FRAME: " new-agg]))
+           (t/log! {:level :debug :id id} ["FRAME: " new-agg]))
          ;; if we seen end frame, we send aggregation
          ;; else
          (if aggregating?
@@ -250,7 +258,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
            (interim-results-frame? frame))
       ,(do
          (when debug?
-           (t/log! {:level :debug :id type} ["INTERIM: " (:frame/data frame)]))
+           (t/log! {:level :debug :id id} ["INTERIM: " (:frame/data frame)]))
          [(assoc state :seen-interim-results? true)])
 
       ;; handle interruptions if the aggregator supports it
