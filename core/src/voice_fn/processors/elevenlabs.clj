@@ -25,14 +25,14 @@
   ([format sample-rate]
    (keyword (str (name format) "_" sample-rate))))
 
-(defn make-elevenlabs-url
-  [pipeline-config processor-config]
-  (let [{:audio-out/keys [encoding sample-rate]
-         :pipeline/keys [language]} pipeline-config
-        {:elevenlabs/keys [model-id voice-id]
+(defn make-elevenlabs-ws-url
+  [args]
+  (let [{:audio.out/keys [encoding sample-rate]
+         :flow/keys [language]
+         :elevenlabs/keys [model-id voice-id]
          :or {model-id "eleven_flash_v2_5"
               voice-id "cjVigY5qzO86Huf0OWal"}}
-        processor-config]
+        args]
     (u/append-search-params (format xi-tts-websocket-url voice-id)
                             {:model_id model-id
                              :language_code language

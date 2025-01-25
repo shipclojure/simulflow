@@ -233,6 +233,11 @@
 ;; Frames for text processing
 ;;
 
+(defframe speak-frame
+  "Text frame meant for TTS processors to generate speech from the input"
+  {:type :frame.tts/speak
+   :schema :string})
+
 (defframe text-input
   "Text input frame for LLM processing"
   {:type :frame.text/input})

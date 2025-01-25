@@ -9,6 +9,7 @@
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.processors.deepgram :as deepgram]
+   [voice-fn.processors.elevenlabs :as xi]
    [voice-fn.processors.llm-context-aggregator :as ca]
    [voice-fn.processors.openai :as openai :refer [OpenAILLMConfigSchema]]
    [voice-fn.secrets :refer [secret]]
@@ -65,7 +66,7 @@
                                 :on-open (fn [_]
                                            (t/log! :info "Deepgram websocket connection open"))
                                 :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                                              (a/go (a/>! ws-read-chan (str data))))
+                                              (a/put! ws-read-chan (str data)))
                                 :on-error (fn [_ e]
                                             (t/log! {:level :error :id :deepgram-transcriptor} ["Error" e]))
                                 :on-close (fn [_ws code reason]
@@ -119,6 +120,88 @@
                       [state {:out frames}])
                     (cond
                       (frame/audio-input-raw? msg)
+                      [state {:ws-write [msg]}]
+                      :else [state])))}))
+
+(def elevenlabs-tts-process
+  (flow/process
+    {:describe (fn [] {:ins {:sys-in "Channel for system messages that take priority"
+                             :in "Channel for audio input frames (from transport-in) "}
+                       :outs {:sys-out "Channel for system messages that have priority"
+                              :out "Channel on which transcription frames are put"}
+                       :params {:elevenlabs/api-key "Api key required for 11labs connection"
+                                :elevenlabs/model-id "Model used for voice generation"
+                                :elevenlabs/voice-id "Voice id"
+                                :voice/stability "Optional voice stability factor (0.0 to 1.0)"
+                                :voice/similarity-boost "Optional voice similarity boost factor (0.0 to 1.0)"
+                                :voice/use-speaker-boost? "Wether to enable speaker boost enchancement"
+                                :flow/language "Language to use"
+                                :audio.out/encoding "Encoding for the audio generated"
+                                :audio.out/sample-rate "Sample rate for the audio generated"}
+                       :workload :io})
+     :init (fn [args]
+             (let [url (xi/make-elevenlabs-ws-url args)
+                   ws-read (a/chan 100)
+                   ws-write (a/chan 100)
+                   alive? (atom true)
+                   conf {:on-open (fn [ws]
+                                    (let [configuration (xi/begin-stream-message args)]
+                                      (t/log! :info ["Elevenlabs websocket connection open. Sending configuration message" configuration])
+                                      (ws/send! ws configuration)))
+                         :on-message (fn [_ws ^HeapCharBuffer data _last?]
+                                       (a/put! ws-read (str data)))
+                         :on-error (fn [_ e]
+                                     (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
+                         :on-close (fn [_ws code reason]
+                                     (reset! alive? false)
+                                     (t/log! :info ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))}
+                   _ (t/log! {:level :info :id :deepgram-transcriptor} "Connecting to transcription websocket")
+                   ws-conn @(ws/websocket
+                              url
+                              conf)
+
+                   write-to-ws #(loop []
+                                  (when @alive?
+                                    (when-let [msg (a/<!! ws-write)]
+                                      (cond
+                                        (and (frame/speak-frame? msg) @alive?)
+                                        (do
+                                          (ws/send! ws-conn (xi/text-message (:frame/data msg)))
+                                          (recur))))))
+                   keep-alive #(loop []
+                                 (when @alive?
+                                   (a/<!! (a/timeout 3000))
+                                   (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
+                                   (ws/send! ws-conn xi/keep-alive-message)
+                                   (recur)))]
+               ((flow/futurize write-to-ws :exec :io))
+               ((flow/futurize keep-alive :exec :io))
+
+               {:websocket/conn ws-conn
+                :websocket/alive? alive?
+                ::flow/in-ports {:ws-read ws-read}
+                ::flow/out-ports {:ws-write ws-write}}))
+     :transition (fn [{:websocket/keys [conn] :as state} transition]
+                   (when (= transition ::flow/stop)
+                     (t/log! {:id :elevenlabs :level :info} "Closing tts websocket connection")
+                     (reset! (:websocket/alive? state) false)
+                     (when conn
+                       (ws/send! conn xi/close-stream-message)
+                       (ws/close! conn)))
+                   state)
+
+     :transform (fn [{:audio/keys [acc] :as state} in-name msg]
+                  (if (= in-name :ws-read)
+                    ;; xi sends one json response in multiple events so it needs
+                    ;; to be concattenated until the final json can be parsed
+                    (let [attempt (u/parse-if-json (str acc msg))]
+                      (if (map? attempt)
+                        [(assoc state :audio/acc "") (when-let [audio (:audio attempt)]
+                                                       {:out (frame/audio-output-raw (u/decode-base64 audio))})]
+                        ;; continue concatenating
+                        [(assoc state :audio/acc attempt)]))
+                    (cond
+                      (frame/speak-frame? msg)
                       [state {:ws-write [msg]}]
                       :else [state])))}))
 
@@ -177,6 +260,17 @@
                       (frame/llm-context? msg)
                       [state {:llm-write [msg]}])))}))
 
+(defn sentence-assembler
+  ([] {:ins {:in "Channel for llm text chunks"}
+       :outs {:out "Channel for assembled speak frames"}})
+  ([_] {:acc nil})
+  ([{:keys [acc]} msg]
+   (when (frame/llm-text-chunk? msg)
+     (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
+       (if sentence
+         [{:acc accumulator} {:out [(frame/speak-frame sentence)]}]
+         [{:acc accumulator}])))))
+
 (def gdef
   {:procs
    {:transport-in {:proc transport-in}
@@ -209,10 +303,19 @@
           :args {:openai/api-key (secret [:openai :new-api-sk])
                  :llm/model "gpt-4o-mini"}}
 
+    :llm-sentence-assembler {:proc (flow/step-process #'sentence-assembler)}
+    :tts {:proc elevenlabs-tts-process
+          :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                 :elevenlabs/model-id "eleven_flash_v2_5"
+                 :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                 :voice/stability 0.5
+                 :voice/similarity-boost 0.8
+                 :voice/use-speaker-boost? true}}
+
     :print-sink {:proc (flow/process
                          {:describe (fn [] {:ins {:in "Channel for receiving transcriptions"}})
                           :transform (fn [_ _ frame]
-                                       (when (frame/llm-context? frame)
+                                       (when (frame/audio-output-raw? frame)
                                          (t/log! {:id :print-sink :level :info} ["RESULT: " (:frame/data frame)])))})}}
 
    :conns [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
@@ -225,7 +328,10 @@
            [[:assistant-context-aggregator :out] [:user-context-aggregator :in]]
            [[:user-context-aggregator :out] [:assistant-context-aggregator :in]]
 
-           [[:assistant-context-aggregator :out] [:print-sink :in]]]})
+           [[:llm :out] [:llm-sentence-assembler :in]]
+           [[:llm-sentence-assembler :out] [:tts :in]]
+
+           [[:tts :out] [:print-sink :in]]]})
 
 (comment
   (datafy (:proc (:deepgram-transcriptor (:procs gdef))))
