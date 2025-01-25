@@ -4,7 +4,6 @@
    [clojure.string :as str]
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :as pipeline :refer [send-frame!]]
    [voice-fn.schema :as schema]
    [voice-fn.utils.core :as u]))
 
