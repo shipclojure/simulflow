@@ -39,10 +39,10 @@
                     \"Doc string\"
                     {:type :frame.audio/input-raw
                      :schema [:map [:data AudioData]])}"
-  [name docstring {:keys [type schema]}]
+  [name docstring {:keys [type schema] :or {schema :any}}]
   (let [frame-schema [:map
                       [:frame/type [:= type]]
-                      [:frame/data (or schema :any)]
+                      [:frame/data schema]
                       [:frame/ts :any]]
         frame-schema-name (symbol (str name "-schema"))
         pred-name (symbol (str name "?"))]
