@@ -155,7 +155,7 @@
                          :on-close (fn [_ws code reason]
                                      (reset! alive? false)
                                      (t/log! :info ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))}
-                   _ (t/log! {:level :info :id :deepgram-transcriptor} "Connecting to transcription websocket")
+                   _ (t/log! {:level :info :id :elevenlabs} "Connecting to transcription websocket")
                    ws-conn @(ws/websocket
                               url
                               conf)
@@ -197,7 +197,7 @@
                     (let [attempt (u/parse-if-json (str acc msg))]
                       (if (map? attempt)
                         [(assoc state :audio/acc "") (when-let [audio (:audio attempt)]
-                                                       {:out (frame/audio-output-raw (u/decode-base64 audio))})]
+                                                       {:out [(frame/audio-output-raw (u/decode-base64 audio))]})]
                         ;; continue concatenating
                         [(assoc state :audio/acc attempt)]))
                     (cond
@@ -240,10 +240,8 @@
                    llm-write (a/chan 100)
                    llm-read (a/chan 1024)
                    write-to-llm #(loop []
-                                   (t/log! {:level :info :id :llm} "Starting LLM loop")
                                    (if-let [msg (a/<!! llm-write)]
                                      (do
-                                       (t/log! {:level :debug :id :llm} ["LLM CONTEXT" msg])
                                        (assert (or (frame/llm-context? msg)
                                                    (frame/control-interrupt-start? msg)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
                                        (openai/flow-do-completion! state llm-read msg)
@@ -264,7 +262,7 @@
   ([] {:ins {:in "Channel for llm text chunks"}
        :outs {:out "Channel for assembled speak frames"}})
   ([_] {:acc nil})
-  ([{:keys [acc]} msg]
+  ([{:keys [acc]} _ msg]
    (when (frame/llm-text-chunk? msg)
      (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
        (if sentence
@@ -310,7 +308,10 @@
                  :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
                  :voice/stability 0.5
                  :voice/similarity-boost 0.8
-                 :voice/use-speaker-boost? true}}
+                 :voice/use-speaker-boost? true
+                 :flow/language :en
+                 :audio.out/encoding :ulaw
+                 :audio.out/sample-rate 8000}}
 
     :print-sink {:proc (flow/process
                          {:describe (fn [] {:ins {:in "Channel for receiving transcriptions"}})
