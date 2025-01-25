@@ -30,7 +30,7 @@
 (defn valid-aggregation?
   [a]
   (and (string? a)
-       (not= " "(str/trim a))))
+       (not= "" (str/trim a))))
 
 (defn next-context
   [{:keys [context role aggregation]}]
