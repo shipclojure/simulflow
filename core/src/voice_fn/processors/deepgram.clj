@@ -1,13 +1,10 @@
 (ns voice-fn.processors.deepgram
   (:require
    [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
    [hato.websocket :as ws]
-   [malli.core :as m]
-   [malli.transform :as mt]
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :refer [close-processor! create-processor send-frame! supports-interrupt?]]
-   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema :refer [flex-enum]]
    [voice-fn.utils.core :as u])
   (:import
@@ -61,29 +58,6 @@
 
 (def close-connection-payload (u/json-str {:type "CloseStream"}))
 
-(declare create-connection-config)
-
-(def max-reconnect-attempts 5)
-
-(defn connect-websocket!
-  [type pipeline processor-config]
-  (let [current-count (get-in @pipeline [type :websocket/reconnect-count] 0)]
-    (if (>= current-count max-reconnect-attempts)
-      (t/log! :warn "Maximum reconnection attempts reached for Deepgram")
-      (do
-
-        (swap! pipeline update-in [type :websocket/reconnect-count] (fnil inc 0))
-        (let [websocket-url (make-websocket-url processor-config)
-              conn-config (create-connection-config
-                            type
-                            pipeline
-                            processor-config)
-              _ (t/log! :info (str "Attempting to connect to Deepgram (attempt " (inc current-count) "/" max-reconnect-attempts ")" "url: " websocket-url))
-              new-conn @(ws/websocket
-                          websocket-url
-                          conn-config)]
-          (swap! pipeline assoc-in [type :websocket/conn] new-conn))))))
-
 (def keep-alive-payload (u/json-str {:type "KeepAlive"}))
 
 (def code-reason
@@ -113,48 +87,6 @@
         ;; tends to be a better indicator of speech start
         [(frame/transcription-interim trsc) (frame/control-interrupt-start true)]
         [(frame/transcription-interim trsc)]))))
-
-(defn create-connection-config
-  [type pipeline processor-config]
-  (let [send-interrupt? (atom false)]
-    {:headers {"Authorization" (str "Token " (:transcription/api-key processor-config))}
-     :on-open (fn [ws]
-                ;; Send a keepalive message every 3 seconds to maintain websocket connection
-                (a/go-loop []
-                  (a/<! (a/timeout 3000))
-                  (when (get-in @pipeline [type :websocket/conn])
-                    (t/log! {:level :debug :id type} "Sending keep-alive message")
-                    (ws/send! ws keep-alive-payload)
-                    (recur)))
-                (t/log! :info "Deepgram websocket connection open"))
-     :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                   (let [m (u/parse-if-json (str data))
-                         frames (deepgram-event->frames
-                                  m
-                                  :supports-interrupt? (supports-interrupt? @pipeline)
-                                  :send-interrupt? @send-interrupt?)]
-
-                     (when (and (speech-started-event? m) (supports-interrupt? @pipeline))
-                       (reset! send-interrupt? true))
-
-                     (when (and (utterance-end-event? m) (supports-interrupt? @pipeline))
-                       (reset! send-interrupt? true))
-                     (doseq [frame frames]
-                       (send-frame! pipeline frame))))
-     :on-error (fn [_ e]
-                 (t/log! {:level :error :id type} ["Error" e]))
-     :on-close (fn [_ws code reason]
-                 (t/log! {:level :info :id type} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason])
-                 (if (= (get code-reason code) :timeout)
-                   (connect-websocket! type pipeline processor-config) ;; attempt reconnect on timeout
-                   (swap! pipeline update-in [type] dissoc :websocket/conn)))}))
-
-(defn- close-websocket-connection!
-  [type pipeline]
-  (when-let [conn (get-in @pipeline [type :websocket/conn])]
-    (ws/send! conn close-connection-payload)
-    (ws/close! conn))
-  (swap! pipeline update-in [type] dissoc :websocket/conn))
 
 (def DeepgramConfig
   [:and
@@ -188,49 +120,86 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
     (fn [{:transcription/keys [smart-format? punctuate?]}]
       (not (and smart-format? punctuate?)))]])
 
-(defn pipeline->deepgram-config
-  [p]
-  (cond-> {}
-    ;; Map sample rate directly
-    (:audio-in/sample-rate p)
-    (assoc :transcription/sample-rate (:audio-in/sample-rate p))
+(def deepgram-processor
+  (flow/process
+    {:describe (fn [] {:ins {:sys-in "Channel for system messages that take priority"
+                             :in "Channel for audio input frames (from transport-in) "}
+                       :outs {:sys-out "Channel for system messages that have priority"
+                              :out "Channel on which transcription frames are put"}
+                       :params {:transcription/api-key "Api key required for deepgram connection"
+                                :transcription/interim-results? "Wether deepgram should send interim transcriptions back"
+                                :transcription/punctuate? "If transcriptions are punctuated or not. Not required if transcription/smart-format is true"
+                                :transcription/vad-events? "Enable this for deepgram to send speech-start/utterance end events"
+                                :transcription/smart-format? "Enable smart format"
+                                :transcription/model "Model used for transcription"
+                                :transcription/utterance-end-ms "silence time after speech in ms until utterance is considered ended"
+                                :transcription/language "Language for speech"
+                                :transcription/encoding "Audio encoding of the input audio"
+                                :transcription/sample-rate "Sample rate of the input audio"}
+                       :workload :io})
+     :init (fn [args]
+             (let [websocket-url (make-websocket-url args)
+                   ws-read-chan (a/chan 1024)
+                   ws-write-chan (a/chan 1024)
+                   alive? (atom true)
+                   conn-config {:headers {"Authorization" (str "Token " (:transcription/api-key args))}
+                                :on-open (fn [_]
+                                           (t/log! :info "Deepgram websocket connection open"))
+                                :on-message (fn [_ws ^HeapCharBuffer data _last?]
+                                              (a/put! ws-read-chan (str data)))
+                                :on-error (fn [_ e]
+                                            (t/log! {:level :error :id :deepgram-transcriptor} ["Error" e]))
+                                :on-close (fn [_ws code reason]
+                                            (reset! alive? false)
+                                            (t/log! {:level :info :id :deepgram-transcriptor} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason]))}
 
-    ;; Map encoding with conversion
-    (:audio-in/encoding p)
-    (assoc :transcription/encoding
-           (get deepgram-encoding (:audio-in/encoding p)))
+                   _ (t/log! {:level :info :id :deepgram-transcriptor} "Connecting to transcription websocket")
+                   ws-conn @(ws/websocket
+                              websocket-url
+                              conn-config)
 
-    (:pipeline/language p) (assoc :transcription/language (:pipeline/language p))
-    (:pipeline/supports-interrupt? p)
-    (assoc :transcription/supports-interrupt? (:pipeline/supports-interrupt? p))))
+                   write-to-ws #(loop []
+                                  (when @alive?
+                                    (when-let [msg (a/<!! ws-write-chan)]
+                                      (cond
+                                        (and (frame/audio-input-raw? msg) @alive?)
+                                        (do
+                                          (ws/send! ws-conn (:frame/data msg))
+                                          (recur))))))
+                   keep-alive #(loop []
+                                 (when @alive?
+                                   (a/<!! (a/timeout 3000))
+                                   (t/log! {:level :debug :id :deepgram} "Sending keep-alive message")
+                                   (ws/send! ws-conn keep-alive-payload)
+                                   (recur)))]
+               ((flow/futurize write-to-ws :exec :io))
+               ((flow/futurize keep-alive :exec :io))
 
-(defmethod create-processor :processor.transcription/deepgram
-  [id]
-  (reify p/Processor
-    (processor-id [_] id)
+               {:websocket/conn ws-conn
+                :websocket/alive? alive?
+                ::flow/in-ports {:ws-read ws-read-chan}
+                ::flow/out-ports {:ws-write ws-write-chan}}))
 
-    (processor-schema [_] DeepgramConfig)
+     ;; Close ws when pipeline stops
+     :transition (fn [{:websocket/keys [conn]
+                       ::flow/keys [in-ports out-ports] :as state} transition]
+                   (when (= transition ::flow/stop)
+                     (t/log! {:id :deepgram-transcriptor :level :info} "Closing transcription websocket connection")
+                     (reset! (:websocket/alive? state) false)
+                     (when conn
+                       (ws/send! conn close-connection-payload)
+                       (ws/close! conn))
+                     (doseq [port (concat (vals in-ports) (vals out-ports))]
+                       (a/close! port))
+                     state)
+                   state)
 
-    (accepted-frames [_] #{:frame.system/start :frame.system/stop :frame.audio/input-raw})
-
-    (make-processor-config [_ pipeline-config processor-config]
-      (m/decode DeepgramConfig
-                (merge processor-config
-                       (pipeline->deepgram-config pipeline-config))
-                (mt/default-value-transformer {::mt/add-optional-keys true})))
-
-    (process-frame [_ pipeline processor-config frame]
-
-      (let [on-close! (fn []
-                        (t/log! :debug "Stopping transcription engine")
-                        (close-websocket-connection! id pipeline)
-                        (close-processor! pipeline id))]
-        (cond
-          (frame/system-start? frame)
-          (do (t/log! :debug "Starting transcription engine")
-              (connect-websocket! id pipeline processor-config))
-          (frame/system-stop? frame) (on-close!)
-
-          (frame/audio-input-raw? frame)
-          (when-let [conn (get-in @pipeline [id :websocket/conn])]
-            (ws/send! conn (:data frame))))))))
+     :transform (fn [state in-name msg]
+                  (if (= in-name :ws-read)
+                    (let [m (u/parse-if-json msg)
+                          frames (deepgram-event->frames m)]
+                      [state {:out frames}])
+                    (cond
+                      (frame/audio-input-raw? msg)
+                      [state {:ws-write [msg]}]
+                      :else [state])))}))

@@ -9,22 +9,6 @@
    [voice-fn.transport.protocols :as tp]
    [voice-fn.utils.audio :as au]))
 
-(defn mono-time
-  "Monotonic time in milliseconds. Used to check if we should send the next chunk
-  of audio."
-  []
-  (int (/ (System/nanoTime)  1e6)))
-
-(def AsyncOutputProcessorSchema
-  [:map
-   [:transport/sample-rate schema/SampleRate]
-   [:transport/sample-size-bits schema/SampleSizeBits]
-   [:transport/channels schema/AudioChannels]
-   [:transport/supports-interrupt? :boolean]
-   [:transport/audio-chunk-duration :int] ;; duration in ms for each audio chunk. Default 20ms
-   [:transport/audio-chunk-size :int]
-   [:transport/out-ch schema/CoreAsyncChannel]])
-
 (defn onto-chunks-chan!
   "Split the audio-frame into chunks of chunk-size and put them onto chunks-ch"
   [chunks-ch chunk-size audio-frame]
