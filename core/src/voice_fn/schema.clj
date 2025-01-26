@@ -2,7 +2,8 @@
   (:require
    [clojure.core.async.impl.protocols :as async-protocols]
    [malli.core :as m]
-   [malli.error :as me]))
+   [malli.error :as me]
+   [malli.util :as mu]))
 
 (defn flex-enum
   "Creates a flexible enum that accepts both keywords and their string versions.
@@ -17,6 +18,8 @@
    (into [:enum meta] (distinct (mapcat (fn [v]
                                           [(name v)
                                            (keyword v)]) vals)))))
+
+(def ByteArray [:fn #(instance? (Class/forName "[B") %)])
 
 (defn regex?
   [input]
@@ -501,3 +504,23 @@
    {:error/message "Must be a core.async channel"
     :description "core.async channel"}
    #(satisfies? async-protocols/Channel %)])
+
+(def PipelineConfigSchema
+  [:map
+   [:audio-in/sample-rate {:default 16000} SampleRate]
+   [:audio-in/channels {:default 1} AudioChannels]
+   [:audio-in/encoding {:default :pcm-signed} AudioEncoding]
+   [:audio-in/sample-size-bits {:default 16} SampleSizeBits]
+   [:audio-out/sample-rate {:default 16000} SampleRate]
+   [:audio-out/channels {:default 1} AudioChannels]
+   [:audio-out/encoding {:default :pcm-signed} AudioEncoding]
+   [:audio-out/sample-size-bits {:default 16} SampleSizeBits]
+   [:pipeline/language Language]
+   [:pipeline/supports-interrupt? {:default false
+                                   :optional true} :boolean]
+   [:llm/context LLMContext]
+   [:llm/registered-functions {:optional true} [:map-of :string [:=> [:cat :map] :any]]]
+   [:transport/in-ch CoreAsyncChannel]
+   [:transport/out-ch CoreAsyncChannel]])
+
+(def PartialConfigSchema (mu/optional-keys PipelineConfigSchema))

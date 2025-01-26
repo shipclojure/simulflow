@@ -1,11 +1,10 @@
 (ns voice-fn.processors.elevenlabs
   (:require
    [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
    [hato.websocket :as ws]
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :as pipeline]
-   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]
    [voice-fn.secrets :as secrets]
    [voice-fn.utils.core :as u])
@@ -25,36 +24,27 @@
   ([format sample-rate]
    (keyword (str (name format) "_" sample-rate))))
 
-(defn make-elevenlabs-url
-  [pipeline-config processor-config]
-  (let [{:audio-out/keys [encoding sample-rate]
-         :pipeline/keys [language]} pipeline-config
-        {:elevenlabs/keys [model-id voice-id]
+(defn make-elevenlabs-ws-url
+  [args]
+  (let [{:audio.out/keys [encoding sample-rate]
+         :flow/keys [language]
+         :elevenlabs/keys [model-id voice-id]
          :or {model-id "eleven_flash_v2_5"
               voice-id "cjVigY5qzO86Huf0OWal"}}
-        processor-config]
+        args]
     (u/append-search-params (format xi-tts-websocket-url voice-id)
                             {:model_id model-id
                              :language_code language
                              :output_format (encoding->elevenlabs encoding sample-rate)})))
 
 (comment
-  (make-elevenlabs-url {:audio-in/sample-rate 8000
-                        :audio-in/encoding :ulaw
-                        :audio-in/channels 1
-                        :audio-in/sample-size-bits 8
-                        :audio-out/sample-rate 8000
-                        :audio-out/encoding :ulaw
-                        :audio-out/bitrate 64000
-                        :audio-out/sample-size-bits 8
-                        :audio-out/channels 1
-                        :pipeline/language :ro}
-                       {:elevenlabs/api-key (secrets/secret [:elevenlabs :api-key])
-                        :elevenlabs/model-id "eleven_flash_v2_5"
-                        :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
-                        :voice/stability 0.5
-                        :voice/similarity-boost 0.8
-                        :voice/use-speaker-boost? true}))
+  (make-elevenlabs-ws-url
+    {:elevenlabs/api-key (secrets/secret [:elevenlabs :api-key])
+     :elevenlabs/model-id "eleven_flash_v2_5"
+     :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+     :voice/stability 0.5
+     :voice/similarity-boost 0.8
+     :voice/use-speaker-boost? true}))
 
 (defn begin-stream-message
   [{:voice/keys [stability similarity-boost use-speaker-boost?]
@@ -79,62 +69,6 @@
   [text]
   (u/json-str {:text (str text " ")
                :flush true}))
-
-(defn create-connection-config
-  [type pipeline processor-config]
-  {:on-open (fn [ws]
-              (let [configuration (begin-stream-message processor-config)]
-                (t/log! :info ["Elevenlabs websocket connection open. Sending configuration message" configuration])
-                (ws/send! ws configuration)
-                ;; Send a keepalive message every 3 seconds to maintain websocket connection
-                (a/go-loop []
-                  (a/<! (a/timeout 3000))
-                  (when (get-in @pipeline [type :websocket/conn])
-                    (t/log! {:level :debug :id type} "Sending keep-alive message")
-                    (ws/send! ws keep-alive-message)
-                    (recur)))))
-   :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                 (let [acc (get-in @pipeline [type :audio/accumulator] "")
-                       attempt (u/parse-if-json (str acc data))]
-                   (if (map? attempt)
-                     (when-let [audio (:audio attempt)]
-                       (swap! pipeline assoc-in [type :audio/accumulator] "")
-                       (when-not (pipeline/interrupted? @pipeline)
-                         (pipeline/send-frame! pipeline (frame/audio-output-raw (u/decode-base64 audio)))))
-                     (swap! pipeline assoc-in [type :audio/accumulator] attempt))))
-   :on-error (fn [_ e]
-               (swap! pipeline update-in [type :websocket/conn] dissoc)
-               (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
-   :on-close (fn [_ws code reason]
-               (swap! pipeline update-in [type :websocket/conn] dissoc)
-               (t/log! :info ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))})
-
-(def max-reconnect-attempts 5)
-
-(defn connect-websocket!
-  [type pipeline processor-config]
-  (let [current-count (get-in @pipeline [type :websocket/reconnect-count] 0)]
-    (if (>= current-count max-reconnect-attempts)
-      (t/log! :warn "Maximum reconnection attempts reached for Elevenlabs")
-      (do
-        (t/log! :info (str "Attempting to connect to Elevenlabs (attempt " (inc current-count) "/" max-reconnect-attempts ")"))
-        (swap! pipeline update-in [type :websocket/reconnect-count] (fnil inc 0))
-        (let [conn-config (create-connection-config
-                            type
-                            pipeline
-                            processor-config)
-              new-conn @(ws/websocket (make-elevenlabs-url (:pipeline/config @pipeline) processor-config)
-                                      conn-config)]
-          (swap! pipeline assoc-in [type :websocket/conn] new-conn)
-          (t/log! :debug "Elevenlabs connection ready"))))))
-
-(defn- close-websocket-connection!
-  [type pipeline]
-  (t/log! :info "Closing elevenlabs websocket connection")
-  (when-let  [conn (get-in @pipeline [type :websocket/conn])]
-    (ws/send! conn close-stream-message)
-    (ws/close! conn))
-  (swap! pipeline update-in [type] dissoc :websocket/conn))
 
 (def ElevenLabsTTSConfig
   "Configuration for Elevenlabs TextToSpeech service"
@@ -174,49 +108,88 @@
      {:default true
       :description "Whether to enable speaker beoost enhancement"}]]])
 
-(defmethod pipeline/create-processor :processor.speech/elevenlabs
-  [id]
-  (reify p/Processor
-    (processor-id [_] id)
+(def elevenlabs-tts-process
+  (flow/process
+    {:describe (fn [] {:ins {:sys-in "Channel for system messages that take priority"
+                             :in "Channel for audio input frames (from transport-in) "}
+                       :outs {:sys-out "Channel for system messages that have priority"
+                              :out "Channel on which transcription frames are put"}
+                       :params {:elevenlabs/api-key "Api key required for 11labs connection"
+                                :elevenlabs/model-id "Model used for voice generation"
+                                :elevenlabs/voice-id "Voice id"
+                                :voice/stability "Optional voice stability factor (0.0 to 1.0)"
+                                :voice/similarity-boost "Optional voice similarity boost factor (0.0 to 1.0)"
+                                :voice/use-speaker-boost? "Wether to enable speaker boost enchancement"
+                                :flow/language "Language to use"
+                                :audio.out/encoding "Encoding for the audio generated"
+                                :audio.out/sample-rate "Sample rate for the audio generated"}
+                       :workload :io})
+     :init (fn [args]
+             (let [url (make-elevenlabs-ws-url args)
+                   ws-read (a/chan 100)
+                   ws-write (a/chan 100)
+                   alive? (atom true)
+                   conf {:on-open (fn [ws]
+                                    (let [configuration (begin-stream-message args)]
+                                      (t/log! :info ["Elevenlabs websocket connection open. Sending configuration message" configuration])
+                                      (ws/send! ws configuration)))
+                         :on-message (fn [_ws ^HeapCharBuffer data _last?]
+                                       (a/put! ws-read (str data)))
+                         :on-error (fn [_ e]
+                                     (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
+                         :on-close (fn [_ws code reason]
+                                     (reset! alive? false)
+                                     (t/log! :info ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))}
+                   _ (t/log! {:level :info :id :elevenlabs} "Connecting to transcription websocket")
+                   ws-conn @(ws/websocket
+                              url
+                              conf)
 
-    (processor-schema [_] ElevenLabsTTSConfig)
+                   write-to-ws #(loop []
+                                  (when @alive?
+                                    (when-let [msg (a/<!! ws-write)]
+                                      (cond
+                                        (and (frame/speak-frame? msg) @alive?)
+                                        (do
+                                          (ws/send! ws-conn (text-message (:frame/data msg)))
+                                          (recur))))))
+                   keep-alive #(loop []
+                                 (when @alive?
+                                   (a/<!! (a/timeout 3000))
+                                   (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
+                                   (ws/send! ws-conn keep-alive-message)
+                                   (recur)))]
+               ((flow/futurize write-to-ws :exec :io))
+               ((flow/futurize keep-alive :exec :io))
 
-    (accepted-frames [_] #{:frame.system/start
-                           :frame.system/stop
-                           :frame.llm/text-chunk
-                           :frame.llm/response-start
-                           :frame.control/interrupt-start})
+               {:websocket/conn ws-conn
+                :websocket/alive? alive?
+                ::flow/in-ports {:ws-read ws-read}
+                ::flow/out-ports {:ws-write ws-write}}))
+     :transition (fn [{:websocket/keys [conn]
+                       ::flow/keys [in-ports out-ports]
+                       :as state} transition]
+                   (when (= transition ::flow/stop)
+                     (t/log! {:id :elevenlabs :level :info} "Closing tts websocket connection")
+                     (reset! (:websocket/alive? state) false)
+                     (when conn
+                       (ws/send! conn close-stream-message)
+                       (ws/close! conn))
+                     (doseq [port (concat (vals in-ports) (vals out-ports))]
+                       (a/close! port)))
+                   state)
 
-    (make-processor-config [_ _ processor-config]
-      processor-config)
-
-    (process-frame [this pipeline processor-config frame]
-      (let [id (p/processor-id this)]
-        (cond
-          (frame/system-start? frame)
-          (do (t/log! {:level :debug
-                       :id id} "Starting text to speech engine")
-              (connect-websocket! id pipeline processor-config))
-          (frame/system-stop? frame) (close-websocket-connection! id pipeline)
-
-          (and (frame/llm-text-chunk? frame)
-               (not (pipeline/interrupted? @pipeline)))
-          (let [conn (get-in @pipeline [id :websocket/conn])
-                acc (get-in @pipeline [id :sentence/accumulator] "")
-                {:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data frame))]
-            (t/log! :debug ["sentence" sentence "accumulator" accumulator])
-            ;; add new accumulator first so next call of this processor doesn't race
-            ;; condition
-            (swap! pipeline assoc-in [id :sentence/accumulator] accumulator)
-            (when sentence
-              (let [xi-message (text-message sentence)]
-                (t/log! {:level :debug
-                         :id id} ["Sending websocket payload" xi-message])
-                (ws/send! conn xi-message))))
-
-          (frame/llm-full-response-start? frame)
-          (swap! pipeline assoc-in [id :sentence/accumulator] "")
-
-          ;; reset accumulator when pipeline gets interrupted
-          (frame/control-interrupt-start? frame)
-          (swap! pipeline update-in [id] merge {:sentence/accumulator ""}))))))
+     :transform (fn [{:audio/keys [acc] :as state} in-name msg]
+                  (if (= in-name :ws-read)
+                    ;; xi sends one json response in multiple events so it needs
+                    ;; to be concattenated until the final json can be parsed
+                    (let [attempt (u/parse-if-json (str acc msg))]
+                      (if (map? attempt)
+                        [(assoc state :audio/acc "") (when-let [audio (:audio attempt)]
+                                                       {:out [(frame/audio-output-raw (u/decode-base64 audio))]})]
+                        ;; continue concatenating
+                        [(assoc state :audio/acc attempt)]))
+                    (cond
+                      (frame/speak-frame? msg)
+                      [state {:ws-write [msg]}]
+                      :else [state])))}))

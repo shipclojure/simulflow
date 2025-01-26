@@ -33,25 +33,17 @@
         (= frame-type :frame.control/interrupt-start)
         (= frame-type :frame.control/interrupt-stop))))
 
-(def BaseFrameSchema
-  [:map
-   [:frame/type :keyword]
-   [:frame/data :any]
-   [:frame/ts :int]])
-
 (defmacro defframe
   "Define a frame creator function and its predicate with schema validation.
    Usage: (defframe audio-input
                     \"Doc string\"
                     {:type :frame.audio/input-raw
                      :schema [:map [:data AudioData]])}"
-  [name docstring {:keys [type schema]}]
-  (let [frame-schema (if schema
-                       [:map
-                        [:frame/type [:= type]]
-                        [:frame/data schema]
-                        [:frame/ts :int]]
-                       BaseFrameSchema)
+  [name docstring {:keys [type schema] :or {schema :any}}]
+  (let [frame-schema [:map
+                      [:frame/type [:= type]]
+                      [:frame/data schema]
+                      [:frame/ts :any]]
         frame-schema-name (symbol (str name "-schema"))
         pred-name (symbol (str name "?"))]
     `(do
@@ -114,11 +106,17 @@
 
 (defframe system-stop
   "Frame sent when the pipeline stops"
-  {:type :frame.system/stop})
+  {:type :frame.system/stop
+   :schema :boolean})
 
 (defframe system-error
   "General error frame"
   {:type :frame.system/error})
+
+(defframe system-config-change
+  "Frame with configuration changes for the running pipeline"
+  {:type :frame.system/config-change
+   :schema schema/PartialConfigSchema})
 
 ;;
 ;; Audio Frames
@@ -127,7 +125,8 @@
 
 (defframe audio-input-raw
   "Raw audio input frame from input transport"
-  {:type :frame.audio/input-raw})
+  {:type :frame.audio/input-raw
+   :schema schema/ByteArray})
 
 (defframe audio-output-raw
   "Raw audio output frame for playback through output transport"
@@ -201,11 +200,13 @@
 
 (defframe user-speech-start
   "User started speaking"
-  {:type :frame.user/speech-start})
+  {:type :frame.user/speech-start
+   :schema :boolean})
 
 (defframe user-speech-stop
   "User stopped speaking"
-  {:type :frame.user/speech-stop})
+  {:type :frame.user/speech-stop
+   :scheam :boolean})
 
 ;;
 ;; Control Frames
@@ -214,20 +215,28 @@
 
 (defframe control-bot-interrupt
   "Bot should be interrupted"
-  {:type :frame.control/bot-interrupt})
+  {:type :frame.control/bot-interrupt
+   :schema :boolean})
 
 (defframe control-interrupt-start
   "Start pipeline interruption"
-  {:type :frame.control/interrupt-start})
+  {:type :frame.control/interrupt-start
+   :schema :boolean})
 
 (defframe control-interrupt-stop
   "Stop pipeline interruption"
-  {:type :frame.control/interrupt-stop})
+  {:type :frame.control/interrupt-stop
+   :schema :boolean})
 
 ;;
 ;; Input/Output Text Frames
 ;; Frames for text processing
 ;;
+
+(defframe speak-frame
+  "Text frame meant for TTS processors to generate speech from the input"
+  {:type :frame.tts/speak
+   :schema :string})
 
 (defframe text-input
   "Text input frame for LLM processing"

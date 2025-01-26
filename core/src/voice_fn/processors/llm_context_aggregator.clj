@@ -1,10 +1,9 @@
 (ns voice-fn.processors.llm-context-aggregator
   (:require
+   [clojure.core.async.flow :as flow]
    [clojure.string :as str]
    [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :as pipeline :refer [send-frame!]]
-   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]
    [voice-fn.utils.core :as u]))
 
@@ -28,7 +27,19 @@
        (into context
              [{:role role :content content}])))))
 
-(defn process-aggregator-frame
+(defn valid-aggregation?
+  [a]
+  (and (string? a)
+       (not= "" (str/trim a))))
+
+(defn next-context
+  [{:keys [context role aggregation]}]
+  (assoc context :messages (concat-context-messages
+                             (:messages context)
+                             role
+                             aggregation)))
+
+(defn aggregator-transform
   "Use cases implemented:
 S: Start, E: End, T: Transcription, I: Interim, X: Text
 
@@ -44,46 +55,36 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
  S I E T1 I T2 -> X
   "
-  [type pipeline processor-config frame]
+  [state _ frame]
+  (when (:aggregator/debug? state)
+    (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)}))
+
   (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame? handles-interrupt?]
-         :messages/keys [role]} processor-config
-        {:keys [aggregating? seen-interim-results? aggregation seen-end-frame?]} (get-in @pipeline [type :aggregation-state])
-        send-aggregation? (atom false)
-        reset (fn [pipeline] (assoc-in pipeline [type :aggregation-state] {:aggregation ""
-                                                                           :aggregating? false
-                                                                           :seen-start-frame? false
-                                                                           :seen-end-frame? false
-                                                                           :seen-interim-results? false}))
+         :messages/keys [role]
+         :llm/keys [context]
+         :keys [aggregating? seen-interim-results? aggregation seen-end-frame?]} state
+        reset #(assoc %
+                      :aggregation ""
+                      :aggregating? false
+                      :seen-start-frame? false
+                      :seen-end-frame? false
+                      :seen-interim-results? false)
 
         frame-data (:frame/data frame)
-        maybe-send-aggregation!
-        (fn []
-          (let [current-aggregation (get-in @pipeline [type :aggregation-state :aggregation])]
-            (when (and (string? current-aggregation)
-                       (not= "" (str/trim current-aggregation)))
-              (let [old-context (get-in @pipeline [:pipeline/config :llm/context])
-                    llm-messages (concat-context-messages
-                                   (:messages old-context)
-                                   role
-                                   current-aggregation)]
-                (when debug?
-                  (t/log! {:level :debug :id type} ["Sending new context messages" llm-messages]))
-                ;; Update state first so later invocations of aggregation
-                ;; processor to have the latest result
-                (swap! pipeline (fn [p]
-                                  (-> p
-                                      (assoc-in [:pipeline/config :llm/context :messages] llm-messages)
-                                      (assoc-in [type :aggregation-state :aggregation] ""))))
-                (send-frame! pipeline (frame/llm-context (assoc old-context :messages llm-messages)))))))]
+        id (str "context-aggregator-" (name role))]
     (cond
+      (frame/llm-context? frame)
+      (do
+        (when debug?
+          (t/log! {:level :debug :id id} ["CONTEXT FRAME" frame-data]))
+        [(assoc state :llm/context frame-data)])
+
       (start-frame? frame)
       ,(do
          (when debug?
-           (t/log! {:level :debug :id type} "START FRAME"))
-         (swap! pipeline
-                assoc-in
-                [type :aggregation-state]
-                {;; NOTE: On start, we don't reset the aggregation. This is for
+           (t/log! {:level :debug :id id} "START FRAME"))
+         [(assoc state
+                 ;; NOTE: On start, we don't reset the aggregation. This is for
                  ;; a specific reason with deepgram where it tends to send
                  ;; multiple start speech events before we get an end utterance
                  ;; event. In the future it might be possible that we change
@@ -96,56 +97,58 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                  :aggregating? true
                  :seen-start-frame? true
                  :seen-end-frame? false
-                 :seen-interim-results? false}))
+                 :seen-interim-results? false)])
       (end-frame? frame)
       ,(do
          (when debug?
-           (t/log! {:level :debug :id type} "END FRAME"))
+           (t/log! {:level :debug :id id} "END FRAME"))
          ;; WE might have received the end frame but we might still be aggregating
          ;; (i.e we have seen interim results but not the final
          ;; S E       -> No aggregation (len == 0), keep aggregating
          ;; S I E T   -> No aggregation when E arrives, keep aggregating until T
-         (let [aggregating? (or seen-interim-results? (zero? (count aggregation)))]
-           (swap! pipeline update-in [type :aggregation-state]
-                  merge {:seen-end-frame? true
-                         :seen-start-frame? false
-
-                         :aggregating? aggregating?})
-           ;; Send the aggregation if we're not aggregating anymore (no more interim results)
-           (reset! send-aggregation? (not aggregating?))))
+         (let [keep-aggregating? (or seen-interim-results? (zero? (count aggregation)))
+               ;; Send the aggregation if we're not aggregating anymore (no more interim results)
+               send-agg? (not keep-aggregating?)]
+           (if send-agg?
+             (let [nc (next-context {:context context :aggregation aggregation :role role})]
+               [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
+             [(assoc state
+                     :seen-end-frame? true
+                     :seen-start-frame? false
+                     :aggregation aggregation)])))
 
       (and (accumulator-frame? frame)
            (not (nil? frame-data))
            (not= "" (str/trim frame-data)))
-      ,(do
+      ,(let [new-agg (:frame/data frame)]
          (when debug?
-           (t/log! {:level :debug :id type} ["FRAME: " (:frame/data frame)]))
+           (t/log! {:level :debug :id id} ["FRAME: " new-agg]))
+         ;; if we seen end frame, we send aggregation
+         ;; else
          (if aggregating?
-           (do (swap! pipeline update-in [type :aggregation-state]
-                      merge {:aggregation (str aggregation frame-data)
-                             ;; We received final results so reset interim results
-                             :seen-interim-results? false})
-
-               ;; We received a complete sentence, so if we have seen the end
-               ;; frame and we were still aggregating, it means we should send
-               ;; the aggregation.
-               (reset! send-aggregation? seen-end-frame?))
-           (swap! pipeline assoc-in [type :aggregation-state :seen-interim-results?] false)))
+           (if seen-end-frame?
+             ;; send aggregtation
+             (let [nc (next-context {:context context :aggregation (str aggregation new-agg) :role role})]
+               [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
+             [(assoc state
+                     :aggregation (str aggregation new-agg)
+                     :seen-interim-results? false)])
+           [(assoc state :seen-interim-results? false)]))
       (and (fn? interim-results-frame?)
            (interim-results-frame? frame))
       ,(do
          (when debug?
-           (t/log! {:level :debug :id type} ["INTERIM: " (:frame/data frame)]))
-         (swap! pipeline assoc-in [type :aggregation-state :seen-interim-results?] true))
+           (t/log! {:level :debug :id id} ["INTERIM: " (:frame/data frame)]))
+         [(assoc state :seen-interim-results? true)])
+
       ;; handle interruptions if the aggregator supports it
       (and (frame/control-interrupt-start? frame)
            handles-interrupt?)
-      ,(do
-         (maybe-send-aggregation!)
-         (reset pipeline)))
-
-    ;; maybe send new context
-    (when @send-aggregation? (maybe-send-aggregation!))))
+      ,(let [nc (next-context {:context context :aggregation aggregation :role role})
+             v? (valid-aggregation? aggregation)
+             next-state (if v? (assoc state :llm/context nc) state)]
+         [(reset next-state) (when (valid-aggregation? aggregation) {:out [(frame/llm-context nc)]})])
+      :else [state])))
 
 ;; TODO This should be async
 (defn handle-tool-call
@@ -204,25 +207,6 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
    :aggregator/debug? true})
 
-(defmethod pipeline/create-processor :context.aggregator/user
-  [id]
-  (reify p/Processor
-    (processor-id [_] id)
-
-    (processor-schema [_] ContextAggregatorConfig)
-
-    (accepted-frames [_] #{:frame.user/speech-start
-                           :frame.user/speech-stop
-                           :frame.transcription/interim
-                           :frame.transcription/result})
-
-    (make-processor-config [_ _ processor-config]
-      (merge  user-context-aggregator-options
-              processor-config))
-
-    (process-frame [this pipeline processor-config frame]
-      (process-aggregator-frame (p/processor-id this) pipeline processor-config frame))))
-
 ;; Aggregator for assistant
 ;; TODO should handle interrupt
 (def assistant-context-aggregator-options
@@ -231,28 +215,31 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    :aggregator/end-frame? frame/llm-full-response-end?
    :aggregator/accumulator-frame? frame/llm-text-chunk?})
 
-(defmethod pipeline/create-processor :context.aggregator/assistant
-  [id]
-  (reify p/Processor
-    (processor-id [_] id)
+(def context-aggregator-process
+  (flow/process
+    {:describe (fn [] {:ins {:in "Channel for aggregation messages"}
+                       :outs {:out "Channel where new context aggregations are put"}})
+     :params {:llm/context "Initial LLM context. See schema/LLMContext"
+              :messages/role "Role that this processor aggregates"
+              :aggregator/start-frame? "Predicate checking if the frame is a start-frame?"
+              :aggregator/end-frame? "Predicate checking if the frame is a end-frame?"
+              :aggregator/accumulator-frame? "Predicate checking the main type of frame we are aggregating"
+              :aggregator/interim-results-frame? "Optional predicate checking if the frame is an interim results frame"
+              :aggregator/handles-interrupt? "Optional Wether this aggregator should handle or not interrupts"
+              :aggregator/debug? "Optional When true, debug logs will be called"}
+     :workload :compute
+     :init identity
+     :transform aggregator-transform}))
 
-    (processor-schema [_] ContextAggregatorConfig)
-
-    (accepted-frames [_]
-      #{:frame.llm/response-start
-        :frame.llm/text-chunk
-        :frame.llm/response-end
-        :frame.llm/tool-request})
-
-    (make-processor-config [_ pipeline-config processor-config]
-      ;; defaults
-      (merge
-        assistant-context-aggregator-options
-        processor-config
-        {:aggregator/handles-interrupt? (:pipeline/supports-interrupt? pipeline-config)}))
-
-    (process-frame [_ pipeline processor-config frame]
-
-      (cond
-        (frame/llm-tools-call-request? frame) (handle-tool-call @pipeline frame)
-        :else (process-aggregator-frame id pipeline processor-config frame)))))
+(defn sentence-assembler
+  "Takes in llm-text-chunk frames and returns a full sentence. Useful for
+  generating speech sentence by sentence."
+  ([] {:ins {:in "Channel for llm text chunks"}
+       :outs {:out "Channel for assembled speak frames"}})
+  ([_] {:acc nil})
+  ([{:keys [acc]} _ msg]
+   (when (frame/llm-text-chunk? msg)
+     (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
+       (if sentence
+         [{:acc accumulator} {:out [(frame/speak-frame sentence)]}]
+         [{:acc accumulator}])))))

@@ -1,12 +1,12 @@
 (ns voice-fn.processors.openai
   (:require
    [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
    [hato.client :as http]
    [malli.core :as m]
    [malli.transform :as mt]
+   [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :as pipeline]
-   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]
    [voice-fn.utils.core :as u]
    [voice-fn.utils.request :as request]))
@@ -132,93 +132,106 @@
 
 (def delta (comp  :delta first :choices))
 
-(defn process-context-frame
+(defn flow-do-completion!
   "Handle completion requests for OpenAI LLM models"
-  [id pipeline processor-config frame]
-  (let [{:llm/keys [model] :openai/keys [api-key]} processor-config]
+  [state out-c frame]
+  (let [{:llm/keys [model] :openai/keys [api-key]} state]
     ;; Start request only when the last message in the context is by the user
 
-    (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
+    (a/>!! out-c (frame/llm-full-response-start true))
     (let [stream-ch (stream-openai-chat-completion (merge {:model model
                                                            :api-key api-key}
                                                           (:frame/data frame)))]
-      (swap! pipeline assoc-in [id :stream-ch] stream-ch)
-      (a/go-loop [function-name nil
-                  function-arguments nil
-                  tool-call-id nil]
-        (when-let [chunk (a/<! stream-ch)]
-          (let [d (delta chunk)
-                tool-call (first (:tool_calls d))]
-            (cond
-              (= chunk :done)
-              (do
-                (swap! pipeline update-in [id] dissoc :stream-ch)
-                ;; When this is a tool call completion and we are done
-                ;; parsing tool call completion, send a tool-call
-                ;; request frame to the aggregators so we get the result in the context
 
-                (let [parsed-args (u/parse-if-json function-arguments)]
-                  (when
-                    (and function-name
-                         (map? parsed-args))
-                    (pipeline/send-frame!
-                      pipeline
-                      (frame/llm-tools-call-request
-                        {:function-name function-name
-                         :arguments parsed-args
-                         :tool-call-id tool-call-id}))))
-                (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
-                nil)                    ; explicit nil return when done
+      (a/thread
+        (loop [function-name nil
+               function-arguments nil
+               tool-call-id nil]
+          (when-let [chunk (a/<!! stream-ch)]
+            (let [d (delta chunk)
+                  tool-call (first (:tool_calls d))]
+              (cond
+                (= chunk :done)
+                (do
 
-              ;; text completion chunk
-              (:content d)
-              (do
-                (pipeline/send-frame! pipeline (frame/llm-text-chunk (:content d)))
-                (recur function-name function-arguments tool-call-id))
+                  ;; When this is a tool call completion and we are done
+                  ;; parsing tool call completion, send a tool-call
+                  ;; request frame to the aggregators so we get the result in the context
+                  (let [parsed-args (u/parse-if-json function-arguments)]
+                    (when
+                      (and function-name
+                           (map? parsed-args))
+                      (a/>!!
+                        out-c
+                        (frame/llm-tools-call-request
+                          {:function-name function-name
+                           :arguments parsed-args
+                           :tool-call-id tool-call-id}))))
+                  (a/>!! out-c (frame/llm-full-response-end true))
+                  nil)                  ; explicit nil return when done
 
-              ;;  We're streaming the LLM response to enable the fastest response times.
-              ;;  For text, we just send each chunk as we receive it and count on consumers
-              ;;  to do whatever coalescing they need (eg. to pass full sentences to TTS)
-              ;;
-              ;;  If the LLM response is a function call, we'll do some coalescing here.
-              ;;  We accumulate all the arguments for the rest of the streamed response, then when
-              ;;  the response is done, we package up all the arguments and the function name and
-              ;;  send a frame containing the function name and the arguments.
-              tool-call
-              (let [{:keys [arguments name]} (:function tool-call)
-                    tci (:id tool-call)]
-                (recur (or function-name name)
-                       (str function-arguments arguments)
-                       (or tool-call-id tci)))
+                ;; text completion chunk
+                (:content d)
+                (do
+                  (a/>!! out-c (frame/llm-text-chunk (:content d)))
+                  (recur function-name function-arguments tool-call-id))
 
-              ;; Should never get to this point
-              :else
-              (recur function-name function-arguments tool-call-id))))))))
+                ;;  We're streaming the LLM response to enable the fastest response times.
+                ;;  For text, we just send each chunk as we receive it and count on consumers
+                ;;  to do whatever coalescing they need (eg. to pass full sentences to TTS)
+                ;;
+                ;;  If the LLM response is a function call, we'll do some coalescing here.
+                ;;  We accumulate all the arguments for the rest of the streamed response, then when
+                ;;  the response is done, we package up all the arguments and the function name and
+                ;;  send a frame containing the function name and the arguments.
+                tool-call
+                (let [{:keys [arguments name]} (:function tool-call)
+                      tci (:id tool-call)]
+                  (recur (or function-name name)
+                         (str function-arguments arguments)
+                         (or tool-call-id tci)))
 
-(defmethod pipeline/create-processor :processor.llm/openai
-  [id]
-  (reify p/Processor
-    (processor-id [_] id)
+                ;; Should never get to this point
+                :else
+                (recur function-name function-arguments tool-call-id)))))))))
 
-    (processor-schema [_] OpenAILLMConfigSchema)
+(def openai-llm-process
+  (flow/process
+    {:describe (fn [] {:ins {:in "Channel for incoming context aggregations"}
+                       :outs {:out "Channel where streaming responses will go"}})
+     :params {:llm/model "Openai model used"
+              :openai/api-key "OpenAI Api key"
+              :llm/temperature "Optional temperature parameter for the llm inference"
+              :llm/max-tokens "Optional max tokens to generate"
+              :llm/presence-penalty "Optional (-2.0 to 2.0)"
+              :llm/top-p "Optional nucleus sampling threshold"
+              :llm/seed "Optional seed used for deterministic sampling"
+              :llm/max-completion-tokens "Optional Max tokens in completion"
+              :llm/extra "Optional extra model parameters"}
+     :workload :io
+     :transition (fn [{::flow/keys [in-ports out-ports]} transition]
+                   (when (= transition ::flow/stop)
+                     (doseq [port (concat (vals in-ports) (vals out-ports))]
+                       (a/close! port))))
+     :init (fn [params]
+             (let [state (m/decode OpenAILLMConfigSchema params mt/default-value-transformer)
+                   llm-write (a/chan 100)
+                   llm-read (a/chan 1024)
+                   write-to-llm #(loop []
+                                   (if-let [msg (a/<!! llm-write)]
+                                     (do
+                                       (assert (or (frame/llm-context? msg)
+                                                   (frame/control-interrupt-start? msg)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
+                                       (flow-do-completion! state llm-read msg)
+                                       (recur))
+                                     (t/log! {:level :info :id :llm} "Closing llm loop")))]
+               ((flow/futurize write-to-llm :exec :io))
+               {::flow/in-ports {:llm-read llm-read}
+                ::flow/out-ports {:llm-write llm-write}}))
 
-    (accepted-frames [_] #{:frame.context/messages :frame.control/interrupt-start})
-
-    (make-processor-config [_ _ processor-config]
-      (m/decode OpenAILLMConfigSchema processor-config mt/default-value-transformer))
-
-    (process-frame [_ pipeline processor-config frame]
-      (cond
-        (and (frame/llm-context? frame)
-             ;; LLM shouldn't respond to itself
-             (not (u/assistant-last-message? (:frame/data frame)))
-             (not (pipeline/interrupted? @pipeline)))
-        (process-context-frame id pipeline processor-config frame)
-
-        ;; If interrupt-start frame is sent, we cancel the current token
-        ;; generation if one is in progress
-        (frame/control-interrupt-start? frame)
-        (when-let [stream-ch (get-in @pipeline [id :stream-ch])]
-          ;; Closing the stream-ch, prevents new events to be put on it
-          (a/close! stream-ch)
-          (swap! pipeline update-in [id] dissoc :stream-ch))))))
+     :transform (fn [state in msg]
+                  (if (= in :llm-read)
+                    [state {:out [msg]}]
+                    (cond
+                      (frame/llm-context? msg)
+                      [state {:llm-write [msg]}])))}))
