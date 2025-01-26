@@ -36,6 +36,5 @@
                                ring/ring-jetty-adapter {:mvn/version "1.13.0"}
                                metosin/reitit {:mvn/version "0.7.2"}}
                   :extra-paths ["../examples/src"]}
-  :clj-kondo
-  {:replace-deps {clj-kondo/clj-kondo {:mvn/version "RELEASE"}}
-   :main-opts ["-m" "clj-kondo.main"]}}}
+  :clj-kondo {:replace-deps {clj-kondo/clj-kondo {:mvn/version "RELEASE"}}
+              :main-opts ["-m" "clj-kondo.main"]}}}

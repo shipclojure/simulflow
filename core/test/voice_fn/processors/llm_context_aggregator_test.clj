@@ -1,7 +1,6 @@
 (ns voice-fn.processors.llm-context-aggregator-test
   (:require
    [midje.sweet :refer [fact facts]]
-   [voice-fn.core]
    [voice-fn.frame :as frame]
    [voice-fn.processors.llm-context-aggregator :as sut]))
 
@@ -19,10 +18,10 @@
       "World") => [{:role :system, :content "Hello World"}])
 
   (fact "handles empty context"
-    (sut/concat-context-messages
-      []
-      :user
-      "Hello") => [{:role :user, :content "Hello"}])
+        (sut/concat-context-messages
+          []
+          :user
+          "Hello") => [{:role :user, :content "Hello"}])
 
   (fact "accepts both keyword and string roles"
     (sut/concat-context-messages

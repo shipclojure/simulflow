@@ -143,56 +143,57 @@
                                                            :api-key api-key}
                                                           (:frame/data frame)))]
 
-      (a/go-loop [function-name nil
-                  function-arguments nil
-                  tool-call-id nil]
-        (when-let [chunk (a/<! stream-ch)]
-          (let [d (delta chunk)
-                tool-call (first (:tool_calls d))]
-            (cond
-              (= chunk :done)
-              (do
+      (a/thread
+        (loop [function-name nil
+               function-arguments nil
+               tool-call-id nil]
+          (when-let [chunk (a/<!! stream-ch)]
+            (let [d (delta chunk)
+                  tool-call (first (:tool_calls d))]
+              (cond
+                (= chunk :done)
+                (do
 
-                ;; When this is a tool call completion and we are done
-                ;; parsing tool call completion, send a tool-call
-                ;; request frame to the aggregators so we get the result in the context
-                (let [parsed-args (u/parse-if-json function-arguments)]
-                  (when
-                    (and function-name
-                         (map? parsed-args))
-                    (a/>!!
-                      out-c
-                      (frame/llm-tools-call-request
-                        {:function-name function-name
-                         :arguments parsed-args
-                         :tool-call-id tool-call-id}))))
-                (a/>!! out-c (frame/llm-full-response-end true))
-                nil)                    ; explicit nil return when done
+                  ;; When this is a tool call completion and we are done
+                  ;; parsing tool call completion, send a tool-call
+                  ;; request frame to the aggregators so we get the result in the context
+                  (let [parsed-args (u/parse-if-json function-arguments)]
+                    (when
+                      (and function-name
+                           (map? parsed-args))
+                      (a/>!!
+                        out-c
+                        (frame/llm-tools-call-request
+                          {:function-name function-name
+                           :arguments parsed-args
+                           :tool-call-id tool-call-id}))))
+                  (a/>!! out-c (frame/llm-full-response-end true))
+                  nil)                  ; explicit nil return when done
 
-              ;; text completion chunk
-              (:content d)
-              (do
-                (a/>!! out-c (frame/llm-text-chunk (:content d)))
-                (recur function-name function-arguments tool-call-id))
+                ;; text completion chunk
+                (:content d)
+                (do
+                  (a/>!! out-c (frame/llm-text-chunk (:content d)))
+                  (recur function-name function-arguments tool-call-id))
 
-              ;;  We're streaming the LLM response to enable the fastest response times.
-              ;;  For text, we just send each chunk as we receive it and count on consumers
-              ;;  to do whatever coalescing they need (eg. to pass full sentences to TTS)
-              ;;
-              ;;  If the LLM response is a function call, we'll do some coalescing here.
-              ;;  We accumulate all the arguments for the rest of the streamed response, then when
-              ;;  the response is done, we package up all the arguments and the function name and
-              ;;  send a frame containing the function name and the arguments.
-              tool-call
-              (let [{:keys [arguments name]} (:function tool-call)
-                    tci (:id tool-call)]
-                (recur (or function-name name)
-                       (str function-arguments arguments)
-                       (or tool-call-id tci)))
+                ;;  We're streaming the LLM response to enable the fastest response times.
+                ;;  For text, we just send each chunk as we receive it and count on consumers
+                ;;  to do whatever coalescing they need (eg. to pass full sentences to TTS)
+                ;;
+                ;;  If the LLM response is a function call, we'll do some coalescing here.
+                ;;  We accumulate all the arguments for the rest of the streamed response, then when
+                ;;  the response is done, we package up all the arguments and the function name and
+                ;;  send a frame containing the function name and the arguments.
+                tool-call
+                (let [{:keys [arguments name]} (:function tool-call)
+                      tci (:id tool-call)]
+                  (recur (or function-name name)
+                         (str function-arguments arguments)
+                         (or tool-call-id tci)))
 
-              ;; Should never get to this point
-              :else
-              (recur function-name function-arguments tool-call-id))))))))
+                ;; Should never get to this point
+                :else
+                (recur function-name function-arguments tool-call-id)))))))))
 
 (def openai-llm-process
   (flow/process
