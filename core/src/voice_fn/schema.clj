@@ -357,7 +357,7 @@
      [:map
       {:closed true}
       [:name :string]
-      [:arguments :string]]]]])
+      [:arguments :any]]]]])
 
 (def LLMDeveloperMessage
   "Developer messages are the new system messages for the newer openai models like

@@ -176,7 +176,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                     :tool_calls [{:id tool-call-id
                                   :type :function
                                   :function {:name function-name
-                                             :arguments function-arguments}}]}
+                                             :arguments (u/parse-if-json function-arguments)}}]}
                    {:role :assistant
                     :content [{:type :text
                                :text content-aggregation}]})]
@@ -229,7 +229,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                tool-call? (boolean function-name)
                nf (frame/llm-context nc)]
            [(reset-aggregation-state (assoc state :llm/context nc)) (cond-> {:out [nf]}
-                                                                      tool-call? {:tool-write [nf]})]))
+                                                                      tool-call? (assoc :tool-write [nf]))]))
 
       (frame/llm-text-chunk? frame)
       (let [chunk (:frame/data frame)]

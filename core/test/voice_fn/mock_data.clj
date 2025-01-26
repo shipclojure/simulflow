@@ -99,7 +99,9 @@
    {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "10"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
    {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "-"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
    {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "10"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
-   {:service_tier "default", :created 1736923837, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\"}"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1736923837
+    :choices
+    [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "\"}"}}]}}], :system_fingerprint "fp_72ed7ab54c", :id "chatcmpl-AprWX3D40t4SQZrO5LEdvYYHHXuMT", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
    {:service_tier "default"
     :created 1736923837
     :choices [{:finish_reason "tool_calls", :index 0, :logprobs nil, :delta {}}]

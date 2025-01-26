@@ -2,6 +2,7 @@
   (:require
    [midje.sweet :refer [fact facts]]
    [voice-fn.frame :as frame]
+   [voice-fn.mock-data :as mock]
    [voice-fn.processors.llm-context-aggregator :as sut]))
 
 (facts "about concat-context"
@@ -121,6 +122,8 @@
                                         {:content "How can I help" :role :assistant}]}]
             (sut/user-aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context) nil]))))
 
+(def chunk->frame (comp frame/llm-tool-call-chunk first :tool_calls :delta first :choices))
+
 (facts
   "about assistant response aggregation"
   (let [config {:llm/context {:messages [{:role "assistant" :content "You are a helpful assistant"}
@@ -160,11 +163,11 @@
 
     (fact "S T E -> X"
           (sut/assistant-aggregator-transform config nil
-            (frame/llm-full-response-start true)) => [sstate]
+                                              (frame/llm-full-response-start true)) => [sstate]
           (sut/assistant-aggregator-transform sstate nil
-            (frame/llm-text-chunk "Hi! How can I help you?")) => [ststate]
+                                              (frame/llm-text-chunk "Hi! How can I help you?")) => [ststate]
           (let [[next-state {:keys [out]}] (sut/assistant-aggregator-transform ststate nil
-                                             (frame/llm-full-response-end true))
+                                                                               (frame/llm-full-response-end true))
                 frame (first out)]
             next-state => stestate
             (:frame/type frame) => :frame.llm/context
@@ -225,4 +228,52 @@
           (let [new-context {:messages [{:content "You are a helpful assistant" :role :assistant}
                                         {:content "Hello there" :role "user"}
                                         {:content "How can I help" :role :assistant}]}]
-            (sut/assistant-aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))))
+            (sut/assistant-aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))
+    (fact
+      "Handles tool call streams"
+      (let [final-state (reduce (fn [current-state frame]
+                                  (let [[next-state] (sut/assistant-aggregator-transform
+                                                       current-state
+                                                       nil
+                                                       frame)]
+                                    next-state))
+                                sstate
+                                (map chunk->frame mock/mock-tool-call-response))
+            ;; Final state after end frame
+            [next-state {:keys [out tool-write]}] (sut/assistant-aggregator-transform
+                                                    final-state
+                                                    nil
+                                                    (frame/llm-full-response-end true))
+            out-frame (first out)
+            tool-write-frame (first tool-write)]
+        next-state => {:aggregating? false
+                       :content-aggregation nil
+                       :function-arguments nil
+                       :function-name nil
+                       :seen-end-frame? false
+                       :seen-interim-results? false
+                       :seen-start-frame? false
+                       :tool-call-id nil
+                       :llm/context {:messages [{:content "You are a helpful assistant"
+                                                 :role "assistant"}
+                                                {:content "Hello there" :role "user"}
+                                                {:role :assistant
+                                                 :tool_calls [{:function {:arguments {:date "2023-10-10"
+                                                                                      :fields ["price"
+                                                                                               "volume"]
+                                                                                      :ticker "MSFT"}
+                                                                          :name "retrieve_latest_stock_data"}
+                                                               :id "call_frPVnoe8ruDicw50T8sLHki7"
+                                                               :type :function}]}]}}
+        (= out-frame tool-write-frame) => true
+
+        (:frame/type out-frame) => :frame.llm/context
+        (:frame/data out-frame) => {:messages [{:content "You are a helpful assistant" :role "assistant"}
+                                               {:content "Hello there" :role "user"}
+                                               {:role :assistant
+                                                :tool_calls [{:function {:arguments {:date "2023-10-10"
+                                                                                     :fields ["price" "volume"]
+                                                                                     :ticker "MSFT"}
+                                                                         :name "retrieve_latest_stock_data"}
+                                                              :id "call_frPVnoe8ruDicw50T8sLHki7"
+                                                              :type :function}]}]}))))
