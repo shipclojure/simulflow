@@ -194,10 +194,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                                         :content-aggregation nil
                                         :function-name nil
                                         :function-arguments nil
-                                        :tool-call-id nil
-                                        :aggregating? false
-                                        :seen-start-frame? false
-                                        :seen-end-frame? false)
+                                        :tool-call-id nil)
 
         id "context-aggregator-assistant"]
     (cond
@@ -212,11 +209,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                  :content-aggregation nil
                  :function-name nil
                  :function-arguments nil
-                 :tool-call-id nil
-                 :aggregating? true
-                 :seen-start-frame? true
-                 :seen-end-frame? false
-                 :seen-interim-results? false)])
+                 :tool-call-id nil)])
       (frame/llm-full-response-end? frame)
       ,(do
          (when debug?
@@ -242,6 +235,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
       (frame/llm-tool-call-chunk? frame)
       (let [tool-call (:frame/data frame)
+            _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL CHUNK: " tool-call]))
             {:keys [arguments name]} (:function tool-call)
             tci (:id tool-call)]
         [(assoc state
@@ -263,6 +257,10 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
          [(reset-aggregation-state next-state) (when (valid-aggregation? content-aggregation) {:out [(frame/llm-context nc)]})])
 
       :else [state])))
+
+(defn context->tool-call
+  [frame]
+  (-> frame :frame/data :messages last :tool_calls first))
 
 (def assistant-context-aggregator
   "Takes streaming tool-call request tokens and returns a new context with the
@@ -287,13 +285,14 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                    tool-call-loop #(loop []
                                      (when-let [frame (a/<!! tool-write)]
                                        (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
-                                       (let [tool-call (-> frame :frame/data last :tool_calls first)
+                                       (let [tool-call (context->tool-call frame)
                                              tool-id (:id tool-call)
                                              fname (get-in tool-call [:function :name])
                                              args (get-in tool-call [:function :arguments])
                                              rt (get registered-tools fname)
                                              f (:tool rt)
                                              async? (:async? rt)]
+                                         (t/log! {:id :tool-caller :level :debug} ["Got tool-call-request" tool-call])
                                          (if (fn? f)
                                            (let [tool-result (if async? (a/<!! (f args)) (f args))]
                                              (a/>!! tool-read  (frame/llm-tool-call-result

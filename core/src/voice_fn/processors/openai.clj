@@ -141,17 +141,19 @@
                                                            :api-key api-key}
                                                           (:frame/data frame)))]
 
-      (a/thread
-        (loop []
-          (when-let [chunk (a/<!! stream-ch)]
-            (let [d (delta chunk)]
-              (if (= chunk :done)
-                (a/>!! out-c (frame/llm-full-response-end true))
-                (do
-                  (if-let [tool-call (first (:tool_calls d))]
-                    (a/>!! out-c (frame/llm-tool-call-chunk tool-call))
-                    (a/>!! out-c (frame/llm-text-chunk (:content d))))
-                  (recur))))))))))
+      (a/go-loop []
+        (when-let [chunk (a/<! stream-ch)]
+          (let [d (delta chunk)]
+            (if (= chunk :done)
+              (a/>! out-c (frame/llm-full-response-end true))
+              (do
+                (if-let [tool-call (first (:tool_calls d))]
+                  (do
+                    (t/log! ["SENDING TOOL CALL" tool-call])
+                    (a/>! out-c (frame/llm-tool-call-chunk tool-call)))
+                  (when-let [c (:content d)]
+                    (a/>! out-c (frame/llm-text-chunk c))))
+                (recur)))))))))
 
 (def openai-llm-process
   (flow/process

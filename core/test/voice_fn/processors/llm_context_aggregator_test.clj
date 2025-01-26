@@ -130,32 +130,20 @@
                                          {:role "user" :content "Hello there"}]}}
         state (partial merge config)
         ;; State after start frame
-        sstate (state {:aggregating? true
-                       :function-arguments nil
+        sstate (state {:function-arguments nil
                        :function-name nil
                        :tool-call-id nil
-                       :content-aggregation nil
-                       :seen-end-frame? false
-                       :seen-interim-results? false
-                       :seen-start-frame? true})
+                       :content-aggregation nil})
         ;; State after text accumulation
-        ststate (state {:aggregating? true
-                        :content-aggregation "Hi! How can I help you?"
+        ststate (state {:content-aggregation "Hi! How can I help you?"
                         :function-arguments nil
                         :function-name nil
-                        :tool-call-id nil
-                        :seen-end-frame? false
-                        :seen-interim-results? false
-                        :seen-start-frame? true})
+                        :tool-call-id nil})
         ;; State after complete sequence (final state)
-        stestate (state {:aggregating? false
-                         :content-aggregation nil
+        stestate (state {:content-aggregation nil
                          :function-arguments nil
                          :function-name nil
                          :tool-call-id nil
-                         :seen-end-frame? false
-                         :seen-interim-results? false
-                         :seen-start-frame? false
                          :llm/context {:messages [{:role "assistant" :content "You are a helpful assistant"}
                                                   {:role "user" :content "Hello there"}
                                                   {:role :assistant
@@ -201,14 +189,10 @@
             (get final-state :content-aggregation) => expected-response
 
             ;; Verify final state and output
-            next-state => (state {:aggregating? false
-                                  :content-aggregation nil
+            next-state => (state {:content-aggregation nil
                                   :function-arguments nil
                                   :function-name nil
                                   :tool-call-id nil
-                                  :seen-end-frame? false
-                                  :seen-interim-results? false
-                                  :seen-start-frame? false
                                   :llm/context {:messages [{:role "assistant"
                                                             :content "You are a helpful assistant"}
                                                            {:role "user"
@@ -246,13 +230,9 @@
                                                     (frame/llm-full-response-end true))
             out-frame (first out)
             tool-write-frame (first tool-write)]
-        next-state => {:aggregating? false
-                       :content-aggregation nil
+        next-state => {:content-aggregation nil
                        :function-arguments nil
                        :function-name nil
-                       :seen-end-frame? false
-                       :seen-interim-results? false
-                       :seen-start-frame? false
                        :tool-call-id nil
                        :llm/context {:messages [{:content "You are a helpful assistant"
                                                  :role "assistant"}

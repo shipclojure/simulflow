@@ -102,6 +102,7 @@
                                  :args {:llm/context llm-context}}
       :assistant-context-aggregator {:proc context/assistant-context-aggregator
                                      :args {:llm/context llm-context
+                                            :debug? true
                                             :llm/registered-tools {"get_weather" {:async false
                                                                                   :tool (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))}}}}
       :llm {:proc llm/openai-llm-process
@@ -149,20 +150,23 @@
   (assert (ws/upgrade-request? req) "Must be a websocket request")
   (let [in (a/chan 1024)
         out (a/chan 1024)
-        fl (flow/create-flow (make-twilio-flow in out))]
+        fl (flow/create-flow (make-twilio-flow in out))
+        call-ongoing? (atom true)]
     (reset! dbg-flow fl)
     {::ws/listener
      {:on-open (fn on-open [socket]
                  (let [{:keys [report-chan error-chan]} (flow/start fl)]
+                   (t/log! "Starting monitoring flow")
                    (a/go-loop []
-                     (when-let [[msg c] (a/alts! [report-chan error-chan])]
-                       (when (map? msg)
-                         (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
-                       (recur)))
+                     (when @call-ongoing?
+                       (when-let [[msg c] (a/alts! [report-chan error-chan])]
+                         (when (map? msg)
+                           (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
+                         (recur))))
                    (a/go-loop []
-                     (when-let [output (a/<! out)]
-                       (ws/send socket output)
-                       (recur))))
+                     (when @call-ongoing? (when-let [output (a/<! out)]
+                                            (ws/send socket output)
+                                            (recur)))))
                  (flow/resume fl)
                  nil)
       :on-message (fn on-text [_ws payload]
@@ -171,7 +175,8 @@
                   (t/log! "Call closed")
                   (flow/stop fl)
                   (a/close! in)
-                  (a/close! out))
+                  (a/close! out)
+                  (reset! call-ongoing? false))
       :on-error (fn on-error [ws error]
                   (prn error)
                   (t/log! :debug error))
