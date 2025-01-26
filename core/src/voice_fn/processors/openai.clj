@@ -199,7 +199,7 @@
   (flow/process
     {:describe (fn [] {:ins {:in "Channel for incoming context aggregations"}
                        :outs {:out "Channel where streaming responses will go"}})
-     :parmas {:llm/model "Openai model used"
+     :params {:llm/model "Openai model used"
               :openai/api-key "OpenAI Api key"
               :llm/temperature "Optional temperature parameter for the llm inference"
               :llm/max-tokens "Optional max tokens to generate"
