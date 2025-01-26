@@ -34,15 +34,6 @@ jobs:
           # key: cljdeps-${{ hashFiles('build.boot') }}
           restore-keys: cljdeps-
 
-      - name: Setup Babashka
-        uses: turtlequeue/setup-babashka@v1.7.0
-        with:
-          babashka-version: 1.3.189
-
-      - name: Check bb runs
-        run: bb --version
-        working-directory: ./core
-
       - name: Run Clj Unit tests
-        run: bb test
+        run: clojure -M:test -m kaocha.runner :unit
         working-directory: ./core
