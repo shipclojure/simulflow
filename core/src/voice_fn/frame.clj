@@ -169,6 +169,14 @@
   "Chunk of text from streaming LLM output"
   {:type :frame.llm/text-chunk})
 
+(defframe llm-tool-call-chunk
+  "Chunk of tool call request. Needs to be assembled before use."
+  {:type :frame.llm/tool-call-chunk})
+
+(defframe llm-tool-call-result
+  "Frame containing the result of invoking a tool for the LLM."
+  {:type :frame.llm/tool-call-result})
+
 (defframe llm-text-sentence
   "Complete sentence from LLM output"
   {:type :frame.llm/text-sentence})
@@ -180,18 +188,6 @@
 (defframe llm-full-response-end
   "Indicates the end of an LLM response"
   {:type :frame.llm/response-end})
-
-(defframe llm-tools-call-request
-  "Frame containing a tool call request. Used when the LLM assistant wants to
-  invoke a function to answer a user question. A tool-call-request should contain:
-  - :function-name - name of the function to call (this needs to be registered at pipeline creation)
-
-  - :arguments - map of arguments (as described in the function registration)
-
-  - :tool-call-id - the call-id. When the result is pushed back to the LLM
-    assistant, it will recognize the results based on this ID
-"
-  {:type :frame.llm/tool-request})
 
 ;;
 ;; User Interaction Frames

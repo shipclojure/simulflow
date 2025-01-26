@@ -493,6 +493,10 @@
                [:parameters LLMFunctionCallParameters]
                [:strict {:optional true} :boolean]]]])
 
+(def RegisteredFunctions [:map-of :string [:map
+                                           [:tool [:=> [:cat :map] :any]]
+                                           [:async? {:optional true} :boolean]]])
+
 (def LLMContext
   [:map
    [:messages LLMContextMessages]
@@ -519,7 +523,7 @@
    [:pipeline/supports-interrupt? {:default false
                                    :optional true} :boolean]
    [:llm/context LLMContext]
-   [:llm/registered-functions {:optional true} [:map-of :string [:=> [:cat :map] :any]]]
+   [:llm/registered-functions {:optional true} RegisteredFunctions]
    [:transport/in-ch CoreAsyncChannel]
    [:transport/out-ch CoreAsyncChannel]])
 

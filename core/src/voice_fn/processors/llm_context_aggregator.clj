@@ -1,5 +1,6 @@
 (ns voice-fn.processors.llm-context-aggregator
   (:require
+   [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [clojure.string :as str]
    [taoensso.telemere :as t]
@@ -39,7 +40,7 @@
                              role
                              aggregation)))
 
-(defn aggregator-transform
+(defn make-aggregator-transform
   "Use cases implemented:
 S: Start, E: End, T: Transcription, I: Interim, X: Text
 
@@ -55,100 +56,100 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
  S I E T1 I T2 -> X
   "
-  [state _ frame]
-  (when (:aggregator/debug? state)
-    (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)}))
+  [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame? handles-interrupt?]
+    :messages/keys [role]}]
+  (fn [state _ frame]
+    (when (:aggregator/debug? state)
+      (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)}))
 
-  (let [{:aggregator/keys [start-frame? debug? end-frame? interim-results-frame? accumulator-frame? handles-interrupt?]
-         :messages/keys [role]
-         :llm/keys [context]
-         :keys [aggregating? seen-interim-results? aggregation seen-end-frame?]} state
-        reset #(assoc %
-                      :aggregation ""
-                      :aggregating? false
-                      :seen-start-frame? false
-                      :seen-end-frame? false
-                      :seen-interim-results? false)
+    (let [{:llm/keys [context]
+           :keys [aggregating? seen-interim-results? aggregation seen-end-frame?]} state
+          reset #(assoc %
+                        :aggregation ""
+                        :aggregating? false
+                        :seen-start-frame? false
+                        :seen-end-frame? false
+                        :seen-interim-results? false)
 
-        frame-data (:frame/data frame)
-        id (str "context-aggregator-" (name role))]
-    (cond
-      (frame/llm-context? frame)
-      (do
-        (when debug?
-          (t/log! {:level :debug :id id} ["CONTEXT FRAME" frame-data]))
-        [(assoc state :llm/context frame-data)])
+          frame-data (:frame/data frame)
+          id (str "context-aggregator-" (name role))]
+      (cond
+        (frame/llm-context? frame)
+        (do
+          (when debug?
+            (t/log! {:level :debug :id id} ["CONTEXT FRAME" frame-data]))
+          [(assoc state :llm/context frame-data)])
 
-      (start-frame? frame)
-      ,(do
-         (when debug?
-           (t/log! {:level :debug :id id} "START FRAME"))
-         [(assoc state
-                 ;; NOTE: On start, we don't reset the aggregation. This is for
-                 ;; a specific reason with deepgram where it tends to send
-                 ;; multiple start speech events before we get an end utterance
-                 ;; event. In the future it might be possible that we change
-                 ;; this behaviour to fully reset the aggregation on start
-                 ;; events based on the behaviour of other VAD systems. If this
-                 ;; interferes with aggregations from LLM token streaming,
-                 ;; consider splitting the implementation between user &
-                 ;; assistant aggregation
-                 :aggregation (or aggregation "")
-                 :aggregating? true
-                 :seen-start-frame? true
-                 :seen-end-frame? false
-                 :seen-interim-results? false)])
-      (end-frame? frame)
-      ,(do
-         (when debug?
-           (t/log! {:level :debug :id id} "END FRAME"))
-         ;; WE might have received the end frame but we might still be aggregating
-         ;; (i.e we have seen interim results but not the final
-         ;; S E       -> No aggregation (len == 0), keep aggregating
-         ;; S I E T   -> No aggregation when E arrives, keep aggregating until T
-         (let [keep-aggregating? (or seen-interim-results? (zero? (count aggregation)))
-               ;; Send the aggregation if we're not aggregating anymore (no more interim results)
-               send-agg? (not keep-aggregating?)]
-           (if send-agg?
-             (let [nc (next-context {:context context :aggregation aggregation :role role})]
-               [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
-             [(assoc state
-                     :seen-end-frame? true
-                     :seen-start-frame? false
-                     :aggregation aggregation)])))
+        (start-frame? frame)
+        ,(do
+           (when debug?
+             (t/log! {:level :debug :id id} "START FRAME"))
+           [(assoc state
+                   ;; NOTE: On start, we don't reset the aggregation. This is for
+                   ;; a specific reason with deepgram where it tends to send
+                   ;; multiple start speech events before we get an end utterance
+                   ;; event. In the future it might be possible that we change
+                   ;; this behaviour to fully reset the aggregation on start
+                   ;; events based on the behaviour of other VAD systems. If this
+                   ;; interferes with aggregations from LLM token streaming,
+                   ;; consider splitting the implementation between user &
+                   ;; assistant aggregation
+                   :aggregation (or aggregation "")
+                   :aggregating? true
+                   :seen-start-frame? true
+                   :seen-end-frame? false
+                   :seen-interim-results? false)])
+        (end-frame? frame)
+        ,(do
+           (when debug?
+             (t/log! {:level :debug :id id} "END FRAME"))
+           ;; WE might have received the end frame but we might still be aggregating
+           ;; (i.e we have seen interim results but not the final
+           ;; S E       -> No aggregation (len == 0), keep aggregating
+           ;; S I E T   -> No aggregation when E arrives, keep aggregating until T
+           (let [keep-aggregating? (or seen-interim-results? (zero? (count aggregation)))
+                 ;; Send the aggregation if we're not aggregating anymore (no more interim results)
+                 send-agg? (not keep-aggregating?)]
+             (if send-agg?
+               (let [nc (next-context {:context context :aggregation aggregation :role role})]
+                 [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
+               [(assoc state
+                       :seen-end-frame? true
+                       :seen-start-frame? false
+                       :aggregation aggregation)])))
 
-      (and (accumulator-frame? frame)
-           (not (nil? frame-data))
-           (not= "" (str/trim frame-data)))
-      ,(let [new-agg (:frame/data frame)]
-         (when debug?
-           (t/log! {:level :debug :id id} ["FRAME: " new-agg]))
-         ;; if we seen end frame, we send aggregation
-         ;; else
-         (if aggregating?
-           (if seen-end-frame?
-             ;; send aggregtation
-             (let [nc (next-context {:context context :aggregation (str aggregation new-agg) :role role})]
-               [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
-             [(assoc state
-                     :aggregation (str aggregation new-agg)
-                     :seen-interim-results? false)])
-           [(assoc state :seen-interim-results? false)]))
-      (and (fn? interim-results-frame?)
-           (interim-results-frame? frame))
-      ,(do
-         (when debug?
-           (t/log! {:level :debug :id id} ["INTERIM: " (:frame/data frame)]))
-         [(assoc state :seen-interim-results? true)])
+        (and (accumulator-frame? frame)
+             (not (nil? frame-data))
+             (not= "" (str/trim frame-data)))
+        ,(let [new-agg (:frame/data frame)]
+           (when debug?
+             (t/log! {:level :debug :id id} ["FRAME: " new-agg]))
+           ;; if we seen end frame, we send aggregation
+           ;; else
+           (if aggregating?
+             (if seen-end-frame?
+               ;; send aggregtation
+               (let [nc (next-context {:context context :aggregation (str aggregation new-agg) :role role})]
+                 [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
+               [(assoc state
+                       :aggregation (str aggregation new-agg)
+                       :seen-interim-results? false)])
+             [(assoc state :seen-interim-results? false)]))
+        (and (fn? interim-results-frame?)
+             (interim-results-frame? frame))
+        ,(do
+           (when debug?
+             (t/log! {:level :debug :id id} ["INTERIM: " (:frame/data frame)]))
+           [(assoc state :seen-interim-results? true)])
 
-      ;; handle interruptions if the aggregator supports it
-      (and (frame/control-interrupt-start? frame)
-           handles-interrupt?)
-      ,(let [nc (next-context {:context context :aggregation aggregation :role role})
-             v? (valid-aggregation? aggregation)
-             next-state (if v? (assoc state :llm/context nc) state)]
-         [(reset next-state) (when (valid-aggregation? aggregation) {:out [(frame/llm-context nc)]})])
-      :else [state])))
+        ;; handle interruptions if the aggregator supports it
+        (and (frame/control-interrupt-start? frame)
+             handles-interrupt?)
+        ,(let [nc (next-context {:context context :aggregation aggregation :role role})
+               v? (valid-aggregation? aggregation)
+               next-state (if v? (assoc state :llm/context nc) state)]
+           [(reset next-state) (when (valid-aggregation? aggregation) {:out [(frame/llm-context nc)]})])
+        :else [state]))))
 
 ;; TODO This should be async
 (defn handle-tool-call
@@ -207,29 +208,24 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
    :aggregator/debug? true})
 
-;; Aggregator for assistant
-;; TODO should handle interrupt
-(def assistant-context-aggregator-options
-  {:messages/role "assistant"
-   :aggregator/start-frame? frame/llm-full-response-start?
-   :aggregator/end-frame? frame/llm-full-response-end?
-   :aggregator/accumulator-frame? frame/llm-text-chunk?})
+(def user-aggregator-process (make-aggregator-transform user-context-aggregator-options))
 
-(def context-aggregator-process
+(def user-aggregator-process
   (flow/process
     {:describe (fn [] {:ins {:in "Channel for aggregation messages"}
-                       :outs {:out "Channel where new context aggregations are put"}})
-     :params {:llm/context "Initial LLM context. See schema/LLMContext"
-              :messages/role "Role that this processor aggregates"
-              :aggregator/start-frame? "Predicate checking if the frame is a start-frame?"
-              :aggregator/end-frame? "Predicate checking if the frame is a end-frame?"
-              :aggregator/accumulator-frame? "Predicate checking the main type of frame we are aggregating"
-              :aggregator/interim-results-frame? "Optional predicate checking if the frame is an interim results frame"
-              :aggregator/handles-interrupt? "Optional Wether this aggregator should handle or not interrupts"
-              :aggregator/debug? "Optional When true, debug logs will be called"}
+                       :outs {:out "Channel where new context aggregations are put"}
+                       :params {:llm/context "Initial LLM context. See schema/LLMContext"
+                                :messages/role "Role that this processor aggregates"
+                                :aggregator/start-frame? "Predicate checking if the frame is a start-frame?"
+                                :aggregator/end-frame? "Predicate checking if the frame is a end-frame?"
+                                :aggregator/accumulator-frame? "Predicate checking the main type of frame we are aggregating"
+                                :aggregator/interim-results-frame? "Optional predicate checking if the frame is an interim results frame"
+                                :aggregator/handles-interrupt? "Optional Wether this aggregator should handle or not interrupts"
+                                :aggregator/debug? "Optional When true, debug logs will be called"}})
+
      :workload :compute
      :init identity
-     :transform aggregator-transform}))
+     :transform user-aggregator-process}))
 
 (defn sentence-assembler
   "Takes in llm-text-chunk frames and returns a full sentence. Useful for
@@ -243,3 +239,138 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
        (if sentence
          [{:acc accumulator} {:out [(frame/speak-frame sentence)]}]
          [{:acc accumulator}])))))
+
+(defn next-assistant-context
+  [{:keys [context content-aggregation function-name function-arguments tool-call-id]}]
+  (let [next-msg (if function-name
+                   {:role :assistant
+                    :tool_calls [{:id tool-call-id
+                                  :type :function
+                                  :function {:name function-name
+                                             :arguments function-arguments}}]}
+                   {:role :assistant
+                    :content [{:type :text
+                               :text content-aggregation}]})]
+    (assoc context :messages (conj (:messages context) next-msg))))
+
+(def assistant-context-aggregator
+  "Takes streaming tool-call request tokens and returns a new context with the
+  tool call result if a tool registered is available."
+  (flow/process
+    {:describe
+     (fn []
+       {:ins {:in "Channel for streaming tool call requests"}
+        :outs {:out "Channel for output new contexts with tool call results"}
+        :params {:llm/context "Initial LLM context. See schema/LLMContext"
+                 :llm/registered-tools
+                 "Optional map of registered functions that the llm can use. If
+                     a tool call request doesn't find the tool with that name,
+                     the result to the LLM will be `tool-not-found`. See
+                     schema/RegisteredFunctions. If the function is `async?`, it
+                     should return a channel on which the invocation result will
+                     be put."
+                 :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
+     :init (fn [{:llm/keys [registered-tools] :as args}]
+             (let [tool-read (a/chan 100)
+                   tool-write (a/chan 100)
+                   tool-call-loop #(loop []
+                                     (when-let [frame (a/<!! tool-write)]
+                                       (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
+                                       (let [tool-call (-> frame :frame/data last :tool_calls first)
+                                             tool-id (:id tool-call)
+                                             fname (get-in tool-call [:function :name])
+                                             args (get-in tool-call [:function :arguments])
+                                             rt (get registered-tools fname)
+                                             f (:tool rt)
+                                             async? (:async? rt)]
+                                         (if (fn? f)
+                                           (let [tool-result (if async? (a/<!! (f args)) (f args))]
+                                             (a/>!! tool-read  (frame/llm-tool-call-result
+                                                                 {:role :tool
+                                                                  :content [{:type :text
+                                                                             :text (u/json-str tool-result)}]
+                                                                  :tool_call_id tool-id})))
+                                           (a/>!! tool-read (frame/llm-tool-call-result
+                                                              {:tole :tool
+                                                               :content [{:type :text
+                                                                          :text "Tool not found"}]
+                                                               :tool_call_id tool-id}))))
+                                       (recur)))]
+               ((flow/futurize tool-call-loop :exec :mixed))
+               (merge args {::flow/in-ports {:tool-read tool-read}
+                            ::flow/out-ports {:tool-write tool-write}})))
+     :transform
+     (fn [state _ frame]
+       (let [{:llm/keys [context]
+              :flow/keys [handles-interrupt?]
+              :keys [content-aggregation function-name function-arguments tool-call-id debug?]} state
+             reset-aggregation-state #(assoc %
+                                             :content-aggregation nil
+                                             :function-name nil
+                                             :function-arguments nil
+                                             :tool-call-id nil
+                                             :aggregating? false
+                                             :seen-start-frame? false
+                                             :seen-end-frame? false)
+
+             id "context-aggregator-assistant"]
+         (cond
+           (frame/llm-context? frame)
+           [(assoc state :llm/context (:frame/data frame))]
+
+           (frame/llm-full-response-start? frame)
+           ,(do
+              (when debug?
+                (t/log! {:level :debug :id id} "START FRAME"))
+              [(assoc state
+                      :content-aggregation nil
+                      :aggregating? true
+                      :seen-start-frame? true
+                      :seen-end-frame? false
+                      :seen-interim-results? false)])
+           (frame/llm-full-response-end? frame)
+           ,(do
+              (when debug?
+                (t/log! {:level :debug :id id} "END FRAME"))
+              (let [nc (next-assistant-context {:context context
+                                                :content-aggregation content-aggregation
+                                                :function-name function-name
+                                                :function-arguments function-arguments
+                                                :tool-call-id tool-call-id})
+                    tool-call? (boolean function-name)
+                    nf (frame/llm-context nc)]
+                [(reset-aggregation-state (assoc state :llm/context nc)) (cond-> {:out [nf]}
+                                                                           tool-call? {:tool-write [nf]})]))
+
+           (frame/llm-text-chunk? frame)
+           (let [chunk (:frame/data frame)]
+             (when debug?
+               (t/log! {:level :debug :id id} ["LLM CHUNK: " chunk]))
+             ;; if we seen end frame, we send aggregation
+             ;; else
+             [(assoc state
+                     :content-aggregation (str content-aggregation chunk))])
+
+           (frame/llm-tool-call-chunk? frame)
+           (let [tool-call (:frame/data frame)
+                 {:keys [arguments name]} (:function tool-call)
+                 tci (:id tool-call)]
+             [(assoc state
+                     :function-name (or function-name name)
+                     :function-arguments (str function-arguments arguments)
+                     :tool-call-id (or tool-call-id tci))])
+
+           (frame/llm-tool-call-result? frame)
+           (let [tool-result (:frame/data frame)
+                 nc (assoc context :messages (conj (:messages context) tool-result))]
+             [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}])
+
+           ;; handle interruptions if the aggregator supports it
+           (and (frame/control-interrupt-start? frame)
+                handles-interrupt?)
+           ,(let [nc (next-context {:context context :aggregation content-aggregation :role "assistant"})
+                  v? (valid-aggregation? content-aggregation)
+                  next-state (if v? (assoc state :llm/context nc) state)]
+              [(reset-aggregation-state next-state) (when (valid-aggregation? content-aggregation) {:out [(frame/llm-context nc)]})])
+
+           :else [state])))}))
