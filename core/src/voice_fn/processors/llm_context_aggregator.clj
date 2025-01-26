@@ -77,7 +77,9 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       (do
         (when debug?
           (t/log! {:level :debug :id id} ["CONTEXT FRAME" frame-data]))
-        [(assoc state :llm/context frame-data)])
+        (let [tool-result? (= (-> frame-data last :role) :tool)]
+          ;; Send further to the llm processor if this ia tool call result
+          [(assoc state :llm/context frame-data) (when tool-result? {:out [frame]})]))
 
       (frame/user-speech-start? frame)
       ,(do
@@ -297,7 +299,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                                                                              :text (u/json-str tool-result)}]
                                                                   :tool_call_id tool-id})))
                                            (a/>!! tool-read (frame/llm-tool-call-result
-                                                              {:tole :tool
+                                                              {:role :tool
                                                                :content [{:type :text
                                                                           :text "Tool not found"}]
                                                                :tool_call_id tool-id}))))
