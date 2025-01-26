@@ -210,6 +210,9 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
            (t/log! {:level :debug :id id} "START FRAME"))
          [(assoc state
                  :content-aggregation nil
+                 :function-name nil
+                 :function-arguments nil
+                 :tool-call-id nil
                  :aggregating? true
                  :seen-start-frame? true
                  :seen-end-frame? false

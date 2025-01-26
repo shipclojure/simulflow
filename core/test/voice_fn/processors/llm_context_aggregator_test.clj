@@ -45,14 +45,7 @@
 
 (facts
   "about user speech aggregation"
-  (let [config {:messages/role "user"
-                :llm/context {:messages [{:role :assistant :content "You are a helpful assistant"}]}
-                :aggregator/start-frame? frame/user-speech-start?
-                :aggregator/end-frame? frame/user-speech-stop?
-                :aggregator/accumulator-frame? frame/transcription?
-                :aggregator/interim-results-frame? frame/transcription-interim?
-                :aggregator/handles-interrupt? false ;; User speaking shouldn't be interrupted
-                :aggregator/debug? false}
+  (let [config {:llm/context {:messages [{:role :assistant :content "You are a helpful assistant"}]}}
         state (partial merge config)
         sstate (state {:aggregating? true
                        :aggregation ""
@@ -85,10 +78,10 @@
                          :seen-start-frame? false})]
 
     (fact "S T E -> X"
-          (sut/aggregator-transform config nil
-                                    (frame/user-speech-start true)) => [sstate]
-          (sut/aggregator-transform sstate nil (frame/transcription "Hello there")) => [ststate]
-          (let [[next-state {:keys [out]}] (sut/aggregator-transform ststate nil (frame/user-speech-stop true))
+          (sut/user-aggregator-transform config nil
+            (frame/user-speech-start true)) => [sstate]
+          (sut/user-aggregator-transform sstate nil (frame/transcription "Hello there")) => [ststate]
+          (let [[next-state {:keys [out]}] (sut/user-aggregator-transform ststate nil (frame/user-speech-stop true))
                 frame (first out)]
             next-state => stestate
             (:frame/type frame) => :frame.llm/context
@@ -101,95 +94,84 @@
                                 :seen-end-frame? true
                                 :seen-interim-results? false
                                 :seen-start-frame? false})]
-            (sut/aggregator-transform sstate nil (frame/user-speech-stop true)) =>  [sestate]
+            (sut/user-aggregator-transform sstate nil (frame/user-speech-stop true)) =>  [sestate]
 
-            (let [[next-state {:keys [out]}] (sut/aggregator-transform sestate nil (frame/transcription "Hello there"))
+            (let [[next-state {:keys [out]}] (sut/user-aggregator-transform sestate nil (frame/transcription "Hello there"))
                   frame (first out)]
               next-state => (state stestate)
               (:frame/type frame) => :frame.llm/context
               (:frame/data frame) => {:messages [{:content "You are a helpful assistant" :role :assistant}
                                                  {:content "Hello there" :role "user"}]})))
     (fact "S I T E -> X"
-          (sut/aggregator-transform sstate nil (frame/transcription-interim "Hello there")) => [sistate]
-          (sut/aggregator-transform sistate nil (frame/transcription "Hello there"))  => [ststate])
+          (sut/user-aggregator-transform sstate nil (frame/transcription-interim "Hello there")) => [sistate]
+          (sut/user-aggregator-transform sistate nil (frame/transcription "Hello there"))  => [ststate])
 
     (fact "S I E I T -> X"
-          (sut/aggregator-transform sistate nil (frame/user-speech-stop true)) => [siestate]
-          (sut/aggregator-transform siestate nil (frame/transcription-interim "Hello, there")) => [siestate]
-          (let [[next-state {:keys [out]}] (sut/aggregator-transform siestate nil (frame/transcription "Hello there"))
+          (sut/user-aggregator-transform sistate nil (frame/user-speech-stop true)) => [siestate]
+          (sut/user-aggregator-transform siestate nil (frame/transcription-interim "Hello, there")) => [siestate]
+          (let [[next-state {:keys [out]}] (sut/user-aggregator-transform siestate nil (frame/transcription "Hello there"))
                 frame (first out)]
             next-state => (state stestate)
             (:frame/type frame) => :frame.llm/context
             (:frame/data frame) => {:messages [{:content "You are a helpful assistant" :role :assistant}
                                                {:content "Hello there" :role "user"}]}))
-    (fact "updates current context if a frame is received"
+    (fact "updates current context if a context frame is received"
           (let [new-context {:messages [{:content "You are a helpful assistant" :role :assistant}
                                         {:content "Hello there" :role "user"}
                                         {:content "How can I help" :role :assistant}]}]
-            (sut/aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))))
+            (sut/user-aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context) nil]))))
 
 (facts
   "about assistant response aggregation"
-  (let [config {:messages/role "assistant"
-                :llm/context {:messages [{:role "assistant" :content "You are a helpful assistant"}
-                                         {:role "user" :content "Hello there"}]}
-                :aggregator/start-frame? frame/llm-full-response-start?
-                :aggregator/end-frame? frame/llm-full-response-end?
-                :aggregator/accumulator-frame? frame/llm-text-chunk?}
+  (let [config {:llm/context {:messages [{:role "assistant" :content "You are a helpful assistant"}
+                                         {:role "user" :content "Hello there"}]}}
         state (partial merge config)
         ;; State after start frame
         sstate (state {:aggregating? true
-                       :aggregation ""
+                       :function-arguments nil
+                       :function-name nil
+                       :tool-call-id nil
+                       :content-aggregation nil
                        :seen-end-frame? false
                        :seen-interim-results? false
                        :seen-start-frame? true})
         ;; State after text accumulation
         ststate (state {:aggregating? true
-                        :aggregation "Hi! How can I help you?"
+                        :content-aggregation "Hi! How can I help you?"
+                        :function-arguments nil
+                        :function-name nil
+                        :tool-call-id nil
                         :seen-end-frame? false
                         :seen-interim-results? false
                         :seen-start-frame? true})
         ;; State after complete sequence (final state)
         stestate (state {:aggregating? false
-                         :aggregation ""
+                         :content-aggregation nil
+                         :function-arguments nil
+                         :function-name nil
+                         :tool-call-id nil
                          :seen-end-frame? false
                          :seen-interim-results? false
                          :seen-start-frame? false
                          :llm/context {:messages [{:role "assistant" :content "You are a helpful assistant"}
                                                   {:role "user" :content "Hello there"}
-                                                  {:role "assistant" :content "Hi! How can I help you?"}]}})]
+                                                  {:role :assistant
+                                                   :content [{:text  "Hi! How can I help you?" :type :text}]}]}})]
 
     (fact "S T E -> X"
-          (sut/aggregator-transform config nil
-                                    (frame/llm-full-response-start true)) => [sstate]
-          (sut/aggregator-transform sstate nil
-                                    (frame/llm-text-chunk "Hi! How can I help you?")) => [ststate]
-          (let [[next-state {:keys [out]}] (sut/aggregator-transform ststate nil
-                                                                     (frame/llm-full-response-end true))
+          (sut/assistant-aggregator-transform config nil
+            (frame/llm-full-response-start true)) => [sstate]
+          (sut/assistant-aggregator-transform sstate nil
+            (frame/llm-text-chunk "Hi! How can I help you?")) => [ststate]
+          (let [[next-state {:keys [out]}] (sut/assistant-aggregator-transform ststate nil
+                                             (frame/llm-full-response-end true))
                 frame (first out)]
             next-state => stestate
             (:frame/type frame) => :frame.llm/context
             (:frame/data frame) => {:messages [{:role "assistant" :content "You are a helpful assistant"}
                                                {:role "user" :content "Hello there"}
-                                               {:role "assistant" :content "Hi! How can I help you?"}]}))
-
-    (fact "S E T -> X"
-          (let [sestate (state {:aggregating? true
-                                :aggregation ""
-                                :seen-end-frame? true
-                                :seen-interim-results? false
-                                :seen-start-frame? false})]
-            (sut/aggregator-transform sstate nil
-                                      (frame/llm-full-response-end true)) =>  [sestate]
-
-            (let [[next-state {:keys [out]}] (sut/aggregator-transform sestate nil
-                                                                       (frame/llm-text-chunk "Hi! How can I help you?"))
-                  frame (first out)]
-              next-state => stestate
-              (:frame/type frame) => :frame.llm/context
-              (:frame/data frame) => {:messages [{:role "assistant" :content "You are a helpful assistant"}
-                                                 {:role "user" :content "Hello there"}
-                                                 {:role "assistant" :content "Hi! How can I help you?"}]})))
+                                               {:role :assistant
+                                                :content [{:text  "Hi! How can I help you?" :type :text}]}]}))
 
     (fact "S T T T T T E -> X (streaming tokens pattern)"
           (let [token-chunks ["Hi" "!" " How" " can" " I" " help" " you" "?"]
@@ -197,7 +179,7 @@
 
                 ;; Accumulate all token chunks
                 final-state (reduce (fn [current-state frame]
-                                      (let [[next-state] (sut/aggregator-transform
+                                      (let [[next-state] (sut/assistant-aggregator-transform
                                                            current-state
                                                            nil
                                                            frame)]
@@ -206,18 +188,21 @@
                                     (map frame/llm-text-chunk token-chunks))
 
                 ;; Final state after end frame
-                [next-state {:keys [out]}] (sut/aggregator-transform
+                [next-state {:keys [out]}] (sut/assistant-aggregator-transform
                                              final-state
                                              nil
                                              (frame/llm-full-response-end true))
                 frame (first out)]
 
             ;; Verify intermediate state has accumulated all tokens
-            (get final-state :aggregation) => expected-response
+            (get final-state :content-aggregation) => expected-response
 
             ;; Verify final state and output
             next-state => (state {:aggregating? false
-                                  :aggregation ""
+                                  :content-aggregation nil
+                                  :function-arguments nil
+                                  :function-name nil
+                                  :tool-call-id nil
                                   :seen-end-frame? false
                                   :seen-interim-results? false
                                   :seen-start-frame? false
@@ -225,19 +210,19 @@
                                                             :content "You are a helpful assistant"}
                                                            {:role "user"
                                                             :content "Hello there"}
-                                                           {:role "assistant"
-                                                            :content expected-response}]}})
+                                                           {:role :assistant
+                                                            :content [{:text expected-response :type :text}]}]}})
 
             (:frame/type frame) => :frame.llm/context
             (:frame/data frame) => {:messages [{:role "assistant"
                                                 :content "You are a helpful assistant"}
                                                {:role "user"
                                                 :content "Hello there"}
-                                               {:role "assistant"
-                                                :content expected-response}]}))
+                                               {:role :assistant
+                                                :content [{:text expected-response :type :text}]}]}))
 
     (fact "updates current context if a frame is received"
           (let [new-context {:messages [{:content "You are a helpful assistant" :role :assistant}
                                         {:content "Hello there" :role "user"}
                                         {:content "How can I help" :role :assistant}]}]
-            (sut/aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))))
+            (sut/assistant-aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))))
