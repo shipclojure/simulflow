@@ -76,8 +76,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       (frame/llm-context? frame)
       (do
         (when debug?
-          (t/log! {:level :debug :id id} ["CONTEXT FRAME" frame-data]))
-        (let [tool-result? (= (-> frame-data last :role) :tool)]
+          (t/log! {:level :debug :id id} ["NEW CONTEXT FRAME" frame-data]))
+        (let [tool-result? (= (-> frame-data :messages last :role) :tool)]
           ;; Send further to the llm processor if this ia tool call result
           [(assoc state :llm/context frame-data) (when tool-result? {:out [frame]})]))
 
@@ -245,6 +245,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
       (frame/llm-tool-call-result? frame)
       (let [tool-result (:frame/data frame)
+            _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
             nc (assoc context :messages (conj (:messages context) tool-result))]
         [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}])
 
