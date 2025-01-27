@@ -124,7 +124,7 @@
     (fact "if new context is tool call result, send it forward"
           (let [new-context {:messages [{:role "system", :content "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}
                                         {:role "user", :content "What's the weather in New York?"}
-                                        {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments {:town "New York"}}}]}
+                                        {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}
                                         {:role :tool, :content [{:type :text, :text "The weather in New York is 17 degrees celsius"}], :tool_call_id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"}]
                              :tools [{:type :function
                                       :function {:name "get_weather"
@@ -256,10 +256,7 @@
                                                  :role "assistant"}
                                                 {:content "Hello there" :role "user"}
                                                 {:role :assistant
-                                                 :tool_calls [{:function {:arguments {:date "2023-10-10"
-                                                                                      :fields ["price"
-                                                                                               "volume"]
-                                                                                      :ticker "MSFT"}
+                                                 :tool_calls [{:function {:arguments "{\"ticker\":\"MSFT\",\"fields\":[\"price\",\"volume\"],\"date\":\"2023-10-10\"}"
                                                                           :name "retrieve_latest_stock_data"}
                                                                :id "call_frPVnoe8ruDicw50T8sLHki7"
                                                                :type :function}]}]}}
@@ -269,9 +266,7 @@
         (:frame/data out-frame) => {:messages [{:content "You are a helpful assistant" :role "assistant"}
                                                {:content "Hello there" :role "user"}
                                                {:role :assistant
-                                                :tool_calls [{:function {:arguments {:date "2023-10-10"
-                                                                                     :fields ["price" "volume"]
-                                                                                     :ticker "MSFT"}
+                                                :tool_calls [{:function {:arguments "{\"ticker\":\"MSFT\",\"fields\":[\"price\",\"volume\"],\"date\":\"2023-10-10\"}"
                                                                          :name "retrieve_latest_stock_data"}
                                                               :id "call_frPVnoe8ruDicw50T8sLHki7"
                                                               :type :function}]}]}))))

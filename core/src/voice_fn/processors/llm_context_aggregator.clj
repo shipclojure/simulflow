@@ -176,7 +176,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                     :tool_calls [{:id tool-call-id
                                   :type :function
                                   :function {:name function-name
-                                             :arguments (u/parse-if-json function-arguments)}}]}
+                                             :arguments function-arguments}}]}
                    {:role :assistant
                     :content [{:type :text
                                :text content-aggregation}]})]
@@ -289,7 +289,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                                        (let [tool-call (context->tool-call frame)
                                              tool-id (:id tool-call)
                                              fname (get-in tool-call [:function :name])
-                                             args (get-in tool-call [:function :arguments])
+                                             args (u/parse-if-json (get-in tool-call [:function :arguments]))
                                              rt (get registered-tools fname)
                                              f (:tool rt)
                                              async? (:async? rt)]
