@@ -114,7 +114,8 @@
 (def twilio-transport-in
   (flow/process
     {:describe (fn [] {:outs {:sys-out "Channel for system messages that have priority"
-                              :out "Channel on which audio frames are put"}
+                              :out "Channel on which audio frames are put"
+                              :speak-out "Channel for speak frames. Used when the user joins the conversation"}
                        :params {:transport/in-ch "Channel from which input comes"
                                 :twilio/handle-event "Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"}})
 
