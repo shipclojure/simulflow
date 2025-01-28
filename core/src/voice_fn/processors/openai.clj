@@ -38,6 +38,15 @@
                                             :model model}
                                      tools (assoc :tools tools)))}))
 
+(comment
+  (require '[voice-fn.secrets :refer [secret]])
+  (normal-chat-completion {:messages [{:role "system", :content "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."} {:role "user", :content "Hello? Do you hear me?"} {:role :assistant, :content [{:type :text, :text "Yes, I can hear you! How can I assist you today?"}]} {:role "user", :content "What's the weather in New York?"} {:role :assistant, :tool_calls [{:id "call_BzED7hmp1cbYzLBQpTB3EEqE", :type :function, :function {:name "get_weather", :arguments {:town "New York"}}}]} {:role :tool, :content [{:type :text, :text "The weather in New York is 17 degrees celsius"}], :tool_call_id "call_BzED7hmp1cbYzLBQpTB3EEqE"}]
+                           :tools [{:type :function, :function {:name "get_weather", :description "Get the current weather of a location", :parameters {:type :object, :required [:town], :properties {:town {:type :string, :description "Town for which to retrieve the current weather"}}, :additionalProperties false}, :strict true}}]
+                           :api-key (secret [:openai :new-api-sk])
+                           :model "gpt-4o-mini"})
+
+  ,)
+
 (def OpenAILLMConfigSchema
   [:map
    {:description "OpenAI LLM configuration"}
