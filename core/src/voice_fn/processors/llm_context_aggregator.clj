@@ -73,6 +73,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         frame-data (:frame/data frame)
         id "context-aggregator-user"]
     (cond
+      (frame/system-config-change? frame)
+      [(if-let [context (:llm/context frame-data)] (assoc state :llm/context context) state)]
       (frame/llm-context? frame)
       (do
         (when debug?

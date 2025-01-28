@@ -115,21 +115,25 @@
   (flow/process
     {:describe (fn [] {:outs {:sys-out "Channel for system messages that have priority"
                               :out "Channel on which audio frames are put"}
-                       :params {:transport/in-ch "Channel from which input comes"}})
+                       :params {:transport/in-ch "Channel from which input comes"
+                                :twilio/handle-event "Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"}})
 
-     :init (fn [{:transport/keys [in-ch]}]
-             {::flow/in-ports {:twilio-in in-ch}})
+     :init (fn [{:transport/keys [in-ch] :twilio/keys [handle-event]}]
+             {::flow/in-ports {:twilio-in in-ch}
+              :twilio/handle-event handle-event})
 
-     :transform (fn [state _ input]
-                  (let [data (u/parse-if-json input)]
+     :transform (fn [{:twilio/keys [handle-event] :as state} _ input]
+                  (let [data (u/parse-if-json input)
+                        output (if (fn? handle-event) (handle-event data) nil)
+                        out-frames (partial merge-with into output)]
                     (case (:event data)
                       "start" (when-let [stream-sid (:streamSid data)]
-                                [state {:sys-out [(frame/system-config-change {:twilio/stream-sid stream-sid
-                                                                               :transport/serializer (make-twilio-serializer stream-sid)})]}])
+                                [state (out-frames {:sys-out [(frame/system-config-change {:twilio/stream-sid stream-sid
+                                                                                           :transport/serializer (make-twilio-serializer stream-sid)})]})])
                       "media"
-                      [state {:out [(frame/audio-input-raw
-                                      (u/decode-base64 (get-in data [:media :payload])))]}]
+                      [state (out-frames {:out [(frame/audio-input-raw
+                                                  (u/decode-base64 (get-in data [:media :payload])))]})]
 
                       "close"
-                      [state {:sys-out [(frame/system-stop true)]}]
+                      [state (out-frames {:sys-out [(frame/system-stop true)]})]
                       nil)))}))

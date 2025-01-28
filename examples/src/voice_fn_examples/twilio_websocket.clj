@@ -86,7 +86,8 @@
                                :strict true}}]}]
     {:procs
      {:transport-in {:proc transport/twilio-transport-in
-                     :args {:transport/in-ch in}}
+                     :args {:transport/in-ch in
+                            :twilio/handle-events (fn [event])}}
       :deepgram-transcriptor {:proc asr/deepgram-processor
                               :args {:transcription/api-key (secret [:deepgram :api-key])
                                      :transcription/interim-results? true

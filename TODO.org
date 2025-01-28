@@ -1,79 +1,9 @@
 #+TITLE: Tasks to do for voice-fn
 
-* DONE Add schema validation with defaults
-CLOSED: [2025-01-03 Fri 11:01]
-:LOGBOOK:
-CLOCK: [2025-01-03 Fri 07:51]--[2025-01-03 Fri 08:16] =>  0:25
-CLOCK: [2025-01-03 Fri 07:06]--[2025-01-03 Fri 07:31] =>  0:25
-CLOCK: [2025-01-03 Fri 06:35]--[2025-01-03 Fri 07:00] =>  0:25
-:END:
-
-* DONE Add VAD events from deepgram
-CLOSED: [2025-01-03 Fri 19:41]
-:LOGBOOK:
-CLOCK: [2025-01-03 Fri 16:25]--[2025-01-03 Fri 16:50] =>  0:25
-CLOCK: [2025-01-03 Fri 15:36]--[2025-01-03 Fri 16:01] =>  0:25
-CLOCK: [2025-01-03 Fri 11:01]--[2025-01-03 Fri 11:26] =>  0:25
-:END:
-
 * TODO Add pipeline interruptions :mvp:
-
-** DONE Add assembler that takes in interim transcripts based on VAD
-CLOSED: [2025-01-06 Mon 16:35]
-:LOGBOOK:
-CLOCK: [2025-01-06 Mon 12:28]--[2025-01-06 Mon 12:53] =>  0:25
-CLOCK: [2025-01-06 Mon 07:37]--[2025-01-06 Mon 08:02] =>  0:25
-CLOCK: [2025-01-05 Sun 09:21]--[2025-01-05 Sun 09:46] =>  0:25
-CLOCK: [2025-01-05 Sun 08:18]--[2025-01-05 Sun 08:43] =>  0:25
-CLOCK: [2025-01-04 Sat 15:22]--[2025-01-04 Sat 15:47] =>  0:25
-CLOCK: [2025-01-04 Sat 11:04]--[2025-01-04 Sat 11:29] =>  0:25
-CLOCK: [2025-01-04 Sat 07:14]--[2025-01-04 Sat 07:39] =>  0:25
-:END:
-
-** DONE Handle Start/Stop interruption frames in LLM and TTS and other assemblers
-CLOSED: [2025-01-13 Mon 07:53]
-:LOGBOOK:
-CLOCK: [2025-01-10 Vin 16:29]--[2025-01-10 Vin 16:54] =>  0:25
-CLOCK: [2025-01-10 Vin 14:15]--[2025-01-10 Vin 14:41] =>  0:26
-CLOCK: [2025-01-10 Vin 13:46]--[2025-01-10 Vin 14:11] =>  0:25
-CLOCK: [2025-01-08 Wed 07:01]--[2025-01-08 Wed 07:26] =>  0:25
-CLOCK: [2025-01-07 Tue 07:17]--[2025-01-07 Tue 07:42] =>  0:25
-CLOCK: [2025-01-07 Tue 06:20]--[2025-01-07 Tue 06:45] =>  0:25
-CLOCK: [2025-01-06 Mon 17:07]--[2025-01-06 Mon 17:40] =>  0:33
-CLOCK: [2025-01-06 Mon 16:36]--[2025-01-06 Mon 17:01] =>  0:25
-:END:
-
-** DONE Create buffered output transport that sends chunks of 20ms at a 10ms interval
-CLOSED: [2025-01-10 Vin 13:46]
-:LOGBOOK:
-CLOCK: [2025-01-09 Thu 15:51]--[2025-01-09 Thu 16:16] =>  0:25
-CLOCK: [2025-01-09 Thu 15:19]--[2025-01-09 Thu 15:44] =>  0:25
-CLOCK: [2025-01-09 Thu 14:45]--[2025-01-09 Thu 15:10] =>  0:25
-CLOCK: [2025-01-09 Thu 13:58]--[2025-01-09 Thu 14:23] =>  0:25
-CLOCK: [2025-01-09 Thu 08:29]--[2025-01-09 Thu 08:54] =>  0:25
-CLOCK: [2025-01-09 Thu 07:46]--[2025-01-09 Thu 08:11] =>  0:25
-CLOCK: [2025-01-09 Thu 07:00]--[2025-01-09 Thu 07:25] =>  0:25
-CLOCK: [2025-01-09 Thu 06:29]--[2025-01-09 Thu 06:54] =>  0:25
-CLOCK: [2025-01-08 Wed 10:45]--[2025-01-08 Wed 11:10] =>  0:25
-CLOCK: [2025-01-08 Wed 08:29]--[2025-01-08 Wed 08:54] =>  0:25
-:END:
 
 ** TODO Make assistant context aggregator support interrupt :mvp:
 * TODO Add support for first message greeting in the pipeline :mvp:
-* TODO Add tools calls support :mvp:
-DEADLINE: <2025-01-17 Fri>
-:LOGBOOK:
-CLOCK: [2025-01-23 Thu 08:23]--[2025-01-23 Thu 08:48] =>  0:25
-CLOCK: [2025-01-20 Lun 07:26]--[2025-01-20 Lun 07:51] =>  0:25
-CLOCK: [2025-01-19 Dum 07:56]--[2025-01-19 Dum 08:21] =>  0:25
-CLOCK: [2025-01-18 Sat 06:36]--[2025-01-18 Sat 06:41] =>  0:05
-CLOCK: [2025-01-16 Thu 19:19]--[2025-01-16 Thu 19:44] =>  0:25
-CLOCK: [2025-01-15 Wed 08:53]--[2025-01-15 Wed 09:18] =>  0:25
-CLOCK: [2025-01-15 Wed 08:16]--[2025-01-15 Wed 08:41] =>  0:25
-CLOCK: [2025-01-15 Wed 06:30]--[2025-01-15 Wed 06:55] =>  0:25
-CLOCK: [2025-01-14 Tue 07:09]--[2025-01-14 Tue 07:34] =>  0:25
-CLOCK: [2025-01-14 Tue 06:25]--[2025-01-14 Tue 06:50] =>  0:25
-:END:
 * TODO Add support for [[https://github.com/fixie-ai/ultravox][ultravox]]
 
 * TODO Add support for Silero VAD
@@ -91,23 +21,6 @@ CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
 
 * TODO Add LLM usage metrics based on chunks responses [[https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage][API docs for usage]]
 
-* DONE Research a way to add clj-kondo schema type hints for frames in the macro
-CLOSED: [2025-01-20 Lun 07:43]
-#+begin_src clojure
-(defframe my-cool-frame
-  "This is a cool frame"
-  {:type :frame.cool/hello
-   :schema [:map
-            [:messages LLMContextMessages]
-            [:tools LLMTools]]})
-#+end_src
-
 * TODO research [[https://github.com/phronmophobic/clj-media][clojure-media]] for dedicated ffmpeg support for media conversion
 
-* TODO add core.async.flow support
-:LOGBOOK:
-CLOCK: [2025-01-25 Sat 16:35]--[2025-01-25 Sat 17:00] =>  0:25
-CLOCK: [2025-01-25 Sat 15:18]--[2025-01-25 Sat 15:43] =>  0:25
-CLOCK: [2025-01-25 Sat 11:14]--[2025-01-25 Sat 11:39] =>  0:25
-CLOCK: [2025-01-25 Sat 09:50]--[2025-01-25 Sat 10:15] =>  0:25
-:END:
+* TODO
