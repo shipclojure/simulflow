@@ -1,132 +1,189 @@
 # voice-fn - Real-time Voice AI Pipeline Framework
 
-`voice-fn` is a Clojure framework for building real-time voice AI applications using a data-driven, functional approach. It provides a composable pipeline architecture for processing audio, text, and AI interactions.
+## Table of Contents
+
+
+1.  [Core Features](#org9f6c898)
+2.  [Quick Start: Twilio WebSocket Example](#org71c1ebd)
+3.  [Supported Providers](#orga92dd94)
+    1.  [Text-to-Speech (TTS)](#orgb60103e)
+    2.  [Speech-to-Text (STT)](#orgf138736)
+    3.  [Large Language Models (LLM)](#org532c7b9)
+4.  [Key Concepts](#org28a4b3f)
+    1.  [Flows](#org40af940)
+    2.  [Frames](#org1759685)
+    3.  [Processes](#orgbd1d5f8)
+5.  [Adding Custom Processes](#orgf87c620)
+6.  [Built With](#orgaf805b6)
+7.  [License](#org5082853)
+
+
+
+`voice-fn` is a Clojure framework for building real-time voice AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, and AI interactions with built-in support for major AI providers.
+
+
+<a id="org9f6c898"></a>
 
 ## Core Features
 
-- **Data-First Design:** Define AI pipelines as data structures for easy configuration and modification
-- **Streaming Architecture:** Built on core.async for efficient real-time audio and text processing
-- **Extensible Processors:** Simple protocol-based system for adding new processing components
-- **Flexible Frame System:** Type-safe message passing between pipeline components
-- **Built-in Services:** Ready-to-use integrations with:
-  - Speech Recognition (Deepgram)
-  - Language Models (OpenAI, Groq)
-  - Text-to-Speech (ElevenLabs)
-- **Transport Options:** Support for WebSocket, HTTP, and local audio I/O
+-   **Flow-Based Architecture:** Built on `core.async.flow` for robust concurrent processing
+-   **Data-First Design:** Define AI pipelines as data structures for easy configuration and modification
+-   **Streaming Architecture:** Efficient real-time audio and text processing
+-   **Extensible Processors:** Simple protocol-based system for adding new processing components
+-   **Flexible Frame System:** Type-safe message passing between pipeline components
+-   **Built-in Services:** Ready-to-use integrations with major AI providers
 
-## Quick Start
 
-``` clojure
-(require '[voice-fn.pipeline :as pipeline]
-         '[clojure.core.async :as a]
-         '[voice-fn.secrets :refer [secret]])
+<a id="org71c1ebd"></a>
 
-;; Define pipeline configuration
-(def config
-  {:pipeline/config
-   {:audio-in/sample-rate 8000
-    :audio-in/encoding :ulaw
-    :audio-in/channels 1
-    :audio-in/sample-size-bits 8
-    :audio-out/sample-rate 8000
-    :audio-out/encoding :ulaw
-    :audio-out/sample-size-bits 8
-    :audio-out/channels 1
-    :pipeline/supports-interrupt? true
-    :pipeline/language :en
-    :llm/context [{:role "system"
-                   :content "You are a voice assistant. Keep responses concise. Ask for clarification if user input is unclear."}]
-    :transport/in-ch (a/chan 1024) ;; input channel
-    :transport/out-ch (a/chan 1024)} ;; output channel
+## Quick Start: Twilio WebSocket Example
+```clojure
+    (ns example
+      (:require [clojure.core.async :as a]
+                [clojure.core.async.flow :as flow]
+                [voice-fn.processors.deepgram :as asr]
+                [voice-fn.processors.openai :as llm]
+                [voice-fn.processors.elevenlabs :as tts]
+                [voice-fn.transport :as transport]))
 
-   :pipeline/processors
-   [;; Input handling
-    {:processor/id :processor.transport/twilio-input}
+    (defn make-twilio-flow [in out]
+      {:procs
+       {:transport-in {:proc transport/twilio-transport-in
+                       :args {:transport/in-ch in}}
+        :deepgram {:proc asr/deepgram-processor
+                   :args {:transcription/api-key "DEEPGRAM_KEY"
+                          :transcription/interim-results? true
+                          :transcription/model :nova-2}}
+        :llm {:proc llm/openai-llm-process
+              :args {:openai/api-key "OPENAI_KEY"
+                     :llm/model "gpt-4"}}
+        :tts {:proc tts/elevenlabs-tts-process
+              :args {:elevenlabs/api-key "ELEVENLABS_KEY"
+                     :elevenlabs/voice-id "VOICE_ID"}}
+        :transport-out {:proc transport/realtime-transport-out-processor
+                        :args {:transport/out-chan out}}}
 
-    ;; Speech recognition
-    {:processor/id :processor.transcription/deepgram
-     :processor/config {:transcription/api-key (secret [:deepgram :api-key])
-                       :transcription/interim-results? true
-                       :transcription/punctuate? false
-                       :transcription/vad-events? true
-                       :transcription/smart-format? true
-                       :transcription/model :nova-2
-                       :transcription/utterance-end-ms 1000}}
+       :conns
+       [[[:transport-in :out] [:deepgram :in]]
+        [[:deepgram :out] [:llm :in]]
+        [[:llm :out] [:tts :in]]
+        [[:tts :out] [:transport-out :in]]]})
 
-    ;; User message handling
-    {:processor/id :context.aggregator/user
-     :processor/config {:aggregator/debug? true}}
+    (defn start-flow []
+      (let [in (a/chan 1024)
+            out (a/chan 1024)
+            flow (flow/create-flow (make-twilio-flow in out))]
+        (flow/start flow)
+        {:in in :out out :flow flow}))
 
-    ;; LLM processing
-    {:processor/id :processor.llm/openai
-     :processor/config {:llm/model "gpt-4"
-                       :openai/api-key (secret [:openai :api-key])}}
-
-    ;; AI response handling
-    {:processor/id :context.aggregator/assistant}
-
-    ;; Text-to-speech
-    {:processor/id :processor.speech/elevenlabs
-     :processor/config {:elevenlabs/api-key (secret [:elevenlabs :api-key])
-                       :elevenlabs/model-id "eleven_flash_v2_5"
-                       :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
-                       :voice/stability 0.5
-                       :voice/similarity-boost 0.8
-                       :voice/use-speaker-boost? true}}
-
-    ;; Output handling
-    {:processor/id :processor.transport/async-output}]})
-
-;; Create and run pipeline
-(def p (pipeline/create-pipeline config))
-(pipeline/start-pipeline! p)
-(pipeline/stop-pipeline! p)
+    (defn stop-flow [{:keys [flow in out]}]
+      (flow/stop flow)
+      (a/close! in)
+      (a/close! out))
 ```
+
+
+<a id="orga92dd94"></a>
+
+## Supported Providers
+
+
+<a id="orgb60103e"></a>
+
+### Text-to-Speech (TTS)
+
+-   **ElevenLabs**
+    -   Models: `eleven_multilingual_v2`, `eleven_turbo_v2`, `eleven_flash_v2` and more.
+    -   Features: Real-time streaming, multiple voices, multilingual support
+
+
+<a id="orgf138736"></a>
+
+### Speech-to-Text (STT)
+
+-   **Deepgram**
+    -   Models: `nova-2`, `nova-2-general`, `nova-2-meeting` and more.
+    -   Features: Real-time transcription, punctuation, smart formatting
+
+
+<a id="org532c7b9"></a>
+
+### Large Language Models (LLM)
+
+-   **OpenAI**
+    -   Models: `gpt-4o-mini`(fastest, cheapest),  `gpt-4`, `gpt-3.5-turbo` and more
+    -   Features: Function calling, streaming responses
+
+
+<a id="org28a4b3f"></a>
 
 ## Key Concepts
 
+
+<a id="org40af940"></a>
+
+### Flows
+
+The core building block of voice-fn pipelines:
+
+-   Composed of processes connected by channels
+-   Processes can be:
+    -   Input/output handlers
+    -   AI service integrations
+    -   Data transformers
+-   Managed by `core.async.flow` for lifecycle control
+
+
+<a id="org1759685"></a>
+
 ### Frames
+
 The basic unit of data flow, representing typed messages like:
-- `:audio/raw-input` - Raw audio data
-- `:text/input` - Transcribed text
-- `:llm/text-chunk` - LLM response chunks
-- `:system/start`, `:system/stop` - Control signals
 
-### Processors
+-   `:audio/input-raw` - Raw audio data
+-   `:transcription/result` - Transcribed text
+-   `:llm/text-chunk` - LLM response chunks
+-   `:system/start`, `:system/stop` - Control signals
+
+See [frame.clj](./core/src/voice_fn/frame.clj) for all possible frames.
+
+
+<a id="orgbd1d5f8"></a>
+
+### Processes
+
 Components that transform frames:
-- Implement the `Processor` protocol
-- Define accepted and generated frame types
-- Can maintain state in the pipeline atom
-- Use core.async for async processing
 
-### Pipeline
-Coordinates the flow of frames between processors:
-- Validates configuration using Malli schemas
-- Manages processor lifecycle
-- Handles frame routing
-- Maintains system state
+-   Define input/output requirements
+-   Can maintain state
+-   Use core.async for async processing
+-   Implement the `flow/process` protocol
 
-## Adding Custom Processors
 
-```clojure
-(defmethod pipeline/create-processor :my/processor
-  [id]
-  (reify p/Processor
-    (processor-id [_] id)
-    (processor-schema [_] [:map [:my/config :string]])
-    (accepted-frames [_] #{:text/input})
-    (make-processor-config [_ pipeline-config processor-config]
-      processor-config)
-    (process-frame [_ pipeline config frame]
-      ;; Process frame and return new frame(s)
-      )))
-```
+<a id="orgf87c620"></a>
+
+## Adding Custom Processes
+
+    (defn custom-processor []
+      (flow/process
+        {:describe (fn [] {:ins {:in "Input channel"}
+                           :outs {:out "Output channel"}})
+         :init (fn [args] {:state args})
+         :transform (fn [state in msg]
+                      [state {:out [(process-message msg)]}])}))
+
+
+<a id="orgaf805b6"></a>
 
 ## Built With
 
-- [core.async](https://github.com/clojure/core.async) - Concurrent processing
-- [Malli](https://github.com/metosin/malli) - Schema validation
-- [Hato](https://github.com/gnarroway/hato) - WebSocket support
+-   [core.async](<https://github.com/clojure/core.async>) - Concurrent processing
+-   [core.async.flow](<https://clojure.github.io/core.async/#clojure.core.async.flow>) - Flow control
+-   [Hato](<https://github.com/gnarroway/hato>) - WebSocket support
+-   [Malli](<https://github.com/metosin/malli>) - Schema validation
+
+
+<a id="org5082853"></a>
 
 ## License
 
