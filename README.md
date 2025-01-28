@@ -37,50 +37,99 @@
 <a id="org71c1ebd"></a>
 
 ## Quick Start: Twilio WebSocket Example
+
 ```clojure
-    (ns example
-      (:require [clojure.core.async :as a]
-                [clojure.core.async.flow :as flow]
-                [voice-fn.processors.deepgram :as asr]
-                [voice-fn.processors.openai :as llm]
-                [voice-fn.processors.elevenlabs :as tts]
-                [voice-fn.transport :as transport]))
+(defn make-twilio-flow
+  [in out]
+  (let [encoding :ulaw
+        sample-rate 8000
+        sample-size-bits 8
+        channels 1 ;; mono
+        chunk-duration-ms 20
+        llm-context {:messages [{:role "system"
+                                 :content  "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}]
+                     :tools [{:type :function
+                              :function
+                              {:name "get_weather"
+                               :description "Get the current weather of a location"
+                               :parameters {:type :object
+                                            :required [:town]
+                                            :properties {:town {:type :string
+                                                                :description "Town for which to retrieve the current weather"}}
+                                            :additionalProperties false}
+                               :strict true}}]}]
+    {:procs
+     {:transport-in {:proc transport/twilio-transport-in
+                     :args {:transport/in-ch in}}
+      :deepgram-transcriptor {:proc asr/deepgram-processor
+                              :args {:transcription/api-key (secret [:deepgram :api-key])
+                                     :transcription/interim-results? true
+                                     :transcription/vad-events? true
+                                     :transcription/smart-format? true
+                                     :transcription/model :nova-2
+                                     :transcription/utterance-end-ms 1000
+                                     :transcription/language :en
+                                     :transcription/encoding :mulaw
+                                     :transcription/sample-rate sample-rate}}
+      :user-context-aggregator  {:proc context/user-aggregator-process
+                                 :args {:llm/context llm-context}}
+      :assistant-context-aggregator {:proc context/assistant-context-aggregator
+                                     :args {:llm/context llm-context
+                                            :debug? true
+                                            :llm/registered-tools {"get_weather" {:async false
+                                                                                  :tool (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))}}}}
+      :llm {:proc llm/openai-llm-process
+            :args {:openai/api-key (secret [:openai :new-api-sk])
+                   :llm/model "gpt-4o-mini"}}
 
-    (defn make-twilio-flow [in out]
-      {:procs
-       {:transport-in {:proc transport/twilio-transport-in
-                       :args {:transport/in-ch in}}
-        :deepgram {:proc asr/deepgram-processor
-                   :args {:transcription/api-key "DEEPGRAM_KEY"
-                          :transcription/interim-results? true
-                          :transcription/model :nova-2}}
-        :llm {:proc llm/openai-llm-process
-              :args {:openai/api-key "OPENAI_KEY"
-                     :llm/model "gpt-4"}}
-        :tts {:proc tts/elevenlabs-tts-process
-              :args {:elevenlabs/api-key "ELEVENLABS_KEY"
-                     :elevenlabs/voice-id "VOICE_ID"}}
-        :transport-out {:proc transport/realtime-transport-out-processor
-                        :args {:transport/out-chan out}}}
+      :llm-sentence-assembler {:proc (flow/step-process #'context/sentence-assembler)}
+      :tts {:proc tts/elevenlabs-tts-process
+            :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                   :elevenlabs/model-id "eleven_flash_v2_5"
+                   :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                   :voice/stability 0.5
+                   :voice/similarity-boost 0.8
+                   :voice/use-speaker-boost? true
+                   :flow/language :en
+                   :audio.out/encoding encoding
+                   :audio.out/sample-rate sample-rate}}
+       :transport-out {:proc transport/realtime-transport-out-processor
+                       :args {:transport/out-chan out}}}
 
-       :conns
-       [[[:transport-in :out] [:deepgram :in]]
-        [[:deepgram :out] [:llm :in]]
-        [[:llm :out] [:tts :in]]
-        [[:tts :out] [:transport-out :in]]]})
+     :conns [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
+             [[:transport-in :out] [:deepgram-transcriptor :in]]
+             [[:deepgram-transcriptor :out] [:user-context-aggregator :in]]
+             [[:user-context-aggregator :out] [:llm :in]]
+             [[:llm :out] [:assistant-context-aggregator :in]]
 
-    (defn start-flow []
-      (let [in (a/chan 1024)
-            out (a/chan 1024)
-            flow (flow/create-flow (make-twilio-flow in out))]
-        (flow/start flow)
-        {:in in :out out :flow flow}))
+             ;; cycle so that context aggregators are in sync
+             [[:assistant-context-aggregator :out] [:user-context-aggregator :in]]
+             [[:user-context-aggregator :out] [:assistant-context-aggregator :in]]
 
-    (defn stop-flow [{:keys [flow in out]}]
-      (flow/stop flow)
-      (a/close! in)
-      (a/close! out))
+             [[:llm :out] [:llm-sentence-assembler :in]]
+             [[:llm-sentence-assembler :out] [:tts :in]]
+
+             [[:tts :out] [:transport-out :in]]
+             [[:transport-in :sys-out] [:transport-out :sys-in]]
+             [[:audio-splitter :out] [:realtime-out :in]]]}))
+
+(defn start-flow []
+   (let [in (a/chan 1024)
+         out (a/chan 1024)
+         flow (flow/create-flow (make-twilio-flow in out))]
+     (flow/start flow)
+     {:in in :out out :flow flow}))
+
+(defn stop-flow [{:keys [flow in out]}]
+   (flow/stop flow)
+   (a/close! in)
+   (a/close! out))
 ```
+
+Which roughly translates to:
+
+![Flow Diagram](./resources/flow.png)
+
 
 
 <a id="orga92dd94"></a>
