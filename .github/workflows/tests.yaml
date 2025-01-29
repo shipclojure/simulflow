@@ -36,4 +36,3 @@ jobs:
 
       - name: Run Clj Unit tests
         run: clojure -M:test -m kaocha.runner :unit
-        working-directory: ./core
