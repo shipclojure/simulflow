@@ -269,4 +269,12 @@
                                                 :tool_calls [{:function {:arguments "{\"ticker\":\"MSFT\",\"fields\":[\"price\",\"volume\"],\"date\":\"2023-10-10\"}"
                                                                          :name "retrieve_latest_stock_data"}
                                                               :id "call_frPVnoe8ruDicw50T8sLHki7"
-                                                              :type :function}]}]}))))
+                                                              :type :function}]}]}))
+    (fact
+      "Handles system-config-change frames"
+      (let [nc {:messages [{:role :system
+                            :content "Your context was just updated"}]}]
+        (sut/assistant-aggregator-transform
+          sstate :in
+          (frame/system-config-change
+            {:llm/context nc})) => [(assoc sstate :llm/context nc)]))))

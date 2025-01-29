@@ -202,9 +202,11 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         id "context-aggregator-assistant"]
     (cond
       (frame/system-config-change? frame)
-      (let [config (:frame/data frame)]
-        [(cond-> state
-           (:llm/context config) (assoc :llm/context (:llm/context config)))])
+      (do
+        (when debug? (t/log! {:level :debug :id id} ["SYSTEM CONFIG CHANGE" (:frame/data frame)]))
+        (let [config (:frame/data frame)]
+          [(cond-> state
+             (:llm/context config) (assoc :llm/context (:llm/context config)))]))
       (frame/llm-context? frame)
       [(assoc state :llm/context (:frame/data frame))]
 
