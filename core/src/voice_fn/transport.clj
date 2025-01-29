@@ -116,7 +116,7 @@
   (let [data (u/parse-if-json input)
         output (if (fn? handle-event) (handle-event data) nil)
         out-frames (partial merge-with into output)]
-    (case (:event data)
+    (condp = (:event data)
       "start" [state (if-let [stream-sid (:streamSid data)]
                        (out-frames {:sys-out [(frame/system-config-change {:twilio/stream-sid stream-sid
                                                                            :transport/serializer (make-twilio-serializer stream-sid)})]})
@@ -127,7 +127,7 @@
 
       "close"
       [state (out-frames {:sys-out [(frame/system-stop true)]})]
-      nil)))
+      [state])))
 
 (def twilio-transport-in
   (flow/process
