@@ -138,7 +138,15 @@
             (let [[new-context-state {:keys [out]}] (sut/user-aggregator-transform ststate nil (frame/llm-context new-context))
                   context-frame (first out)]
               (:llm/context new-context-state) => new-context
-              (:frame/data context-frame) => new-context)))))
+              (:frame/data context-frame) => new-context)))
+    (fact
+      "Handles system-config-change frames"
+      (let [nc {:messages [{:role :system
+                            :content "Your context was just updated"}]}]
+        (sut/user-aggregator-transform
+          sstate :sys-in
+          (frame/system-config-change
+            {:llm/context nc})) => [(assoc sstate :llm/context nc)]))))
 
 (def chunk->frame (comp frame/llm-tool-call-chunk first :tool_calls :delta first :choices))
 
@@ -275,6 +283,6 @@
       (let [nc {:messages [{:role :system
                             :content "Your context was just updated"}]}]
         (sut/assistant-aggregator-transform
-          sstate :in
+          sstate :sys-in
           (frame/system-config-change
             {:llm/context nc})) => [(assoc sstate :llm/context nc)]))))
