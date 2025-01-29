@@ -97,3 +97,156 @@ However, I would suggest a middle ground: Keep the explicit connections but prov
 This would give you the benefits of explicit connections while making it more user-friendly. The higher-level abstraction could even generate the detailed connections automatically while maintaining the performance and debugging benefits of explicit connections.
 
 This solution maintains the core benefits of explicit connections while addressing the user-friendliness concern that motivated considering implicit routing.
+
+
+* TODO Add Gladia as a transcription provider
+Some code from another project
+#+begin_src clojure
+;;;;;;;;; Gladia ASR ;;;;;;;;;;;;;
+;; :frames_format "base64"
+;; :word_timestamps true})
+(def ^:private gladia-url "wss://api.gladia.io/audio/text/audio-transcription")
+
+;; this may be outdated
+(def ^:private asr-configuration {:x_gladia_key api-key
+                                  :sample_rate 8000
+                                  :encoding "WAV/ULAW"
+                                  :language_behaviour "manual"
+                                  :language "romanian"})
+
+(defn transcript?
+  [m]
+  (= (:event m) "transcript"))
+
+(defn final-transcription?
+  [m]
+  (and (transcript? m)
+       (= (:type m) "final")))
+
+(defn partial-transcription?
+  [m]
+  (and (transcript? m)
+       (= (:type m) "partial")))
+
+(defrecord GladiaASR [ws asr-chan]
+  ASR
+  (send-audio-chunk [_ data]
+    (send! ws {:frames (get-in data [:media :payload])} false))
+  (close! [_]
+    (ws/close! ws)))
+
+(defn- make-gladia-asr!
+  [{:keys [asr-text]}]
+  ;; TODO: Handle reconnect & errors
+  (let [ws @(websocket gladia-url
+                       {:on-open (fn [ws]
+                                   (prn "Open ASR Stream")
+                                   (send! ws asr-configuration)
+                                   (u/log ::gladia-asr-connected))
+                        :on-message (fn [_ws ^HeapCharBuffer data _last?]
+                                      (let [m (json/parse-if-json (str data))]
+                                        (u/log ::gladia-msg :m m)
+                                        (when (final-transcription? m)
+                                          (u/log ::gladia-asr-transcription :sentence (:transcription m) :transcription m)
+                                          (go (>! asr-text (:transcription m))))))
+                        :on-error (fn [_ e]
+                                    (u/log ::gladia-asr-error :exception e))
+                        :on-close (fn [_ code reason]
+                                    (u/log ::gladia-asr-closed :code code :reason reason))})]
+    (->GladiaASR ws asr-text)))
+
+#+end_src
+
+
+* TODO Add openai text to speech
+#+begin_src clojure
+(require '[wkok.openai-clojure.api :as openai])
+
+(defn openai
+  "Generate speech using openai"
+  ([input]
+   (openai input {}))
+  ([input config]
+   (openai/create-speech (merge {:input input
+                                 :voice "alloy"
+                                 :response_format "wav"
+                                 :model "tts-1"}
+                                config)
+                         {:version :http-2 :as :stream})))
+
+(defn tts-stage-openai
+  [sid in]
+  (a/go-loop []
+    (let [sentence (a/<! in)]
+      (when-not (nil? sentence)
+        (append-message! sid "assistant" sentence)
+        (try
+          (let [sentence-stream (-> (tts/openai sentence) (io/input-stream))
+                ais (AudioSystem/getAudioInputStream sentence-stream)
+                twilio-ais (audio/->twilio-phone ais)
+                buffer (byte-array 256)]
+            (loop []
+              (let [bytes-read (.read twilio-ais buffer)]
+                (when (pos? bytes-read)
+                  (twilio/send-msg! (sessions/ws sid)
+                                    sid
+                                    (e/encode-base64 buffer))
+                  (recur)))))
+          (catch Exception e
+            (u/log ::tts-stage-error :exception e)))
+        (recur)))))
+
+#+end_src
+
+* TODO Add rime ai text to speech
+#+begin_src clojure
+(def ^:private rime-tts-url "https://users.rime.ai/v1/rime-tts")
+
+(defn rime
+  "Generate speech using rime-ai provider"
+  [sentence]
+  (-> {:method :post
+       :url rime-tts-url
+       :as :stream
+       :body (json/->json-str {:text sentence
+                               :reduceLatency false
+                               :samplingRate 8000
+                               :speedAlpha 1.0
+                               :modelId "v1"
+                               :speaker "Colby"})
+       :headers {"Authorization" (str "Bearer " rime-api-key)
+                 "Accept" "audio/x-mulaw"
+                 "Content-Type" "application/json"}}
+
+      (client/request)
+      :body))
+
+(defn rime-async
+  "Generate speech using rime-ai provider, outputs results on a async
+  channel"
+  [sentence]
+  (let [stream (-> (rime sentence)
+                   (io/input-stream))
+        c (a/chan 1024)]
+    (au/input-stream->chan stream c 1024)))
+
+(defn tts-stage
+  [sid in]
+  (a/go-loop []
+    (let [sentence (a/<! in)]
+      (when-not (nil? sentence)
+        (append-message! sid "assistant" sentence)
+        (try
+          (let [sentence-stream (-> (tts/rime sentence) (io/input-stream))
+                buffer (byte-array 256)]
+            (loop []
+              (let [bytes-read (.read sentence-stream buffer)]
+                (when (pos? bytes-read)
+                  (twilio/send-msg! (sessions/ws sid)
+                                    sid
+                                    (e/encode-base64 buffer))
+                  (recur)))))
+          (catch Exception e
+            (u/log ::tts-stage-error :exception e)))
+        (recur)))))
+#+end_src
