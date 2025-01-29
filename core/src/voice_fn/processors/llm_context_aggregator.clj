@@ -149,7 +149,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 (def user-aggregator-process
   "Aggregates user messages into the conversation context"
   (flow/process
-    {:describe (fn [] {:ins {:in "Channel for aggregation messages"}
+    {:describe (fn [] {:ins {:sys-in "Channel for receiving system messages that take priority"
+                             :in "Channel for aggregation messages"}
                        :outs {:out "Channel where new context aggregations are put"}
                        :params {:llm/context "Initial LLM context. See schema/LLMContext"
                                 :aggregator/debug? "Optional When true, debug logs will be called"}})
@@ -200,6 +201,10 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
         id "context-aggregator-assistant"]
     (cond
+      (frame/system-config-change? frame)
+      (let [config (:frame/data frame)]
+        [(cond-> state
+           (:llm/context config) (assoc :llm/context (:llm/context config)))])
       (frame/llm-context? frame)
       [(assoc state :llm/context (:frame/data frame))]
 
@@ -271,7 +276,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   (flow/process
     {:describe
      (fn []
-       {:ins {:in "Channel for streaming tool call requests"}
+       {:ins {:sys-in "Channel for receiving system messages that take priority"
+              :in "Channel for streaming tool call requests"}
         :outs {:out "Channel for output new contexts with tool call results"}
         :params {:llm/context "Initial LLM context. See schema/LLMContext"
                  :llm/registered-tools
