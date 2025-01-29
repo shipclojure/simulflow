@@ -110,3 +110,21 @@
     :object "chat.completion.chunk"
     :model "gpt-4o-mini-2024-07-18"}
    :done])
+
+(def twilio-start-event
+  {:sequenceNumber "1"
+   :streamSid "MZ48f5da1eae19d83dcc3782e4ed89a45d"
+   :start
+   {:streamSid "MZ48f5da1eae19d83dcc3782e4ed89a45d"
+    :customParameters
+    {:last-bill "100"
+     :address "Hello World"
+     :phone-number "+40745901643"
+     :age "30"
+     :name "Ovi"}
+    :tracks ["inbound"]
+    :accountSid "hello123"
+    :mediaFormat
+    {:encoding "audio/x-mulaw", :channels 1, :sampleRate 8000}
+    :callSid "CAe692ad978bea6b203c130f0071931234"}
+   :event "start"})
