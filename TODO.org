@@ -19,6 +19,15 @@ CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
 
 * TODO Research webrtc support
 
+* TODO Add local transport (microphone + speaker out)
+
+* TODO Fix end the call function
+:LOGBOOK:
+CLOCK: [2025-01-29 Wed 18:03]--[2025-01-29 Wed 18:10] =>  0:07
+:END:
+
+* TODO Add TTFT metric
+
 * TODO Add LLM usage metrics based on chunks responses [[https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage][API docs for usage]]
 
 * TODO research [[https://github.com/phronmophobic/clj-media][clojure-media]] for dedicated ffmpeg support for media conversion
