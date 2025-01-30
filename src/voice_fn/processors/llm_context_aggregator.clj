@@ -272,6 +272,38 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   [frame]
   (-> frame :frame/data :messages last :tool_calls first))
 
+(defn assistant-aggregator-init
+  [{:llm/keys [registered-tools] :as args}]
+  (let [tool-read (a/chan 100)
+        tool-write (a/chan 100)
+        tool-call-loop #(loop []
+                          (when-let [frame (a/<!! tool-write)]
+                            (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
+                            (let [tool-call (context->tool-call frame)
+                                  tool-id (:id tool-call)
+                                  fname (get-in tool-call [:function :name])
+                                  args (u/parse-if-json (get-in tool-call [:function :arguments]))
+                                  rt (get registered-tools fname)
+                                  f (:tool rt)
+                                  async? (:async? rt)]
+                              (t/log! {:id :tool-caller :level :debug} ["Got tool-call-request" tool-call])
+                              (if (fn? f)
+                                (let [tool-result (if async? (a/<!! (f args)) (f args))]
+                                  (a/>!! tool-read  (frame/llm-tool-call-result
+                                                      {:role :tool
+                                                       :content [{:type :text
+                                                                  :text (u/json-str tool-result)}]
+                                                       :tool_call_id tool-id})))
+                                (a/>!! tool-read (frame/llm-tool-call-result
+                                                   {:role :tool
+                                                    :content [{:type :text
+                                                               :text "Tool not found"}]
+                                                    :tool_call_id tool-id}))))
+                            (recur)))]
+    ((flow/futurize tool-call-loop :exec :io))
+    (merge args {::flow/in-ports {:tool-read tool-read}
+                 ::flow/out-ports {:tool-write tool-write}})))
+
 (def assistant-context-aggregator
   "Takes streaming tool-call request tokens and returns a new context with the
   tool call result if a tool registered is available."
@@ -290,34 +322,5 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                      should return a channel on which the invocation result will
                      be put."
                  :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
-     :init (fn [{:llm/keys [registered-tools] :as args}]
-             (let [tool-read (a/chan 100)
-                   tool-write (a/chan 100)
-                   tool-call-loop #(loop []
-                                     (when-let [frame (a/<!! tool-write)]
-                                       (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
-                                       (let [tool-call (context->tool-call frame)
-                                             tool-id (:id tool-call)
-                                             fname (get-in tool-call [:function :name])
-                                             args (u/parse-if-json (get-in tool-call [:function :arguments]))
-                                             rt (get registered-tools fname)
-                                             f (:tool rt)
-                                             async? (:async? rt)]
-                                         (t/log! {:id :tool-caller :level :debug} ["Got tool-call-request" tool-call])
-                                         (if (fn? f)
-                                           (let [tool-result (if async? (a/<!! (f args)) (f args))]
-                                             (a/>!! tool-read  (frame/llm-tool-call-result
-                                                                 {:role :tool
-                                                                  :content [{:type :text
-                                                                             :text (u/json-str tool-result)}]
-                                                                  :tool_call_id tool-id})))
-                                           (a/>!! tool-read (frame/llm-tool-call-result
-                                                              {:role :tool
-                                                               :content [{:type :text
-                                                                          :text "Tool not found"}]
-                                                               :tool_call_id tool-id}))))
-                                       (recur)))]
-               ((flow/futurize tool-call-loop :exec :io))
-               (merge args {::flow/in-ports {:tool-read tool-read}
-                            ::flow/out-ports {:tool-write tool-write}})))
+     :init assistant-aggregator-init
      :transform assistant-aggregator-transform}))

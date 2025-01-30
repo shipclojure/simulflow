@@ -1,5 +1,7 @@
 (ns voice-fn.processors.llm-context-aggregator-test
   (:require
+   [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
    [midje.sweet :refer [fact facts]]
    [voice-fn.frame :as frame]
    [voice-fn.mock-data :as mock]
@@ -324,3 +326,71 @@
           sstate :sys-in
           (frame/system-config-change
             {:llm/context nc})) => [(assoc sstate :llm/context nc)]))))
+
+(facts
+  "About the tool calling loop"
+  (let [call-id "test-call-id"
+        llm-context {:messages [{:role "system"
+                                 :content  "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}]
+                     :tools [{:type :function
+                              :function
+                              {:name "get_weather"
+                               :description "Get the current weather of a location"
+                               :parameters {:type :object
+                                            :required [:town]
+                                            :properties {:town {:type :string
+                                                                :description "Town for which to retrieve the current weather"}}
+                                            :additionalProperties false}
+                               :strict true}}
+                             {:type "function"
+                              :function
+                              {:name "end_call"
+                               :description "End the current call"
+                               :parameters {:type "object"
+                                            :required []
+                                            :properties {}
+                                            :additionalProperties false}}}]}
+        registered-tools {"get_weather" {:async false
+                                         :tool (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))}
+                          "end_call" {:async true
+                                      :tool (fn [_]
+                                              (a/<!! (a/timeout 300))
+                                              (str "Call with id " call-id " has ended"))}}
+        {::flow/keys [in-ports out-ports]} (sut/assistant-aggregator-init {:llm/registered-tools registered-tools})
+        tool-read (:tool-read in-ports)
+        tool-write (:tool-write out-ports)
+        async-context (frame/llm-context {:messages [{:content "You are a helpful assistant"
+                                                      :role "assistant"}
+                                                     {:content "Hello there" :role "user"}
+                                                     {:role :assistant
+                                                      :tool_calls [{:function {:arguments "{}"
+                                                                               :name "end_call"}
+                                                                    :id "call_J9MSffmnxdPj8r28tNzCO8qj"
+                                                                    :type :function}]}]})
+        sync-context (frame/llm-context {:messages [{:content "You are a helpful assistant"
+                                                     :role "assistant"}
+                                                    {:content "Hello there" :role "user"}
+                                                    {:role :assistant
+                                                     :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"
+                                                                   :type :function
+                                                                   :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}]})]
+    (fact
+      "Handles async calls correctly"
+      (a/>!! tool-write async-context)
+      (let [res (a/<!! tool-read)]
+        (frame/llm-tool-call-result? res) => true
+        (:frame/data res) => {:content [{:text "Call with id test-call-id has ended"
+                                         :type :text}]
+                              :role :tool
+                              :tool_call_id "call_J9MSffmnxdPj8r28tNzCO8qj"}))
+
+    (fact
+      "Handles sync calls correctly"
+      (a/>!! tool-write sync-context)
+      (let [res (a/<!! tool-read)]
+        (frame/llm-tool-call-result? res) => true
+        (:frame/data res) => {:content [{:text "The weather in New York is 17 degrees celsius" :type :text}]
+                              :role :tool
+                              :tool_call_id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"}))
+    (a/close! tool-read)
+    (a/close! tool-write)))
