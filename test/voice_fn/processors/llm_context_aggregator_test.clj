@@ -278,6 +278,44 @@
                                                                          :name "retrieve_latest_stock_data"}
                                                               :id "call_frPVnoe8ruDicw50T8sLHki7"
                                                               :type :function}]}]}))
+    (fact "Handles tool calls with no arguments"
+          (let [final-state (reduce (fn [current-state frame]
+                                      (let [[next-state] (sut/assistant-aggregator-transform
+                                                           current-state
+                                                           nil
+                                                           frame)]
+                                        next-state))
+                              sstate
+                              (map chunk->frame mock/mock-tool-call-response-single-argument))
+                ;; Final state after end frame
+                [next-state {:keys [out tool-write]}] (sut/assistant-aggregator-transform
+                                                        final-state
+                                                        nil
+                                                        (frame/llm-full-response-end true))
+                out-frame (first out)
+                tool-write-frame (first tool-write)]
+            next-state => {:content-aggregation nil
+                           :function-arguments nil
+                           :function-name nil
+                           :tool-call-id nil
+                           :llm/context {:messages [{:content "You are a helpful assistant"
+                                                     :role "assistant"}
+                                                    {:content "Hello there" :role "user"}
+                                                    {:role :assistant
+                                                     :tool_calls [{:function {:arguments "{}"
+                                                                              :name "end_call"}
+                                                                   :id "call_J9MSffmnxdPj8r28tNzCO8qj"
+                                                                   :type :function}]}]}}
+            (= out-frame tool-write-frame) => true
+
+            (:frame/type out-frame) => :frame.llm/context
+            (:frame/data out-frame) => {:messages [{:content "You are a helpful assistant" :role "assistant"}
+                                                   {:content "Hello there" :role "user"}
+                                                   {:role :assistant
+                                                    :tool_calls [{:function {:arguments "{}"
+                                                                             :name "end_call"}
+                                                                  :id "call_J9MSffmnxdPj8r28tNzCO8qj"
+                                                                  :type :function}]}]}))
     (fact
       "Handles system-config-change frames"
       (let [nc {:messages [{:role :system

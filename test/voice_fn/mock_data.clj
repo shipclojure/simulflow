@@ -111,6 +111,12 @@
     :model "gpt-4o-mini-2024-07-18"}
    :done])
 
+(def mock-tool-call-response-single-argument
+  [{:service_tier "default", :created 1738211745, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:role "assistant", :content nil, :refusal nil, :tool_calls [{:index 0, :type "function", :function {:arguments "", :name "end_call"}, :id "call_J9MSffmnxdPj8r28tNzCO8qj"}]}}], :system_fingerprint "fp_bd83329f63", :id "chatcmpl-AvGZFNfbFY8QqV8JXsIlWn3E9Yp2o", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1738211745, :choices [{:finish_reason nil, :index 0, :logprobs nil, :delta {:tool_calls [{:index 0, :function {:arguments "{}"}}]}}], :system_fingerprint "fp_bd83329f63", :id "chatcmpl-AvGZFNfbFY8QqV8JXsIlWn3E9Yp2o", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   {:service_tier "default", :created 1738211745, :choices [{:finish_reason "tool_calls", :index 0, :logprobs nil, :delta {}}], :system_fingerprint "fp_bd83329f63", :id "chatcmpl-AvGZFNfbFY8QqV8JXsIlWn3E9Yp2o", :object "chat.completion.chunk", :model "gpt-4o-mini-2024-07-18"}
+   :done])
+
 (def twilio-start-event
   {:sequenceNumber "1"
    :streamSid "MZ48f5da1eae19d83dcc3782e4ed89a45d"
