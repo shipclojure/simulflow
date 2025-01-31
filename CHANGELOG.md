@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file. This change
 - Support for tool use. See [llm-context-aggregator.clj](./src/voice_fn/processors/llm_context_aggregator.clj)
 - Twilio transport in support. See `twilio-transport-in` [transport.clj](./src/voice_fn/transport.clj)
 - More tests for context aggregation
+- Support for dynamic context change
+Usecase:
+We have an initial prompt and tools to use. We want to change it based on the custom parameters that are inputted throught the twilio websocket.
+Example: On the twilio websocket, we can give custom parameters like script-name, overrides like user name, etc.
+
+We can use the config-change frame to do this. And every processor takes what it cares about from it. However, you add very specific functionality to the twilio-in transport. So, what you need to do is add a custom-params->config argument.
+``` clojure
+:transport-in {:proc transport/twilio-transport-in
+               :args {:transport/in-ch in
+                      :twilio/handle-event (fn [event]
+                                             {:out {:llm/context ".."
+                                                    :llm/registered-tools [...]}})}
+```
+
 
 
 ## [0.1.0] - 2025-01-27
