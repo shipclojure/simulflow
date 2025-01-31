@@ -315,7 +315,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         :outs {:out "Channel for output new contexts with tool call results"}
         :params {:llm/context "Initial LLM context. See schema/LLMContext"
                  :llm/registered-tools
-                 "Optional map of registered functions that the llm can use. If
+                 "DEPRECATED: Will be replaced by :handler key on each tool from the :llm/context.
+                     Optional map of registered functions that the llm can use. If
                      a tool call request doesn't find the tool with that name,
                      the result to the LLM will be `tool-not-found`. See
                      schema/RegisteredFunctions. If the function is `async?`, it
