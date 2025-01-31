@@ -65,7 +65,7 @@
   (flow/ping @dbg-flow)
   ,)
 
-(defn make-twilio-flow
+(defn make-twilio-flow-w-tool-use
   [in out]
   (let [encoding :ulaw
         sample-rate 8000
@@ -83,7 +83,15 @@
                                             :properties {:town {:type :string
                                                                 :description "Town for which to retrieve the current weather"}}
                                             :additionalProperties false}
-                               :strict true}}]}]
+                               :strict true}}
+                             {:type "function"
+                              :function
+                              {:name "end_call"
+                               :description "End the current call"
+                               :parameters {:type "object"
+                                            :required []
+                                            :properties {}
+                                            :additionalProperties false}}}]}]
     {:procs
      {:transport-in {:proc transport/twilio-transport-in
                      :args {:transport/in-ch in
@@ -151,7 +159,7 @@
   (assert (ws/upgrade-request? req) "Must be a websocket request")
   (let [in (a/chan 1024)
         out (a/chan 1024)
-        fl (flow/create-flow (make-twilio-flow in out))
+        fl (flow/create-flow (make-twilio-flow-w-tool-use in out))
         call-ongoing? (atom true)]
     (reset! dbg-flow fl)
     {::ws/listener

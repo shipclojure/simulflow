@@ -259,3 +259,46 @@ Some code from another project
             (u/log ::tts-stage-error :exception e)))
         (recur)))))
 #+end_src
+
+* TODO Implement diagram flows into vice-fn
+:LOGBOOK:
+CLOCK: [2025-01-31 Fri 07:12]--[2025-01-31 Fri 07:37] =>  0:25
+CLOCK: [2025-01-31 Fri 06:32]--[2025-01-31 Fri 06:57] =>  0:25
+:END:
+
+This means implementing flow diagrams
+#+begin_src clojure
+{:initial-node :start
+ :nodes
+ {:start {:role_messages [{:role :system
+                           :content "You are an order-taking assistant. You must ALWAYS use the available functions to progress the conversation. This is a phone conversation and your responses will be converted to audio. Keep the conversation friendly, casual, and polite. Avoid outputting special characters and emojis."}]
+          :task_messages [{:role :system
+                           :content "For this step, ask the user if they want pizza or sushi, and wait for them to use a function to choose. Start off by greeting them. Be friendly and casual; you're taking an order for food over the phone."}]}
+  :functions [{:type :function
+               :function {:name :choose_sushi
+                          :description "User wants to order sushi. Let's get that order started"
+
+                          }}]
+
+  }}
+#+end_src
+
+** TODO Change tool_call declaration to include the handler, to enable changing available tools on the fly
+If the function :handler returns a channel, the tool-caller will block until a result is put on the channel, optionally with a timeout
+#+begin_src clojure
+:functions [{:type :function
+                  :function
+                  {:name "record_party_size"
+                   :handler (fn [{:keys [size]}] ...)
+                   :description "Record the number of people in the party"
+                   :parameters
+                   {:type :object
+                    :properties
+                    {:size {:type :integer
+                            :minimum 1
+                            :maximum 12}}
+                    :required [:size]}
+                   :transition-to :get-time}}]
+#+end_src
+
+After this, basically we can just emit a =frame/llm-context= and that will update the current context. However the scenario manager needs to
