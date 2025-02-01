@@ -1,4 +1,4 @@
-(ns voice-fn.scenario-manager.core
+(ns voice-fn.scenario-manager
   "Scenario Manager is a way to build structured conversations with the underlying
   LLM. In enables you to create predefined conversation scenarios that follow a
   specific flow. Use it when the interaction is highly structured.
@@ -14,7 +14,9 @@
    [voice-fn.utils.core :as u]))
 
 (defprotocol Scenario
-  (set-node [s node] "Moves to the current node of the conversation"))
+  (start [s] "Start the scenario")
+  (set-node [s node] "Moves to the current node of the conversation")
+  (current-node [s] "Get current node"))
 
 (defn transition-fn
   "Transform a function declaration into a transition function. A transition
@@ -34,20 +36,22 @@
   [scenario] true)
 
 (defn scenario-manager
-  [{:keys [scenario flow flow-in-coord]}]
+  [{:keys [scenario-config flow flow-in-coord]}]
   (let [current-node (atom nil)
-        nodes (:nodes scenario)
-        s (reify Scenario
-            (set-node [this node-id]
-              (assert (get-in scenario [:nodes node-id]) (str "Invalid node: " node-id))
+        nodes (:nodes scenario-config)]
+    (reify Scenario
+      (current-node [_] @current-node)
+      (set-node [this node-id]
+        (assert (get-in scenario-config [:nodes node-id]) (str "Invalid node: " node-id))
 
-              (let [node (get nodes node-id)
-                    tools (map (partial transition-fn this) (:functions node))
-                    append-context (concat (:role-messages node) (:task-messages node))]
-                (reset! current-node node-id)
-                (flow/inject flow flow-in-coord [frame/scenario-context-update {:messages append-context
-                                                                                :tools tools}]))))]
-    #(set-node s (:initial-node scenario))))
+        (let [node (get nodes node-id)
+              tools (map (partial transition-fn this) (:functions node))
+              append-context (concat (:role-messages node) (:task-messages node))]
+          (reset! current-node node-id)
+          (flow/inject flow flow-in-coord [frame/scenario-context-update {:messages append-context
+                                                                          :tools tools}])))
+      (start [s]
+        (set-node s (:initial-node scenario-config))))))
 
 (comment
   (scenario-manager
