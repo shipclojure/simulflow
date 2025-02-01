@@ -26,12 +26,9 @@
   "
   [scenario tool]
   (let [fndef (:function tool)
-        h (:handler fndef)
         next-node (:transition-to fndef)
-        handler #(let [res (h %)] ;; TODO if tool is async, return a channel with result
-                   (set-node scenario next-node)
-                   res)]
-    (assoc-in (u/->tool-fn tool) [:function :handler] handler)))
+        cb #(set-node scenario next-node)]
+    (assoc-in (u/->tool-fn tool) [:function :transition-cb] cb)))
 
 (defn validate-scenario
   [scenario] true)

@@ -506,7 +506,8 @@
     [:map {:closed true}
      [:function
       [:map
-       [:handler [:=> [:cat [:map {:closed false}]] :any]]]]]))
+       [:handler [:=> [:cat :map] :any]]
+       [:transition-cb {:optional true} [:=> :cat :nil]]]]]))
 
 (def LLMTransitionToolDefinition
   (mu/merge LLMFunctionToolDefinitionWithHandling
@@ -522,7 +523,7 @@
 (def LLMContext
   [:map
    [:messages LLMContextMessages]
-   [:tools {:optional true} [:vector LLMFunctionToolDefinition]]
+   [:tools {:optional true} [:vector LLMFunctionToolDefinitionWithHandling]]
    [:tool-choice {:optional true :default :auto} ToolChoice]])
 
 (def ScenarioUpdateContext

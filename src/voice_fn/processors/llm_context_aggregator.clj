@@ -80,13 +80,27 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
     (cond
       (frame/system-config-change? frame)
       [(if-let [context (:llm/context frame-data)] (assoc state :llm/context context) state)]
-      (frame/llm-context? frame)
+      ;; user context aggregator is the source of truth for the llm context. The
+      ;; assistant aggregator will send tool result frames and the user context
+      ;; aggregator will send back the assembled new context
+      (frame/llm-tool-call-result? frame)
+      (let [tool-result (:frame/data frame)
+            {:keys [run-llm? on-update] :or {run-llm? true}} (:properties tool-result)
+            _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
+            nc (assoc context :messages (conj (:messages context) (:result tool-result)))]
+        (when (fn? on-update) (on-update))
+        [(assoc state :llm/context nc)
+         ;; Send the context to LLM Inference if :run-llm? is true. :run-llm? is
+         ;; false when the tool call was a scenario transition and we wait for
+         ;; the next scenario-context-update frame before we request a new llm inference
+         (when run-llm? {:out [frame/llm-context nc]})])
+      (frame/scenario-context-update? frame)
       (do
         (when debug?
-          (t/log! {:level :debug :id id} ["NEW CONTEXT FRAME" frame-data]))
-        (let [tool-result? (= (-> frame-data :messages last :role) :tool)]
-          ;; Send further to the llm processor if this ia tool call result
-          [(assoc state :llm/context frame-data) (when tool-result? {:out [frame]})]))
+          (t/log! {:level :debug :id id} "SCENARIO UPDATE"))
+        (let [scenario (:frame/data frame)
+              nc (handle-scenario-update (:llm/context state) scenario)]
+          [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}]))
 
       (frame/user-speech-start? frame)
       ,(do
@@ -107,13 +121,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                  :seen-start-frame? true
                  :seen-end-frame? false
                  :seen-interim-results? false)])
-      (frame/scenario-context-update? frame)
-      (do
-        (when debug?
-          (t/log! {:level :debug :id id} "SCENARIO UPDATE"))
-        (let [scenario (:frame/data frame)
-              nc (handle-scenario-update (:llm/context state) scenario)]
-          [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}]))
+
       (frame/user-speech-stop? frame)
       ,(do
          (when debug?
@@ -266,9 +274,10 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
       (frame/llm-tool-call-result? frame)
       (let [tool-result (:frame/data frame)
-            _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
-            nc (assoc context :messages (conj (:messages context) tool-result))]
-        [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}])
+            _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))]
+        ;; send tool call results further (should be user context aggregator to
+        ;; assemble the full context)
+        [state {:out [frame]}])
 
       ;; handle interruptions if the aggregator supports it
       (and (frame/control-interrupt-start? frame)
@@ -287,50 +296,41 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 (defn- get-tool [tool-name tools]
   (first (filter #(= tool-name (get-in % [:function :name])) tools)))
 
-;; TODO There might be a race condition with scenario transition.
-;; 1. assistant-tool-caller finishes, sends tool-result
-;; 2. at the same time, scenario transition happens, sends new node context
-;; 3. there already is a
-;; IMPORTANT: The correct order is:
-;; 1. tool result
-;; 2. add role messages
-;; 3. only now issue new assistant inference
-(defn maybe-await
-  [f args]
-  (let [r (f args)]
-    (if (u/chan? r)
-      (a/<!! r)
-      r)))
-
 (defn assistant-aggregator-init
-  [{:llm/keys [registered-tools] :as args}]
+  [args]
   (let [tool-read (a/chan 100)
         tool-write (a/chan 100)
-        tool-call-loop #(loop []
-                          (when-let [frame (a/<!! tool-write)]
-                            (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
-                            (let [context (:frame/data frame)
-                                  tool-call (context->tool-call context)
-                                  tool-id (:id tool-call)
-                                  fname (get-in tool-call [:function :name])
-                                  args (u/parse-if-json (get-in tool-call [:function :arguments]))
-                                  handler (get-in [:function :handler] (get-tool fname (:tools context)))
-                                  rt (get registered-tools fname)
-                                  f (or handler (:tool rt))]
-                              (t/log! {:id :tool-caller :level :debug} ["Got tool-call-request" tool-call])
-                              (if (fn? f)
-                                (let [tool-result (maybe-await f args)]
-                                  (a/>!! tool-read  (frame/llm-tool-call-result
-                                                      {:role :tool
-                                                       :content [{:type :text
-                                                                  :text (u/json-str tool-result)}]
-                                                       :tool_call_id tool-id})))
-                                (a/>!! tool-read (frame/llm-tool-call-result
-                                                   {:role :tool
-                                                    :content [{:type :text
-                                                               :text "Tool not found"}]
-                                                    :tool_call_id tool-id}))))
-                            (recur)))]
+        tool-call-loop
+        #(loop []
+           (when-let [frame (a/<!! tool-write)]
+             (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
+             (let [context (:frame/data frame)
+                   tool-call (context->tool-call context)
+                   tool-id (:id tool-call)
+                   fname (get-in tool-call [:function :name])
+                   args (u/parse-if-json (get-in tool-call [:function :arguments]))
+                   fndef (get-tool fname (:tools context))
+                   f (get-in fndef [:function :handler])
+                   transition-cb (get-in fndef [:function :transition-cb])]
+               (t/log! {:id :tool-caller :level :debug} ["Got tool-call-request" tool-call])
+               (if (fn? f)
+                 (let [tool-result (u/await-or-return f args)]
+                   (a/>!! tool-read  (frame/llm-tool-call-result
+                                       {:result {:role :tool
+                                                 :content [{:type :text
+                                                            :text (u/json-str tool-result)}]
+                                                 :tool_call_id tool-id}
+                                        ;; don't run llm if this is a transition
+                                        ;; function, to wait for the new context
+                                        ;; messages from the new scenario node
+                                        :properties {:run-llm? (fn? transition-cb)
+                                                     :on-update transition-cb}})))
+                 (a/>!! tool-read (frame/llm-tool-call-result
+                                    {:result {:role :tool
+                                              :content [{:type :text
+                                                         :text "Tool not found"}]
+                                              :tool_call_id tool-id}}))))
+             (recur)))]
     ((flow/futurize tool-call-loop :exec :io))
     (merge args {::flow/in-ports {:tool-read tool-read}
                  ::flow/out-ports {:tool-write tool-write}})))
@@ -345,14 +345,6 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
               :in "Channel for streaming tool call requests"}
         :outs {:out "Channel for output new contexts with tool call results"}
         :params {:llm/context "Initial LLM context. See schema/LLMContext"
-                 :llm/registered-tools
-                 "DEPRECATED: Will be replaced by :handler key on each tool from the :llm/context.
-                     Optional map of registered functions that the llm can use. If
-                     a tool call request doesn't find the tool with that name,
-                     the result to the LLM will be `tool-not-found`. See
-                     schema/RegisteredFunctions. If the function is `async?`, it
-                     should return a channel on which the invocation result will
-                     be put."
                  :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
      :init assistant-aggregator-init
      :transform assistant-aggregator-transform}))

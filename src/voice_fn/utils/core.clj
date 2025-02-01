@@ -1,5 +1,6 @@
 (ns voice-fn.utils.core
   (:require
+   [clojure.core.async :as a]
    [clojure.string :as str]
    [jsonista.core :as json])
   (:import
@@ -132,7 +133,7 @@
 (defn ->tool-fn
   "Strip extra parameters from a tool declaration"
   [tool]
-  (update-in tool [:function] dissoc :handler :transition-to))
+  (update-in tool [:function] dissoc :transition-to))
 
 (defn without-nils
   "Given a map, return a map removing key-value
@@ -161,3 +162,11 @@
   "Returns true if c is a core.async channel"
   [c]
   (instance? ManyToManyChannel c))
+
+(defn await-or-return
+  "Call f with args. If the result is a channel, await the result"
+  [f args]
+  (let [r (f args)]
+    (if (chan? r)
+      (a/<!! r)
+      r)))

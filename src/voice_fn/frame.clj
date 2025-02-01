@@ -176,6 +176,7 @@
 ;; Scenario frames
 ;; Frames used predefined scenarios
 ;;
+
 (defframe scenario-context-update
   "Frame containing messages to append to the llm context and the new tools to
   replace the old ones in order to create future transitions from the current node."
