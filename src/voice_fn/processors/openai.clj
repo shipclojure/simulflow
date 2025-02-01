@@ -157,9 +157,11 @@
     ;; Start request only when the last message in the context is by the user
 
     (a/>!! out-c (frame/llm-full-response-start true))
-    (let [stream-ch (stream-openai-chat-completion (merge {:model model
-                                                           :api-key api-key}
-                                                          (:frame/data frame)))]
+    (let [context (:frame/data frame)
+          stream-ch (stream-openai-chat-completion (merge {:model model
+                                                           :api-key api-key
+                                                           :messages (:messages context)
+                                                           :tools (map u/->tool-fn (:tools context))}))]
 
       (a/go-loop []
         (when-let [chunk (a/<! stream-ch)]

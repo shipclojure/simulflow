@@ -160,6 +160,28 @@
   {:type :frame.llm/context
    :schema schema/LLMContext})
 
+(defframe llm-context-messages-append
+  "Frame containing messages that should be appended to the current
+  context. Used by scenario manager when transitioning to a new node."
+  {:type :frame.llm/context-messages-append
+   :schema schema/LLMContextMessages})
+
+(defframe llm-tools-replace
+  "Frame containing new tools that should replace existing ones. Used by
+  scenario manager when transitioning to a new node"
+  {:type :frame.llm/tools-replace
+   :schema schema/LLMFunctionToolDefinition})
+
+;;
+;; Scenario frames
+;; Frames used predefined scenarios
+;;
+(defframe scenario-context-update
+  "Frame containing messages to append to the llm context and the new tools to
+  replace the old ones in order to create future transitions from the current node."
+  {:type :frame.scenario/context-update
+   :schema schema/ScenarioUpdateContext})
+
 ;;
 ;; LLM Output Frames
 ;; Frames for language model outputs

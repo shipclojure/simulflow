@@ -435,6 +435,12 @@
    [:description :string]
    [:enum {:optional true} [:vector :int]]])
 
+(def LLMFunctionCallParameterIntegerProperty
+  [:map
+   [:type (flex-enum [:integer])]
+   [:description :string]
+   [:enum {:optional true} [:vector :int]]])
+
 (def LLMFunctionCallParameterBooleanProperty
   [:map
    [:type (flex-enum [:boolean])]
@@ -452,6 +458,7 @@
   [:or
    LLMFunctionCallParameterStringProperty
    LLMFunctionCallParameterNumberProperty
+   LLMFunctionCallParameterIntegerProperty
    LLMFunctionCallParameterBooleanProperty
    LLMFunctionCallParameterArrayProperty])
 
@@ -493,6 +500,21 @@
                [:parameters LLMFunctionCallParameters]
                [:strict {:optional true} :boolean]]]])
 
+(def LLMFunctionToolDefinitionWithHandling
+  (mu/merge
+    LLMFunctionToolDefinition
+    [:map {:closed true}
+     [:function
+      [:map
+       [:handler [:=> [:cat [:map {:closed false}]] :any]]]]]))
+
+(def LLMTransitionToolDefinition
+  (mu/merge LLMFunctionToolDefinitionWithHandling
+            [:map {:closed true}
+             [:function
+              [:map
+               [:transition-to :keyword]]]]))
+
 (def RegisteredFunctions [:map-of :string [:map
                                            [:tool [:=> [:cat :map] :any]]
                                            [:async? {:optional true} :boolean]]])
@@ -501,6 +523,12 @@
   [:map
    [:messages LLMContextMessages]
    [:tools {:optional true} [:vector LLMFunctionToolDefinition]]
+   [:tool-choice {:optional true :default :auto} ToolChoice]])
+
+(def ScenarioUpdateContext
+  [:map
+   [:messages LLMContextMessages]
+   [:tools {:optional true} [:vector LLMFunctionToolDefinitionWithHandling]]
    [:tool-choice {:optional true :default :auto} ToolChoice]])
 
 (def CoreAsyncChannel

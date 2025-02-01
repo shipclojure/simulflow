@@ -3,6 +3,7 @@
    [clojure.string :as str]
    [jsonista.core :as json])
   (:import
+   (clojure.core.async.impl.channels ManyToManyChannel)
    (java.util Base64)))
 ;; => nil
 
@@ -128,6 +129,11 @@
 
 (def token-content "Extract token content from streaming chat completions" (comp :content :delta first :choices))
 
+(defn ->tool-fn
+  "Strip extra parameters from a tool declaration"
+  [tool]
+  (update-in tool [:function] dissoc :handler :transition-to))
+
 (defn without-nils
   "Given a map, return a map removing key-value
   pairs when value is `nil`."
@@ -150,3 +156,8 @@
           (reconcile-maps [result latter]
             (merge-with reconcile-keys result latter))]
     (reduce reconcile-maps maps)))
+
+(defn chan?
+  "Returns true if c is a core.async channel"
+  [c]
+  (instance? ManyToManyChannel c))

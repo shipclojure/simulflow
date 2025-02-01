@@ -39,6 +39,11 @@
                              role
                              aggregation)))
 
+(defn- handle-scenario-update
+  [context {:keys [messages tools]}]
+  (let [new-messages (into (or (:messages context) []) messages)]
+    (assoc context :messages new-messages :tools tools)))
+
 ;; Aggregator for user
 (defn user-aggregator-transform
   "Use cases implemented:
@@ -102,6 +107,13 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                  :seen-start-frame? true
                  :seen-end-frame? false
                  :seen-interim-results? false)])
+      (frame/scenario-context-update? frame)
+      (do
+        (when debug?
+          (t/log! {:level :debug :id id} "SCENARIO UPDATE"))
+        (let [scenario (:frame/data frame)
+              nc (handle-scenario-update (:llm/context state) scenario)]
+          [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}]))
       (frame/user-speech-stop? frame)
       ,(do
          (when debug?
@@ -268,9 +280,27 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
       :else [state])))
 
-(defn context->tool-call
-  [frame]
-  (-> frame :frame/data :messages last :tool_calls first))
+(defn- context->tool-call
+  [context]
+  (-> context :messages last :tool_calls first))
+
+(defn- get-tool [tool-name tools]
+  (first (filter #(= tool-name (get-in % [:function :name])) tools)))
+
+;; TODO There might be a race condition with scenario transition.
+;; 1. assistant-tool-caller finishes, sends tool-result
+;; 2. at the same time, scenario transition happens, sends new node context
+;; 3. there already is a
+;; IMPORTANT: The correct order is:
+;; 1. tool result
+;; 2. add role messages
+;; 3. only now issue new assistant inference
+(defn maybe-await
+  [f args]
+  (let [r (f args)]
+    (if (u/chan? r)
+      (a/<!! r)
+      r)))
 
 (defn assistant-aggregator-init
   [{:llm/keys [registered-tools] :as args}]
@@ -279,16 +309,17 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         tool-call-loop #(loop []
                           (when-let [frame (a/<!! tool-write)]
                             (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
-                            (let [tool-call (context->tool-call frame)
+                            (let [context (:frame/data frame)
+                                  tool-call (context->tool-call context)
                                   tool-id (:id tool-call)
                                   fname (get-in tool-call [:function :name])
                                   args (u/parse-if-json (get-in tool-call [:function :arguments]))
+                                  handler (get-in [:function :handler] (get-tool fname (:tools context)))
                                   rt (get registered-tools fname)
-                                  f (:tool rt)
-                                  async? (:async? rt)]
+                                  f (or handler (:tool rt))]
                               (t/log! {:id :tool-caller :level :debug} ["Got tool-call-request" tool-call])
                               (if (fn? f)
-                                (let [tool-result (if async? (a/<!! (f args)) (f args))]
+                                (let [tool-result (maybe-await f args)]
                                   (a/>!! tool-read  (frame/llm-tool-call-result
                                                       {:role :tool
                                                        :content [{:type :text

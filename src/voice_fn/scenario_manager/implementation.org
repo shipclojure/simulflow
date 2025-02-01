@@ -1,0 +1,82 @@
+#+TITLE: Implementation plan for flow manager for voice-fn
+
+* Problem:
+1. The LLMs are not consistent when you give a big prompt. They tend to go off
+   script in highly structured situations.
+2. Non programmer testers of the voice bot need a way to change the bot's
+   configuration without going into code.
+
+* Solution
+Implement a flow manager. The flow manager consumes a diagram which describes
+the conversation as a tree, where each node in the tree is a conversation state
+where the LLM can have a different task. Once the LLM finished a task and has
+gone to a further node, the context retains the result of that task, but the AI
+now has the task of the current node.
+
+
+The flow manager is a processor that sits either inside the conversation
+pipeline or outside.
+- It communicates with the pipeline.
+- It keeps the current context and updates the context for all
+  of the context aggregators + the llm engine.
+- The flow manager handles transitions to a further node.
+- It validates the initial conversation diagram:
+  - No unreachable nodes
+  - Valid schema declarations for each node
+
+
+* Design exploration
+
+The flow manager can be a creator of the pipeline itself.
+#+begin_src clojure
+(scenario-manager
+ {:flow {:procs {...}
+         :conns [...]}
+  :scenario
+  {:initial-node :start
+   :nodes
+   {:start
+    {:role-messages [{:role :system
+                      :content "You are a restaurant reservation assistant for La Maison, an upscale French restaurant. You must ALWAYS use one of the available functions to progress the conversation. This is a phone conversations and your responses will be converted to audio. Avoid outputting special characters and emojis. Be casual and friendly."}]
+     :task-messages [{:role :system
+                      :content "Warmly greet the customer and ask how many people are in their party."}]
+     :functions [{:type :function
+                  :function
+                  {:name "record_party_size"
+                   :handler (fn [{:keys [size]}] ...)
+                   :description "Record the number of people in the party"
+                   :parameters
+                   {:type :object
+                    :properties
+                    {:size {:type :integer
+                            :minimum 1
+                            :maximum 12}}
+                    :required [:size]}
+                   :transition-to :get-time}}]}
+    :get-time
+    {:task-messages [{:role :system
+                      :content "Ask what time they'd like to dine. Restaurant is open 5 PM to 10 PM. After they provide a time, confirm it's within operating hours before recording. Use 24-hour format for internal recording (e.g., 17:00 for 5 PM)."}]
+     :functions [{:type :function,
+                    :function {
+                        :name "record_time",
+                        :handler (fn [{:keys [time]}] ...),
+                        :description "Record the requested time",
+                        :parameters {
+                            :type :object,
+                            :properties {
+                                :time {
+                                    :type :string,
+                                    :pattern "^(17|18|19|20|21|22):([0-5][0-9])$",
+                                    :description "Reservation time in 24-hour format (17:00-22:00)",
+                                }
+                            },
+                            :required [:time],
+                        },
+                        :transition_to "confirm",
+                    },
+                },
+            ]}}}
+  }
+ )
+
+#+end_src
