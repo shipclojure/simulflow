@@ -148,7 +148,47 @@
         (sut/user-aggregator-transform
           sstate :sys-in
           (frame/system-config-change
-            {:llm/context nc})) => [(assoc sstate :llm/context nc)]))))
+            {:llm/context nc})) => [(assoc sstate :llm/context nc)]))
+    (fact
+      "Handles scenario-context-update frames"
+      (let [start {:aggregating? true
+                   :llm/context {:messages []
+                                 :tools []}
+                   :aggregation ""
+                   :seen-end-frame? false
+                   :seen-interim-results? false
+                   :seen-start-frame? true}
+            handler (fn [{:keys [size]}] size)
+            cu {:messages [{:role :system
+                            :content "You are a restaurant reservation assistant for La Maison, an upscale French restaurant. You must ALWAYS use one of the available functions to progress the conversation. This is a phone conversations and your responses will be converted to audio. Avoid outputting special characters and emojis. Be casual and friendly."}
+                           {:role :system
+                            :content "Warmly greet the customer and ask how many people are in their party."}]
+                :tools [{:type :function
+                         :function
+                         {:name "record_party_size"
+                          :handler handler
+                          :description "Record the number of people in the party"
+                          :parameters
+                          {:type :object
+                           :properties
+                           {:size {:type :integer
+                                   :description "Number of people that will dine at the restaurant"
+                                   :minimum 1
+                                   :maximum 12}}
+                           :required [:size]}
+                          :transition-to :get-time}}]}
+            scu (frame/scenario-context-update cu)
+            [ns {:keys [out]}] (sut/user-aggregator-transform start :in scu)
+            out-frame (first out)]
+        ns => {:aggregating? true
+               :aggregation ""
+               :seen-end-frame? false
+               :seen-interim-results? false
+               :seen-start-frame? true
+               :llm/context cu}
+
+        (frame/llm-context? out-frame)
+        (:frame/data out-frame) => cu))))
 
 (def chunk->frame (comp frame/llm-tool-call-chunk first :tool_calls :delta first :choices))
 
