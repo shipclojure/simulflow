@@ -18,8 +18,9 @@
 7.  [License](#org5082853)
 
 
-
 `voice-fn` is a Clojure framework for building real-time voice AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, and AI interactions with built-in support for major AI providers.
+
+This project's status is *experimental*. Expect breaking changes.
 
 
 <a id="org9f6c898"></a>
