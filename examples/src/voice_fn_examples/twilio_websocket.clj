@@ -85,48 +85,49 @@
         channels 1 ;; mono
         chunk-duration-ms 20]
     {:procs
-     (u/deep-merge {:transport-in {:proc transport/twilio-transport-in
-                                   :args {:transport/in-ch in}}
-                    :deepgram-transcriptor {:proc asr/deepgram-processor
-                                            :args {:transcription/api-key (secret [:deepgram :api-key])
-                                                   :transcription/interim-results? true
-                                                   :transcription/punctuate? false
-                                                   :transcription/vad-events? true
-                                                   :transcription/smart-format? true
-                                                   :transcription/model :nova-2
-                                                   :transcription/utterance-end-ms 1000
-                                                   :transcription/language :en
-                                                   :transcription/encoding :mulaw
-                                                   :transcription/sample-rate sample-rate}}
-                    :user-context-aggregator  {:proc context/user-aggregator-process
-                                               :args {:llm/context llm-context
-                                                      :aggregator/debug? true}}
-                    :assistant-context-aggregator {:proc context/assistant-context-aggregator
-                                                   :args {:llm/context llm-context
-                                                          :debug? true}}
-                    :llm {:proc llm/openai-llm-process
-                          :args {:openai/api-key (secret [:openai :new-api-sk])
-                                 :llm/model "gpt-4o-mini"}}
+     (u/deep-merge
+       {:transport-in {:proc transport/twilio-transport-in
+                       :args {:transport/in-ch in}}
+        :deepgram-transcriptor {:proc asr/deepgram-processor
+                                :args {:transcription/api-key (secret [:deepgram :api-key])
+                                       :transcription/interim-results? true
+                                       :transcription/punctuate? false
+                                       :transcription/vad-events? true
+                                       :transcription/smart-format? true
+                                       :transcription/model :nova-2
+                                       :transcription/utterance-end-ms 1000
+                                       :transcription/language :en
+                                       :transcription/encoding :mulaw
+                                       :transcription/sample-rate sample-rate}}
+        :user-context-aggregator  {:proc context/user-aggregator-process
+                                   :args {:llm/context llm-context
+                                          :aggregator/debug? true}}
+        :assistant-context-aggregator {:proc context/assistant-context-aggregator
+                                       :args {:llm/context llm-context
+                                              :debug? true}}
+        :llm {:proc llm/openai-llm-process
+              :args {:openai/api-key (secret [:openai :new-api-sk])
+                     :llm/model "gpt-4o-mini"}}
 
-                    :llm-sentence-assembler {:proc (flow/step-process #'context/sentence-assembler)}
-                    :tts {:proc tts/elevenlabs-tts-process
-                          :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
-                                 :elevenlabs/model-id "eleven_flash_v2_5"
-                                 :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
-                                 :voice/stability 0.5
-                                 :voice/similarity-boost 0.8
-                                 :voice/use-speaker-boost? true
-                                 :flow/language :en
-                                 :audio.out/encoding encoding
-                                 :audio.out/sample-rate sample-rate}}
-                    :audio-splitter {:proc transport/audio-splitter
-                                     :args {:audio.out/sample-rate sample-rate
-                                            :audio.out/sample-size-bits sample-size-bits
-                                            :audio.out/channels channels
-                                            :audio.out/duration-ms chunk-duration-ms}}
-                    :realtime-out {:proc transport/realtime-transport-out-processor
-                                   :args {:transport/out-chan out}}}
-                   procs)
+        :llm-sentence-assembler {:proc (flow/step-process #'context/sentence-assembler)}
+        :tts {:proc tts/elevenlabs-tts-process
+              :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                     :elevenlabs/model-id "eleven_flash_v2_5"
+                     :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                     :voice/stability 0.5
+                     :voice/similarity-boost 0.8
+                     :voice/use-speaker-boost? true
+                     :flow/language :en
+                     :audio.out/encoding encoding
+                     :audio.out/sample-rate sample-rate}}
+        :audio-splitter {:proc transport/audio-splitter
+                         :args {:audio.out/sample-rate sample-rate
+                                :audio.out/sample-size-bits sample-size-bits
+                                :audio.out/channels channels
+                                :audio.out/duration-ms chunk-duration-ms}}
+        :realtime-out {:proc transport/realtime-transport-out-processor
+                       :args {:transport/out-chan out}}}
+       procs)
 
      :conns [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
              [[:transport-in :out] [:deepgram-transcriptor :in]]
