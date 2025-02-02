@@ -99,8 +99,7 @@
                     :user-context-aggregator  {:proc context/user-aggregator-process
                                                :args {:llm/context llm-context}}
                     :assistant-context-aggregator {:proc context/assistant-context-aggregator
-                                                   :args {:llm/context llm-context
-                                                          :debug? true}}
+                                                   :args {:llm/context llm-context}}
                     :llm {:proc llm/openai-llm-process
                           :args {:openai/api-key (secret [:openai :new-api-sk])
                                  :llm/model "gpt-4o-mini"}}
@@ -277,7 +276,7 @@
                      :post {:handler twilio-inbound-handler}}]
    ["/ws" {:summary "Websocket endpoint to receive a twilio call"
            ;; Change param to make-twilio-ws-handler to change example flow used
-           :get {:handler (make-twilio-ws-handler tool-use-example)}}]])
+           :get {:handler (make-twilio-ws-handler scenario-example)}}]])
 
 (def app
   (ring/ring-handler

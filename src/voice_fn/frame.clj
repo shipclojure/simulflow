@@ -198,7 +198,15 @@
 
 (defframe llm-tool-call-result
   "Frame containing the result of invoking a tool for the LLM."
-  {:type :frame.llm/tool-call-result})
+  {:type :frame.llm/tool-call-result
+   :schema [:map
+            [:result schema/LLMToolMessage]
+            [:properties
+             [:map
+              [:run-llm? {:optional true
+                          :description "Wether to send the new context further (for LLM query)"} :boolean]
+              [:on-update {:optional true
+                           :description "Callback called after tool result is added to context"} [:=> :cat :nil]]]]]})
 
 (defframe llm-text-sentence
   "Complete sentence from LLM output"

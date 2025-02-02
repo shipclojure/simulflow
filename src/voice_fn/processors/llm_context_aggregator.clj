@@ -145,8 +145,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
            (not (nil? frame-data))
            (not= "" (str/trim frame-data)))
       ,(let [new-agg (:frame/data frame)]
-         (when debug?
-           (t/log! {:level :debug :id id} ["FRAME: " new-agg]))
+         (t/log! {:level :debug :id id} ["TRANSCRIPTION: " new-agg])
          ;; if we seen end frame, we send aggregation
          ;; else
          (if aggregating?
@@ -189,7 +188,9 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
    (when (frame/llm-text-chunk? msg)
      (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
        (if sentence
-         [{:acc accumulator} {:out [(frame/speak-frame sentence)]}]
+         (do
+           (t/log! :info ["AI: " sentence])
+           [{:acc accumulator} {:out [(frame/speak-frame sentence)]}])
          [{:acc accumulator}])))))
 
 (defn next-assistant-context
