@@ -3,7 +3,6 @@
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [midje.sweet :refer [fact facts]]
-   [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.mock-data :as mock]
    [voice-fn.processors.llm-context-aggregator :as sut]))
