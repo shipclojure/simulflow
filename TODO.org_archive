@@ -170,3 +170,31 @@ CLOCK: [2025-01-03 Fri 07:51]--[2025-01-03 Fri 08:16] =>  0:25
 CLOCK: [2025-01-03 Fri 07:06]--[2025-01-03 Fri 07:31] =>  0:25
 CLOCK: [2025-01-03 Fri 06:35]--[2025-01-03 Fri 07:00] =>  0:25
 :END:
+
+* DONE Change tool_call declaration to include the handler, to enable changing available tools on the fly
+CLOSED: [2025-02-02 Sun 07:31]
+:PROPERTIES:
+:ARCHIVE_TIME: 2025-02-02 Sun 07:31
+:ARCHIVE_FILE: ~/workspace/voice-fn/TODO.org
+:ARCHIVE_OLPATH: Implement diagram flows into vice-fn
+:ARCHIVE_CATEGORY: TODO
+:ARCHIVE_TODO: DONE
+:END:
+If the function :handler returns a channel, the tool-caller will block until a result is put on the channel, optionally with a timeout
+#+begin_src clojure
+:functions [{:type :function
+                  :function
+                  {:name "record_party_size"
+                   :handler (fn [{:keys [size]}] ...)
+                   :description "Record the number of people in the party"
+                   :parameters
+                   {:type :object
+                    :properties
+                    {:size {:type :integer
+                            :minimum 1
+                            :maximum 12}}
+                    :required [:size]}
+                   :transition-to :get-time}}]
+#+end_src
+
+After this, basically we can just emit a =frame/llm-context= and that will update the current context. However the scenario manager needs to

@@ -262,6 +262,7 @@ Some code from another project
 
 * TODO Implement diagram flows into vice-fn
 :LOGBOOK:
+CLOCK: [2025-02-02 Sun 07:31]
 CLOCK: [2025-02-01 Sat 11:10]--[2025-02-01 Sat 11:42] =>  0:32
 CLOCK: [2025-02-01 Sat 05:26]--[2025-02-01 Sat 05:51] =>  0:25
 CLOCK: [2025-01-31 Fri 07:12]--[2025-01-31 Fri 07:37] =>  0:25
@@ -284,23 +285,3 @@ This means implementing flow diagrams
 
   }}
 #+end_src
-
-** TODO Change tool_call declaration to include the handler, to enable changing available tools on the fly
-If the function :handler returns a channel, the tool-caller will block until a result is put on the channel, optionally with a timeout
-#+begin_src clojure
-:functions [{:type :function
-                  :function
-                  {:name "record_party_size"
-                   :handler (fn [{:keys [size]}] ...)
-                   :description "Record the number of people in the party"
-                   :parameters
-                   {:type :object
-                    :properties
-                    {:size {:type :integer
-                            :minimum 1
-                            :maximum 12}}
-                    :required [:size]}
-                   :transition-to :get-time}}]
-#+end_src
-
-After this, basically we can just emit a =frame/llm-context= and that will update the current context. However the scenario manager needs to

@@ -67,14 +67,16 @@
   ,)
 
 (defn phone-flow
-  "This example showcases how to use tools.
+  "This example showcases a voice AI agent for the phone. Phone audio is usually
+  encoded as MULAW at 8kHz frequency (sample rate) and it is mono (1 channel).
+
   N.B the graph connections: There must be a cycle for aggregators, to have the
   best results: user-context-aggregator -> llm -> assistant-context-aggregator
   -> user-context-aggregator"
-  [in out & {:keys [llm-context procs]
-             :or {llm-context {:messages [{:role "system"
-                                           :content "You are a helpful assistant "}]}
-                  procs {}}}]
+  [{:keys [llm-context procs in out]
+    :or {llm-context {:messages [{:role "system"
+                                  :content "You are a helpful assistant "}]}
+         procs {}}}]
   (let [encoding :ulaw
         sample-rate 8000
         sample-size-bits 8
@@ -141,22 +143,37 @@
              [[:audio-splitter :out] [:realtime-out :in]]]}))
 
 (defn tool-use-example
+  "Tools are specified in the :llm/context :tools vector.
+  See `schema/LLMFunctionToolDefinitionWithHandling` for the full structure of a
+  tool definition.
+
+  A tool needs a description and a :handler. The LLM will issue a tol call
+  request and voice-fn will call that function with the specified arguments,
+  putting the result in the chat history for the llm to see."
   [in out]
-  (flow/create-flow
-    (phone-flow in out
-                :llm/context {:messages [{:role "system"
-                                          :content  "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}]
-                              :tools [{:type :function
-                                       :function
-                                       {:name "get_weather"
-                                        :handler (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))
-                                        :description "Get the current weather of a location"
-                                        :parameters {:type :object
-                                                     :required [:town]
-                                                     :properties {:town {:type :string
-                                                                         :description "Town for which to retrieve the current weather"}}
-                                                     :additionalProperties false}
-                                        :strict true}}]})))
+  {:flow (flow/create-flow
+           (phone-flow
+             {:in in
+              :out out
+              :llm/context {:messages
+                            [{:role "system"
+                              :content "You are a voice agent operating via phone. Be
+                       concise. The input you receive comes from a
+                       speech-to-text (transcription) system that isn't always
+                       efficient and may send unclear text. Ask for
+                       clarification when you're unsure what the person said."}]
+                            :tools
+                            [{:type :function
+                              :function
+                              {:name "get_weather"
+                               :handler (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))
+                               :description "Get the current weather of a location"
+                               :parameters {:type :object
+                                            :required [:town]
+                                            :properties {:town {:type :string
+                                                                :description "Town for which to retrieve the current weather"}}
+                                            :additionalProperties false}
+                               :strict true}}]}}))})
 
 (def scenario-config
   {:initial-node :start
@@ -194,23 +211,23 @@
                              :transition_to "confirm"}}]}}})
 
 (defn scenario-example
+  "A scenario is a predefined, highly structured conversation. LLM performance
+  degrades when it has a big complex prompt to enact. To ensure a consistent
+  output use scenarios that transition the LLM into a new node with a clear
+  instruction for the current node."
   [in out]
-  (let [init-scenario (atom nil)
-        flow (flow/create-flow
-               (phone-flow in out
-                           :llm/context {:messages []
-                                         :tools []}
-                           :procs {:transport-in
-                                   {:args {:twilio/handle-event
-                                           (fn [event]
-                                             (when (and (= (:event event) "start")
-                                                        (fn? @init-scenario))
-                                               (@init-scenario)))}}}))
+  (let [flow (flow/create-flow
+               (phone-flow
+                 {:in in
+                  :out out
+                  :llm/context {:messages []
+                                :tools []}}))
         s (sm/scenario-manager {:flow flow
                                 :flow-in-coord [:user-context-aggregator :in]
                                 :scenario-config scenario-config})]
-    (reset! @init-scenario #(sm/start s))
-    flow))
+
+    {:flow flow
+     :scenario s}))
 
 (defn make-twilio-ws-handler
   [make-flow]
@@ -218,12 +235,16 @@
     (assert (ws/upgrade-request? req) "Must be a websocket request")
     (let [in (a/chan 1024)
           out (a/chan 1024)
-          fl (make-flow in out)
+          {fl :flow
+           s :scenario} (make-flow in out)
           call-ongoing? (atom true)]
       (reset! dbg-flow fl)
       {::ws/listener
        {:on-open (fn on-open [socket]
                    (let [{:keys [report-chan error-chan]} (flow/start fl)]
+                     ;; start scenario if it was provided
+                     (when s
+                       (sm/start s))
                      (t/log! "Starting monitoring flow")
                      (a/go-loop []
                        (when @call-ongoing?
