@@ -319,17 +319,19 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                    transition-cb (get-in fndef [:function :transition-cb])]
                (t/log! {:id :tool-caller :level :debug} ["Got tool-call-request" tool-call])
                (if (fn? f)
-                 (let [tool-result (u/await-or-return f args)]
-                   (a/>!! tool-read  (frame/llm-tool-call-result
-                                       {:result {:role :tool
-                                                 :content [{:type :text
-                                                            :text (u/json-str tool-result)}]
-                                                 :tool_call_id tool-id}
-                                        ;; don't run llm if this is a transition
-                                        ;; function, to wait for the new context
-                                        ;; messages from the new scenario node
-                                        :properties {:run-llm? (fn? transition-cb)
-                                                     :on-update transition-cb}})))
+                 (let [tool-result (u/await-or-return f args)
+                       tool-result-frame (frame/llm-tool-call-result
+                                           {:result {:role :tool
+                                                     :content [{:type :text
+                                                                :text (u/json-str tool-result)}]
+                                                     :tool_call_id tool-id}
+                                            ;; don't run llm if this is a transition
+                                            ;; function, to wait for the new context
+                                            ;; messages from the new scenario node
+                                            :properties {:run-llm? (nil? transition-cb)
+                                                         :on-update transition-cb}})]
+
+                   (a/>!! tool-read tool-result-frame))
                  (a/>!! tool-read (frame/llm-tool-call-result
                                     {:result {:role :tool
                                               :content [{:type :text

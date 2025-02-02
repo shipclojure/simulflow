@@ -207,7 +207,7 @@
               [:run-llm? {:optional true
                           :description "Wether to send the new context further (for LLM query)"} :boolean]
               [:on-update {:optional true
-                           :description "Callback called after tool result is added to context"} [:=> :cat :nil]]]]]})
+                           :description "Callback called after tool result is added to context"} [:maybe [:=> [:cat] :any]]]]]]})
 
 (defframe llm-text-sentence
   "Complete sentence from LLM output"

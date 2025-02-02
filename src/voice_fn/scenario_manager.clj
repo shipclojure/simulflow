@@ -9,6 +9,7 @@
    [clojure.core.async.flow :as flow]
    [malli.core :as m]
    [malli.error :as me]
+   [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
    [voice-fn.schema :as schema]
    [voice-fn.utils.core :as u]))
@@ -43,7 +44,7 @@
       (current-node [_] @current-node)
       (set-node [this node-id]
         (assert (get-in scenario-config [:nodes node-id]) (str "Invalid node: " node-id))
-
+        (t/log! :info ["SCENARIO" "NEW NODE" node-id])
         (let [node (get nodes node-id)
               tools (map (partial transition-fn this) (:functions node))
               append-context (concat (:role-messages node) (:task-messages node))]
