@@ -123,9 +123,9 @@
                              :content [{:type :text
                                         :text "The weather in New York is 17 degrees celsius"}]
                              :tool_call_id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"}
+                tool-request {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}
                 context {:messages [{:role "system", :content "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}
-                                    {:role "user", :content "What's the weather in New York?"}
-                                    {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}]
+                                    {:role "user", :content "What's the weather in New York?"}]
                          :tools [{:type :function
                                   :function {:name "get_weather"
                                              :description "Get the current weather of a location"
@@ -137,13 +137,15 @@
                                                           :additionalProperties false}
                                              :strict true}}]}
                 s (assoc sstate :llm/context context)
-                new-context (update-in context [:messages] conj tool-result)
-                [new-context-state {:keys [out]}] (sut/user-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result}))
+                new-context (update-in context [:messages] conj tool-request tool-result)
+                [new-context-state {:keys [out]}] (sut/user-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
+                                                                                                                    :request tool-request}))
                 context-frame (first out)]
             (:llm/context new-context-state) => new-context
             (:frame/data context-frame) => new-context
             (fact "Doesn't send context further if :send-llm? is false"
                   (let [[new-context-state out] (sut/user-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
+                                                                                                                  :request tool-request
                                                                                                                   :properties {:run-llm? false}}))]
                     (:llm/context new-context-state) => new-context
                     out => nil))))
@@ -430,6 +432,11 @@
         (:frame/data res) => {:result {:content [{:text "The weather in New York is 17 degrees celsius" :type :text}]
                                        :role :tool
                                        :tool_call_id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"}
+                              :request {:role :assistant
+                                        :tool_calls [{:function {:arguments "{\"town\":\"New York\"}"
+                                                                 :name "get_weather"}
+                                                      :id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"
+                                                      :type :function}]}
                               :properties {:run-llm? true
                                            :on-update nil}}))
     (fact
@@ -438,6 +445,10 @@
       (let [res (a/<!! tool-read)]
         (frame/llm-tool-call-result? res) => true
         (:frame/data res) => {:properties {:on-update nil :run-llm? true}
+                              :request {:role :assistant
+                                        :tool_calls [{:function {:arguments "{}" :name "end_call"}
+                                                      :id "call_J9MSffmnxdPj8r28tNzCO8qj"
+                                                      :type :function}]}
                               :result {:content [{:text "Call with id test-call-id has ended" :type :text}]
                                        :role :tool
                                        :tool_call_id "call_J9MSffmnxdPj8r28tNzCO8qj"}}))

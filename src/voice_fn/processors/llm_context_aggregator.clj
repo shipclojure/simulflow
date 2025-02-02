@@ -89,7 +89,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       ,(let [tool-result (:frame/data frame)
              {:keys [run-llm? on-update] :or {run-llm? true}} (:properties tool-result)
              _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
-             nc (update-in context [:messages] conj (:result tool-result))]
+             nc (update-in context [:messages] conj (:request tool-result) (:result tool-result))]
          (when (fn? on-update) (on-update))
          [(assoc state :llm/context nc)
           ;; Send the context further if :run-llm? is true. :run-llm? is false
@@ -99,12 +99,11 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
           (when run-llm? {:out [(frame/llm-context nc)]})])
 
       (frame/scenario-context-update? frame)
-      (do
-        (when debug?
-          (t/log! {:level :debug :id id} "SCENARIO UPDATE"))
-        (let [scenario (:frame/data frame)
-              nc (handle-scenario-update (:llm/context state) scenario)]
-          [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}]))
+      ,(let [scenario (:frame/data frame)
+             _ (when debug?
+                 (t/log! {:level :debug :id id} ["SCENARIO UPDATE" scenario]))
+             nc (handle-scenario-update (:llm/context state) scenario)]
+         [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}])
 
       (frame/user-speech-start? frame)
       ,(do
@@ -254,9 +253,9 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                                            :function-arguments function-arguments
                                            :tool-call-id tool-call-id})
                tool-call? (boolean function-name)
-               nf (frame/llm-context nc)]
-           [(reset-aggregation-state (assoc state :llm/context nc)) (cond-> {:out [nf]}
-                                                                      tool-call? (assoc :tool-write [nf]))]))
+               ncf (frame/llm-context nc)]
+           [(reset-aggregation-state (assoc state :llm/context nc)) (cond-> {:out [ncf]}
+                                                                      tool-call? (assoc :tool-write [ncf]))]))
 
       (frame/llm-text-chunk? frame)
       (let [chunk (:frame/data frame)]
@@ -294,10 +293,6 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
       :else [state])))
 
-(defn- context->tool-call
-  [context]
-  (-> context :messages last :tool_calls first))
-
 (defn- get-tool [tool-name tools]
   (first (filter #(= tool-name (get-in % [:function :name])) tools)))
 
@@ -310,7 +305,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
            (when-let [frame (a/<!! tool-write)]
              (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
              (let [context (:frame/data frame)
-                   tool-call (context->tool-call context)
+                   tool-call-msg (-> context :messages last)
+                   tool-call (-> tool-call-msg :tool_calls first)
                    tool-id (:id tool-call)
                    fname (get-in tool-call [:function :name])
                    args (u/parse-if-json (get-in tool-call [:function :arguments]))
@@ -321,7 +317,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                (if (fn? f)
                  (let [tool-result (u/await-or-return f args)
                        tool-result-frame (frame/llm-tool-call-result
-                                           {:result {:role :tool
+                                           {:request tool-call-msg
+                                            :result {:role :tool
                                                      :content [{:type :text
                                                                 :text (u/json-str tool-result)}]
                                                      :tool_call_id tool-id}
@@ -333,7 +330,8 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
                    (a/>!! tool-read tool-result-frame))
                  (a/>!! tool-read (frame/llm-tool-call-result
-                                    {:result {:role :tool
+                                    {:request tool-call-msg
+                                     :result {:role :tool
                                               :content [{:type :text
                                                          :text "Tool not found"}]
                                               :tool_call_id tool-id}}))))

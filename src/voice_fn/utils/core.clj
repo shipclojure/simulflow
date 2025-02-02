@@ -133,7 +133,7 @@
 (defn ->tool-fn
   "Strip extra parameters from a tool declaration"
   [tool]
-  (update-in tool [:function] dissoc :transition-to))
+  (update-in tool [:function] dissoc :transition-to :transition-cb :handler))
 
 (defn without-nils
   "Given a map, return a map removing key-value

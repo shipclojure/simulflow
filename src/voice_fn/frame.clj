@@ -201,6 +201,7 @@
   "Frame containing the result of invoking a tool for the LLM."
   {:type :frame.llm/tool-call-result
    :schema [:map
+            [:request schema/LLMAssistantMessage]
             [:result schema/LLMToolMessage]
             [:properties {:optional true}
              [:map {:closed true}

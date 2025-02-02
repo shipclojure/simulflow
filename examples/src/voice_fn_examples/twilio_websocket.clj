@@ -26,11 +26,13 @@
    [voice-fn.utils.core :as u]))
 
 (t/set-min-level! :debug)
+
 (comment
   (portal/open)
   (add-tap #'portal/submit))
 
 (defn emit-xml-str
+  "Emit the string for this xml declaration"
   [xml-data]
   (-> xml-data
       (xml/sexp-as-element)
@@ -97,9 +99,11 @@
                                                    :transcription/encoding :mulaw
                                                    :transcription/sample-rate sample-rate}}
                     :user-context-aggregator  {:proc context/user-aggregator-process
-                                               :args {:llm/context llm-context}}
+                                               :args {:llm/context llm-context
+                                                      :aggregator/debug? true}}
                     :assistant-context-aggregator {:proc context/assistant-context-aggregator
-                                                   :args {:llm/context llm-context}}
+                                                   :args {:llm/context llm-context
+                                                          :debug? true}}
                     :llm {:proc llm/openai-llm-process
                           :args {:openai/api-key (secret [:openai :new-api-sk])
                                  :llm/model "gpt-4o-mini"}}
@@ -191,6 +195,7 @@
                    {:type :object
                     :properties
                     {:size {:type :integer
+                            :description "The number of people that will dine."
                             :minimum 1
                             :maximum 12}}
                     :required [:size]}
@@ -207,7 +212,19 @@
                                                               :pattern "^(17|18|19|20|21|22):([0-5][0-9])$"
                                                               :description "Reservation time in 24-hour format (17:00-22:00)"}}
                                           :required [:time]}
-                             :transition_to "confirm"}}]}}})
+                             :transition-to :confirm}}]}
+
+    :confirm
+    {:task-messages [{:role :system
+                      :content "Confirm the reservation details and end the conversation."}]
+     :functions [{:type :function
+                  :function {:name "end"
+                             :description "End the conversation"
+                             :parameters {:type :object, :properties {}}
+                             :transition-to :end}}]}
+    :end {:task-messages [{:role :system, :content "Thank them and end the conversation."}]
+          :functions []}}})
+;; "post_actions": [{"type": "end_conversation"}],
 
 (defn scenario-example
   "A scenario is a predefined, highly structured conversation. LLM performance
@@ -242,8 +259,6 @@
        {:on-open (fn on-open [socket]
                    (let [{:keys [report-chan error-chan]} (flow/start fl)]
                      ;; start scenario if it was provided
-                     (when s
-                       (sm/start s))
                      (t/log! "Starting monitoring flow")
                      (a/go-loop []
                        (when @call-ongoing?
@@ -256,6 +271,7 @@
                                               (ws/send socket output)
                                               (recur)))))
                    (flow/resume fl)
+                   (when s (sm/start s))
                    nil)
         :on-message (fn on-text [_ws payload]
                       (a/put! in payload))

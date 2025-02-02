@@ -40,21 +40,11 @@
 
 (comment
   (require '[voice-fn.secrets :refer [secret]])
-  (normal-chat-completion {:messages [{:role "system", :content "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}
-                                      {:role "user", :content "Hello? Do you hear me?"}
-                                      {:role :assistant, :content [{:type :text, :text "Yes, I can hear you! How can I assist you today?"}]}
-                                      {:role "user", :content "Please end the call"}]
-                           :tools [{:type :function, :function {:name "get_weather", :description "Get the current weather of a location", :parameters {:type :object, :required [:town], :properties {:town {:type :string, :description "Town for which to retrieve the current weather"}}, :additionalProperties false}, :strict true}}
-                                   {:type "function"
-                                    :function
-                                    {:name "end_call"
-                                     :description "End the current call"
-                                     :parameters {:type "object"
-                                                  :required []
-                                                  :properties {}
-                                                  :additionalProperties false}}}]
-                           :api-key (secret [:openai :new-api-sk])
-                           :model "gpt-4o-mini"})
+  (def context {:messages [{:role "system", :content "You are a helpful assistant "} {:role :system, :content "You are a restaurant reservation assistant for La Maison, an upscale French restaurant. You must ALWAYS use one of the available functions to progress the conversation. This is a phone conversations and your responses will be converted to audio. Avoid outputting special characters and emojis. Be casual and friendly."} {:role :system, :content "Warmly greet the customer and ask how many people are in their party."} {:role "user", :content "It's gonna be 5 people."} {:role :assistant, :tool_calls [{:id "call_CBFGmrwUrrzcmsgvI9kvqdjc", :type :function, :function {:name "record_party_size", :arguments "{\"size\":5}"}}]} {:role :tool, :content [{:type :text, :text "5"}], :tool_call_id "call_CBFGmrwUrrzcmsgvI9kvqdjc"} {:role :system, :content "Ask what time they'd like to dine. Restaurant is open 5 PM to 10 PM. After they provide a time, confirm it's within operating hours before recording. Use 24-hour format for internal recording (e.g., 17:00 for 5 PM)."} {:role "user", :content "At around 4 o'clock in the afternoon."}], :tools [{:type :function, :function {:name "record_time" :description "Record the requested time", :parameters {:type :object, :properties {:time {:type :string, :pattern "^(17|18|19|20|21|22):([0-5][0-9])$", :description "Reservation time in 24-hour format (17:00-22:00)"}}, :required [:time]}, :transition_to :confirm}}]})
+  (a/<!! (a/into [] (stream-openai-chat-completion {:messages (:messages context)
+                                                    :tools (mapv u/->tool-fn (:tools context))
+                                                    :api-key (secret [:openai :new-api-sk])
+                                                    :model "gpt-4o-mini"})))
 
   ,)
 
@@ -152,16 +142,15 @@
 
 (defn flow-do-completion!
   "Handle completion requests for OpenAI LLM models"
-  [state out-c frame]
+  [state out-c context]
   (let [{:llm/keys [model] :openai/keys [api-key]} state]
     ;; Start request only when the last message in the context is by the user
 
     (a/>!! out-c (frame/llm-full-response-start true))
-    (let [context (:frame/data frame)
-          stream-ch (stream-openai-chat-completion (merge {:model model
+    (let [stream-ch (stream-openai-chat-completion (merge {:model model
                                                            :api-key api-key
                                                            :messages (:messages context)
-                                                           :tools (map u/->tool-fn (:tools context))}))]
+                                                           :tools (mapv u/->tool-fn (:tools context))}))]
 
       (a/go-loop []
         (when-let [chunk (a/<! stream-ch)]
@@ -200,11 +189,12 @@
                    llm-write (a/chan 100)
                    llm-read (a/chan 1024)
                    write-to-llm #(loop []
-                                   (if-let [msg (a/<!! llm-write)]
+                                   (if-let [frame (a/<!! llm-write)]
                                      (do
-                                       (assert (or (frame/llm-context? msg)
-                                                   (frame/control-interrupt-start? msg)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
-                                       (flow-do-completion! state llm-read msg)
+                                       (t/log! :info ["AI REQUEST" (:frame/data frame)])
+                                       (assert (or (frame/llm-context? frame)
+                                                   (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
+                                       (flow-do-completion! state llm-read (:frame/data frame))
                                        (recur))
                                      (t/log! {:level :info :id :llm} "Closing llm loop")))]
                ((flow/futurize write-to-llm :exec :io))

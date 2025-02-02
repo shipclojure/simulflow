@@ -471,7 +471,7 @@
   [:and
    [:map
     [:type (flex-enum [:object])]
-    [:required [:vector [:or :string :keyword]]]
+    [:required {:optional true} [:vector [:or :string :keyword]]]
     [:properties [:map-of :keyword LLMFunctionCallParameterProperty]]
     [:additionalProperties {:optional true} :boolean]]
    [:fn {:error/message "Required parameters are not defined"}
@@ -514,6 +514,7 @@
             [:map {:closed true}
              [:function
               [:map
+               [:handler {:optional true} [:=> [:cat :map] :any]]
                [:transition-to :keyword]]]]))
 
 (def RegisteredFunctions [:map-of :string [:map
@@ -529,7 +530,7 @@
 (def ScenarioUpdateContext
   [:map
    [:messages LLMContextMessages]
-   [:tools {:optional true} [:vector LLMFunctionToolDefinitionWithHandling]]
+   [:tools {:optional true} [:vector [:or LLMTransitionToolDefinition LLMFunctionToolDefinitionWithHandling]]]
    [:tool-choice {:optional true :default :auto} ToolChoice]])
 
 (def CoreAsyncChannel
