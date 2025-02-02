@@ -118,29 +118,36 @@
             (:frame/type frame) => :frame.llm/context
             (:frame/data frame) => {:messages [{:content "You are a helpful assistant" :role :assistant}
                                                {:content "Hello there" :role "user"}]}))
-    (fact "updates current context if a context frame is received"
-          (let [new-context {:messages [{:content "You are a helpful assistant" :role :assistant}
-                                        {:content "Hello there" :role "user"}
-                                        {:content "How can I help" :role :assistant}]}]
-            (sut/user-aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context) nil]))
-    (fact "if new context is tool call result, send it forward"
-          (let [new-context {:messages [{:role "system", :content "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}
-                                        {:role "user", :content "What's the weather in New York?"}
-                                        {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}
-                                        {:role :tool, :content [{:type :text, :text "The weather in New York is 17 degrees celsius"}], :tool_call_id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"}]
-                             :tools [{:type :function
-                                      :function {:name "get_weather"
-                                                 :description "Get the current weather of a location"
-                                                 :parameters {:type :object
-                                                              :required [:town]
-                                                              :properties {:town {:type :string
-                                                                                  :description "Town for which to retrieve the current weather"}}
-                                                              :additionalProperties false}
-                                                 :strict true}}]}]
-            (let [[new-context-state {:keys [out]}] (sut/user-aggregator-transform ststate nil (frame/llm-context new-context))
-                  context-frame (first out)]
-              (:llm/context new-context-state) => new-context
-              (:frame/data context-frame) => new-context)))
+    (fact "handles tool result frames"
+          (let [tool-result {:role :tool
+                             :content [{:type :text
+                                        :text "The weather in New York is 17 degrees celsius"}]
+                             :tool_call_id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"}
+                context {:messages [{:role "system", :content "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}
+                                    {:role "user", :content "What's the weather in New York?"}
+                                    {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}]
+                         :tools [{:type :function
+                                  :function {:name "get_weather"
+                                             :description "Get the current weather of a location"
+                                             :handler (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))
+                                             :parameters {:type :object
+                                                          :required [:town]
+                                                          :properties {:town {:type :string
+                                                                              :description "Town for which to retrieve the current weather"}}
+                                                          :additionalProperties false}
+                                             :strict true}}]}
+                s (assoc sstate :llm/context context)
+                new-context (update-in context [:messages] conj tool-result)
+                [new-context-state {:keys [out]}] (sut/user-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result}))
+                context-frame (first out)]
+            (:llm/context new-context-state) => new-context
+            (:frame/data context-frame) => new-context
+            (fact "Doesn't send context further if :send-llm? is false"
+                  (let [[new-context-state out] (sut/user-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
+                                                                                                                  :properties {:run-llm? false}}))]
+                    (:llm/context new-context-state) => new-context
+                    out => nil))))
+
     (fact
       "Handles system-config-change frames"
       (let [nc {:messages [{:role :system

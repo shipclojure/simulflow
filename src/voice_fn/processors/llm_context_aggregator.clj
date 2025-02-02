@@ -77,23 +77,27 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
         frame-data (:frame/data frame)
         id "context-aggregator-user"]
+
     (cond
       (frame/system-config-change? frame)
-      [(if-let [context (:llm/context frame-data)] (assoc state :llm/context context) state)]
+      ,[(if-let [context (:llm/context frame-data)] (assoc state :llm/context context) state)]
+
       ;; user context aggregator is the source of truth for the llm context. The
       ;; assistant aggregator will send tool result frames and the user context
       ;; aggregator will send back the assembled new context
       (frame/llm-tool-call-result? frame)
-      (let [tool-result (:frame/data frame)
-            {:keys [run-llm? on-update] :or {run-llm? true}} (:properties tool-result)
-            _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
-            nc (assoc context :messages (conj (:messages context) (:result tool-result)))]
-        (when (fn? on-update) (on-update))
-        [(assoc state :llm/context nc)
-         ;; Send the context to LLM Inference if :run-llm? is true. :run-llm? is
-         ;; false when the tool call was a scenario transition and we wait for
-         ;; the next scenario-context-update frame before we request a new llm inference
-         (when run-llm? {:out [frame/llm-context nc]})])
+      ,(let [tool-result (:frame/data frame)
+             {:keys [run-llm? on-update] :or {run-llm? true}} (:properties tool-result)
+             _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
+             nc (update-in context [:messages] conj (:result tool-result))]
+         (when (fn? on-update) (on-update))
+         [(assoc state :llm/context nc)
+          ;; Send the context further if :run-llm? is true. :run-llm? is false
+          ;; when the tool call was a scenario transition and we wait for the
+          ;; next scenario-context-update frame before we request a new llm
+          ;; inference
+          (when run-llm? {:out [(frame/llm-context nc)]})])
+
       (frame/scenario-context-update? frame)
       (do
         (when debug?

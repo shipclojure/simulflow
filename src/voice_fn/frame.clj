@@ -4,6 +4,7 @@
   (:require
    [malli.clj-kondo :as mc]
    [malli.core :as m]
+   [malli.error :as me]
    [voice-fn.schema :as schema]))
 
 (defrecord Frame [type data ts])
@@ -56,7 +57,7 @@
          (fn
            [data#]
            (let [frame# (create-frame ~type data#)]
-             (when-let [err# (m/explain ~frame-schema frame#)]
+             (when-let [err# (me/humanize (m/explain ~frame-schema frame#))]
                (throw (ex-info "Invalid frame data"
                                {:error err#
                                 :frame frame#})))
@@ -201,8 +202,8 @@
   {:type :frame.llm/tool-call-result
    :schema [:map
             [:result schema/LLMToolMessage]
-            [:properties
-             [:map
+            [:properties {:optional true}
+             [:map {:closed true}
               [:run-llm? {:optional true
                           :description "Wether to send the new context further (for LLM query)"} :boolean]
               [:on-update {:optional true
