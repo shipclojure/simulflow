@@ -132,6 +132,7 @@ Which roughly translates to:
 ![Flow Diagram](./resources/flow.png)
 
 
+See [examples](./examples/src/voice_fn_examples/) for more usages.
 
 <a id="orga92dd94"></a>
 
@@ -195,7 +196,9 @@ The basic unit of data flow, representing typed messages like:
 -   `:llm/text-chunk` - LLM response chunks
 -   `:system/start`, `:system/stop` - Control signals
 
-See [frame.clj](./core/src/voice_fn/frame.clj) for all possible frames.
+Each frame has a type and optionally a schema for the data contained in it.
+
+See [frame.clj](./src/voice_fn/frame.clj) for all possible frames.
 
 
 <a id="orgbd1d5f8"></a>
@@ -234,6 +237,13 @@ Components that transform frames:
 
 
 <a id="org5082853"></a>
+
+## Acknowledgements
+
+Voice-fn takes heavy inspiration from [pipecat](https://github.com/pipecat-ai/pipecat). Differences:
+- voice-fn uses a graph instead of a bidirectional queue for frame transport
+- voice-fn has a data centric implementation. The processors in voice-fn are
+  pure functions in the `core.async.flow` transform syntax
 
 ## License
 
