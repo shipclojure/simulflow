@@ -3,7 +3,8 @@
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [clojure.data.xml :as xml]
-   [muuntaja.core :as m]
+   [malli.core :as malli]
+   [muuntaja.core :as mtj]
    [portal.api :as portal]
    [reitit.core]
    [reitit.dev.pretty :as pretty]
@@ -84,11 +85,11 @@
   N.B the graph connections: There must be a cycle for aggregators, to have the
   best results: user-context-aggregator -> llm -> assistant-context-aggregator
   -> user-context-aggregator"
-  [{:keys [llm-context procs in out conns]
+  [{:keys [llm-context extra-procs in out extra-conns]
     :or {llm-context {:messages [{:role "system"
                                   :content "You are a helpful assistant "}]}
-         procs {}
-         conns []}}]
+         extra-procs {}
+         extra-conns []}}]
   (let [encoding :ulaw
         sample-rate 8000
         sample-size-bits 8
@@ -137,7 +138,7 @@
                                 :audio.out/duration-ms chunk-duration-ms}}
         :realtime-out {:proc transport/realtime-transport-out-processor
                        :args {:transport/out-chan out}}}
-       procs)
+       extra-procs)
 
      :conns (concat
               [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
@@ -156,7 +157,7 @@
                [[:tts :out] [:audio-splitter :in]]
                [[:transport-in :sys-out] [:realtime-out :sys-in]]
                [[:audio-splitter :out] [:realtime-out :in]]]
-              conns)}))
+              extra-conns)}))
 
 (defn tool-use-example
   "Tools are specified in the :llm/context :tools vector.
@@ -241,8 +242,8 @@
 
 (defn scenario-example
   "A scenario is a predefined, highly structured conversation. LLM performance
-  degrades when it has a big complex prompt to enact. To ensure a consistent
-  output use scenarios that transition the LLM into a new node with a clear
+  degrades when it has a big complex prompt to enact, so to ensure a consistent
+  output use scenarios that transition the LLM into a new scenario node with a clear
   instruction for the current node."
   [in out]
   (let [flow
@@ -254,12 +255,12 @@
                            :tools []}
 
              ;; add gateway process for scenario
-             :procs {:scenario (flow/step-process #'sm/scenario-in-process)}
-             :conns [[[:scenario :speak-out] [:tts :in]]
-                     [[:scenario :context-out] [:user-context-aggregator :in]]]}))
+             :extra-procs {:scenario {:proc (flow/step-process #'sm/scenario-in-process)}}
+             :extra-conns [[[:scenario :speak-out] [:tts :in]]
+                           [[:scenario :context-out] [:user-context-aggregator :in]]]}))
 
         s (sm/scenario-manager {:flow flow
-                                :flow-in-coord [:scenario :in] ;; scenario-manager will inject frames through this channel
+                                :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel
                                 :scenario-config scenario-config})]
 
     {:flow flow
@@ -319,7 +320,7 @@
     (ring/router
       routes
       {:exception pretty/exception
-       :data {:muuntaja m/instance
+       :data {:muuntaja mtj/instance
               :middleware [;; query-params & form-params
                            parameters/parameters-middleware
                            ;; content-negotiation

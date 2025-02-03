@@ -21,8 +21,8 @@
    [:map
     [:type (schema/flex-enum ["end-conversation"])]]
    [:map
-    [:type :keyword
-     :handler [:=> :cat [:any] :any]]]])
+    [:type :keyword]
+    [:handler [:=> :cat [:any] :any]]]])
 
 (def ScenarioConfig
   [:and [:map {:closed true}
@@ -123,6 +123,7 @@
   ([] {:ins {:scenario-in "Channel on which the scenario will put frames."}
        :outs {:speak-out "Channel where speak-frames will be put. Should be connected to text to speech process"
               :context-out "Channel where context frames will be put"}})
+  ([_] nil)
   ([_ _ frame]
    (cond
      (frame/speak-frame? frame) [nil {:speak-out [frame]}]
