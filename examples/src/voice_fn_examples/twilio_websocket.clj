@@ -31,6 +31,15 @@
   (portal/open)
   (add-tap #'portal/submit))
 
+(def wrap-exception
+  (exception/create-exception-middleware
+    (merge
+      exception/default-handlers
+      {;; print stack-traces for all exceptions
+       ::exception/wrap               (fn [handler e request]
+                                        (t/log! :error e)
+                                        (handler e request))})))
+
 (defn emit-xml-str
   "Emit the string for this xml declaration"
   [xml-data]
@@ -217,7 +226,7 @@
 
     :confirm
     {:task-messages [{:role :system
-                      :content "Confirm the reservation details and end the conversation."}]
+                      :content "Confirm the reservation details and end the conversation. Say back to the client the details of the reservation: \"Ok! So a reservation for X people at Y PM. Is this corret?\" "}]
      :functions [{:type :function
                   :function {:name "end"
                              :description "End the conversation"
@@ -226,6 +235,15 @@
     :end {:task-messages [{:role :system, :content "Thank them and end the conversation."}]
           :functions []}}})
 ;; "post_actions": [{"type": "end_conversation"}],
+
+(def in (a/chan 10))
+(def out (a/chan 10))
+(def flow (phone-flow {:in in
+                       :out out}))
+
+(def fl (flow/create-flow flow))
+
+(def s (sm/scenario-manager {:flow fl :flow-in-coord [:user-context-aggregator :in] :scenario-config scenario-config}))
 
 (defn scenario-example
   "A scenario is a predefined, highly structured conversation. LLM performance
@@ -308,7 +326,7 @@
                            ;; encoding response body
                            muuntaja/format-response-middleware
                            ;; exception handling
-                           exception/exception-middleware
+                           wrap-exception
                            ;; decoding request body
                            muuntaja/format-request-middleware
                            ;; coercing response bodys

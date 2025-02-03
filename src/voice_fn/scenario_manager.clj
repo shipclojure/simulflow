@@ -22,8 +22,8 @@
                    [:role-messages {:optional true} [:vector schema/LLMSystemMessage]]
                    [:task-messages [:vector schema/LLMSystemMessage]]
                    [:functions [:vector [:or
-                                         schema/LLMTransitionToolDefinition
-                                         schema/LLMFunctionToolDefinitionWithHandling]]]]]]]
+                                         schema/LLMFunctionToolDefinitionWithHandling
+                                         schema/LLMTransitionToolDefinition]]]]]]]
    [:fn {:error/message "Initial node not defined"}
     (fn [sc]
       (boolean (get-in sc [:nodes (:initial-node sc)])))]

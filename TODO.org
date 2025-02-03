@@ -286,3 +286,7 @@ This means implementing flow diagrams
 
   }}
 #+end_src
+
+* TODO Implement background noise filtering with [[https://docs.pipecat.ai/guides/features/krisp][krisp.ai]]
+
+* TODO Add support for [[https://talon.wiki/][Talon]] STT
