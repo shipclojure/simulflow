@@ -236,15 +236,6 @@
           :functions []}}})
 ;; "post_actions": [{"type": "end_conversation"}],
 
-(def in (a/chan 10))
-(def out (a/chan 10))
-(def flow (phone-flow {:in in
-                       :out out}))
-
-(def fl (flow/create-flow flow))
-
-(def s (sm/scenario-manager {:flow fl :flow-in-coord [:user-context-aggregator :in] :scenario-config scenario-config}))
-
 (defn scenario-example
   "A scenario is a predefined, highly structured conversation. LLM performance
   degrades when it has a big complex prompt to enact. To ensure a consistent
