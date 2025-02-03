@@ -287,6 +287,11 @@ This means implementing flow diagrams
   }}
 #+end_src
 
+** TODO Implement pre-actions & post actions
+:LOGBOOK:
+CLOCK: [2025-02-03 Mon 09:35]--[2025-02-03 Mon 10:00] =>  0:25
+:END:
+
 * TODO Implement background noise filtering with [[https://docs.pipecat.ai/guides/features/krisp][krisp.ai]]
 
 * TODO Add support for [[https://talon.wiki/][Talon]] STT

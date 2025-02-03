@@ -84,10 +84,11 @@
   N.B the graph connections: There must be a cycle for aggregators, to have the
   best results: user-context-aggregator -> llm -> assistant-context-aggregator
   -> user-context-aggregator"
-  [{:keys [llm-context procs in out]
+  [{:keys [llm-context procs in out conns]
     :or {llm-context {:messages [{:role "system"
                                   :content "You are a helpful assistant "}]}
-         procs {}}}]
+         procs {}
+         conns []}}]
   (let [encoding :ulaw
         sample-rate 8000
         sample-size-bits 8
@@ -138,22 +139,24 @@
                        :args {:transport/out-chan out}}}
        procs)
 
-     :conns [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
-             [[:transport-in :out] [:deepgram-transcriptor :in]]
-             [[:deepgram-transcriptor :out] [:user-context-aggregator :in]]
-             [[:user-context-aggregator :out] [:llm :in]]
-             [[:llm :out] [:assistant-context-aggregator :in]]
+     :conns (concat
+              [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
+               [[:transport-in :out] [:deepgram-transcriptor :in]]
+               [[:deepgram-transcriptor :out] [:user-context-aggregator :in]]
+               [[:user-context-aggregator :out] [:llm :in]]
+               [[:llm :out] [:assistant-context-aggregator :in]]
 
-             ;; cycle so that context aggregators are in sync
-             [[:assistant-context-aggregator :out] [:user-context-aggregator :in]]
-             [[:user-context-aggregator :out] [:assistant-context-aggregator :in]]
+               ;; cycle so that context aggregators are in sync
+               [[:assistant-context-aggregator :out] [:user-context-aggregator :in]]
+               [[:user-context-aggregator :out] [:assistant-context-aggregator :in]]
 
-             [[:llm :out] [:llm-sentence-assembler :in]]
-             [[:llm-sentence-assembler :out] [:tts :in]]
+               [[:llm :out] [:llm-sentence-assembler :in]]
+               [[:llm-sentence-assembler :out] [:tts :in]]
 
-             [[:tts :out] [:audio-splitter :in]]
-             [[:transport-in :sys-out] [:realtime-out :sys-in]]
-             [[:audio-splitter :out] [:realtime-out :in]]]}))
+               [[:tts :out] [:audio-splitter :in]]
+               [[:transport-in :sys-out] [:realtime-out :sys-in]]
+               [[:audio-splitter :out] [:realtime-out :in]]]
+              conns)}))
 
 (defn tool-use-example
   "Tools are specified in the :llm/context :tools vector.
@@ -233,8 +236,8 @@
                              :parameters {:type :object, :properties {}}
                              :transition-to :end}}]}
     :end {:task-messages [{:role :system, :content "Thank them and end the conversation."}]
-          :functions []}}})
-;; "post_actions": [{"type": "end_conversation"}],
+          :functions []
+          :post-actions [{:type :end-conversation}]}}})
 
 (defn scenario-example
   "A scenario is a predefined, highly structured conversation. LLM performance
@@ -242,14 +245,21 @@
   output use scenarios that transition the LLM into a new node with a clear
   instruction for the current node."
   [in out]
-  (let [flow (flow/create-flow
-               (phone-flow
-                 {:in in
-                  :out out
-                  :llm/context {:messages []
-                                :tools []}}))
+  (let [flow
+        (flow/create-flow
+          (phone-flow
+            {:in in
+             :out out
+             :llm/context {:messages []
+                           :tools []}
+
+             ;; add gateway process for scenario
+             :procs {:scenario (flow/step-process #'sm/scenario-in-process)}
+             :conns [[[:scenario :speak-out] [:tts :in]]
+                     [[:scenario :context-out] [:user-context-aggregator :in]]]}))
+
         s (sm/scenario-manager {:flow flow
-                                :flow-in-coord [:user-context-aggregator :in]
+                                :flow-in-coord [:scenario :in] ;; scenario-manager will inject frames through this channel
                                 :scenario-config scenario-config})]
 
     {:flow flow
