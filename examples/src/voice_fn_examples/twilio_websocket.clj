@@ -3,7 +3,6 @@
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [clojure.data.xml :as xml]
-   [malli.core :as malli]
    [muuntaja.core :as mtj]
    [portal.api :as portal]
    [reitit.core]
