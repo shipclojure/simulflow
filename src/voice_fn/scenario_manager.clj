@@ -136,9 +136,8 @@
               :context-out "Channel where context frames will be put"}})
   ([_] nil)
   ([_ _ frame]
-   (cond
-     (frame/speak-frame? frame) [nil {:speak-out [frame]}]
-     :else [nil {:context-out [frame]}])))
+   [nil (cond-> {:context-out [frame]}
+          (frame/speak-frame? frame) (assoc :speak-out [frame]))]))
 
 (comment
   (scenario-manager
