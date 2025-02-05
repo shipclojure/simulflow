@@ -163,9 +163,18 @@
 
 (defframe llm-context-messages-append
   "Frame containing messages that should be appended to the current
-  context. Used by scenario manager when transitioning to a new node."
+  context."
   {:type :frame.llm/context-messages-append
-   :schema schema/LLMContextMessages})
+   :schema [:map
+            [:messages schema/LLMContextMessages]
+            [:properties {:optional true}
+             [:map {:closed true}
+              [:run-llm? {:optional true
+                          :description "Whether to send the new context further (for LLM query)"} :boolean]
+              [:tool-call? {:optional true
+                            :description "Is the last message a tool call request?"} :boolean]
+              [:on-update {:optional true
+                           :description "Callback called after tool result is added to context"} [:maybe [:=> [:cat] :any]]]]]]})
 
 (defframe llm-tools-replace
   "Frame containing new tools that should replace existing ones. Used by
@@ -196,6 +205,11 @@
 (defframe llm-tool-call-chunk
   "Chunk of tool call request. Needs to be assembled before use."
   {:type :frame.llm/tool-call-chunk})
+
+(defframe llm-tool-call-request
+  "Frame containing a tool call request"
+  {:type :frame.llm/tool-call-request
+   :schema schema/LLMAssistantMessage})
 
 (defframe llm-tool-call-result
   "Frame containing the result of invoking a tool for the LLM."

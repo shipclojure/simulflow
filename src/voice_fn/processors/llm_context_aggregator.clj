@@ -27,11 +27,6 @@
        (into context
              [{:role role :content content}])))))
 
-(defn valid-aggregation?
-  [a]
-  (and (string? a)
-       (not= "" (str/trim a))))
-
 (defn next-context
   [{:keys [context role aggregation]}]
   (assoc context :messages (concat-context-messages
@@ -133,6 +128,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                      :aggregation (str aggregation new-agg)
                      :seen-interim-results? false)])
            [(assoc state :seen-interim-results? false)]))
+
       (frame/transcription-interim? frame)
       ,(do
          (when debug?
@@ -173,7 +169,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       ,(let [tool-result (:frame/data frame)
              {:keys [run-llm? on-update] :or {run-llm? true}} (:properties tool-result)
              _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
-             nc (update-in context [:messages] conj (:request tool-result) (:result tool-result))]
+             nc (update-in context [:messages] conj (:result tool-result))]
          (when (fn? on-update) (on-update))
          [(assoc state :llm/context nc)
           ;; Send the context further if :run-llm? is true. :run-llm? is false
@@ -182,6 +178,18 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
           ;; inference
           (when run-llm? {:out [(frame/llm-context nc)]})])
 
+      (frame/llm-context-messages-append? frame)
+      ,(let [{new-messages :messages
+              opts :properties} (:frame/data frame)
+             nc (update-in (:llm/context state) [:messages] into new-messages)]
+         [(assoc state :llm/context nc) (cond-> {}
+                                          ;; if it's a tool call, send to the tool-caller to obtain the result
+                                          (:tool-call? opts) (assoc :tool-write [(frame/llm-context nc)])
+                                          ;; send new context further to the LLM
+                                          (:run-llm? opts) (assoc :out [(frame/llm-context nc)]))])
+
+      ;; Scenario update frames come when a scenario manager moves the LLM to a
+      ;; new node. See voice-fn.scenario-manager for details
       (frame/scenario-context-update? frame)
       ,(let [scenario (:frame/data frame)
              _ (when debug?
@@ -193,71 +201,83 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
       :else [state])))
 
-(def context-aggregator-process
-  "Aggregates context messages. Keeps the full conversation history."
-  (flow/process
-    {:describe (fn [] {:ins {:sys-in "Channel for receiving system messages that take priority"
-                             :in "Channel for aggregation messages"}
-                       :outs {:out "Channel where new context aggregations are put"}
-                       :params {:llm/context "Initial LLM context. See schema/LLMContext"
-                                :aggregator/debug? "Optional When true, debug logs will be called"}})
+(defn- get-tool [tool-name tools]
+  (first (filter #(= tool-name (get-in % [:function :name])) tools)))
 
-     :workload :compute
-     :init identity
-     :transform context-aggregator-transform}))
-
-(defn sentence-assembler
-  "Takes in llm-text-chunk frames and returns a full sentence. Useful for
-  generating speech sentence by sentence."
-  ([] {:ins {:in "Channel for llm text chunks"}
-       :outs {:out "Channel for assembled speak frames"}})
-  ([_] {:acc nil})
-  ([{:keys [acc]} _ msg]
-   (when (frame/llm-text-chunk? msg)
-     (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
-       (if sentence
-         (do
-           (t/log! :info ["AI: " sentence])
-           [{:acc accumulator} {:out [(frame/speak-frame sentence)]}])
-         [{:acc accumulator}])))))
-
-(defn next-assistant-context
-  [{:keys [context content-aggregation function-name function-arguments tool-call-id]}]
-  (let [next-msg (if function-name
-                   {:role :assistant
-                    :tool_calls [{:id tool-call-id
-                                  :type :function
-                                  :function {:name function-name
-                                             :arguments function-arguments}}]}
-                   {:role :assistant
+(defn handle-tool-call
+  "Given a llm-context frame with the last message being a tool call request,
+  return the result of that tool call request as a `llm-tool-call-result` frame."
+  [frame]
+  (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
+  (let [context (:frame/data frame)
+        tool-call-msg (-> context :messages last)
+        tool-call (-> tool-call-msg :tool_calls first)
+        tool-id (:id tool-call)
+        fname (get-in tool-call [:function :name])
+        args (u/parse-if-json (get-in tool-call [:function :arguments]))
+        fndef (get-tool fname (:tools context))
+        f (get-in fndef [:function :handler])
+        transition-cb (get-in fndef [:function :transition-cb])]
+    (if (fn? f)
+      (let [tool-result (u/await-or-return f args)]
+        (frame/llm-tool-call-result
+          {:request tool-call-msg
+           :result {:role :tool
                     :content [{:type :text
-                               :text content-aggregation}]})]
-    (assoc context :messages (conj (:messages context) next-msg))))
+                               :text (u/json-str tool-result)}]
+                    :tool_call_id tool-id}
+           ;; don't run llm if this is a transition
+           ;; function, to wait for the new context
+           ;; messages from the new scenario node
+           :properties {:run-llm? (nil? transition-cb)
+                        :on-update transition-cb}}))
+      (frame/llm-tool-call-result
+        {:request tool-call-msg
+         :result {:role :tool
+                  :content [{:type :text
+                             :text "Tool not found"}]
+                  :tool_call_id tool-id}}))))
+
+(defn context-aggregator-init
+  "Launches tool caller process. The tool caller process handles calling tool call
+  requests from the LLM and sends back the results to be aggregated into the
+  context."
+  [args]
+  (let [tool-read (a/chan 100)
+        tool-write (a/chan 100)
+        tool-call-loop
+        #(loop []
+           (when-let [frame (a/<!! tool-write)]
+             (a/>!! tool-read (handle-tool-call frame))
+             (recur)))]
+    ((flow/futurize tool-call-loop :exec :io))
+    (merge args {::flow/in-ports {:tool-read tool-read}
+                 ::flow/out-ports {:tool-write tool-write}})))
+
+(defn next-assistant-message
+  [{:keys [content-aggregation function-name function-arguments tool-call-id]}]
+  (if function-name
+    {:role :assistant
+     :tool_calls [{:id tool-call-id
+                   :type :function
+                   :function {:name function-name
+                              :arguments function-arguments}}]}
+    {:role :assistant
+     :content [{:type :text
+                :text content-aggregation}]}))
 
 (defn assistant-context-assembler-transform
-  "Assembles assistant messages and tool call requests. When a tool call request
-  is encountered, it is sent to the tool caller process. See the :init of the
-  assistant-aggregator-process for details on the tool-caller."
+  "Assembles assistant messages and tool call requests."
   [state _ frame]
-  (let [{:llm/keys [context]
-         :flow/keys [handles-interrupt?]
-         :keys [content-aggregation function-name function-arguments tool-call-id debug?]} state
+  (let [{:keys [content-aggregation function-name function-arguments tool-call-id debug?]} state
         reset-aggregation-state #(assoc %
                                         :content-aggregation nil
                                         :function-name nil
                                         :function-arguments nil
                                         :tool-call-id nil)
 
-        id "context-aggregator-assistant"]
+        id "assistant-context-assembler"]
     (cond
-      (frame/system-config-change? frame)
-      (do
-        (when debug? (t/log! {:level :debug :id id} ["SYSTEM CONFIG CHANGE" (:frame/data frame)]))
-        (let [config (:frame/data frame)]
-          [(cond-> state
-             (:llm/context config) (assoc :llm/context (:llm/context config)))]))
-      (frame/llm-context? frame)
-      [(assoc state :llm/context (:frame/data frame))]
 
       (frame/llm-full-response-start? frame)
       ,(do
@@ -272,15 +292,16 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
       ,(do
          (when debug?
            (t/log! {:level :debug :id id} "END FRAME"))
-         (let [nc (next-assistant-context {:context context
-                                           :content-aggregation content-aggregation
+         (let [nm (next-assistant-message {:content-aggregation content-aggregation
                                            :function-name function-name
                                            :function-arguments function-arguments
                                            :tool-call-id tool-call-id})
                tool-call? (boolean function-name)
-               ncf (frame/llm-context nc)]
-           [(reset-aggregation-state (assoc state :llm/context nc)) (cond-> {:out [ncf]}
-                                                                      tool-call? (assoc :tool-write [ncf]))]))
+               out-frame (frame/llm-context-messages-append {:messages [nm]
+                                                             ;; don't run llm on this new context since it would cause an infinite loop
+                                                             :properties {:run-llm? false
+                                                                          :tool-call? tool-call?}})]
+           [(reset-aggregation-state state) {:out [out-frame]}]))
 
       (frame/llm-text-chunk? frame)
       (let [chunk (:frame/data frame)]
@@ -301,73 +322,41 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                 :function-arguments (str function-arguments arguments)
                 :tool-call-id (or tool-call-id tci))])
 
-      (frame/llm-tool-call-result? frame)
-      (let [tool-result (:frame/data frame)
-            _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))]
-        ;; send tool call results further (should be user context aggregator to
-        ;; assemble the full context)
-        [state {:out [frame]}])
-
-      ;; handle interruptions if the aggregator supports it
-      (and (frame/control-interrupt-start? frame)
-           handles-interrupt?)
-      ,(let [nc (next-context {:context context :aggregation content-aggregation :role "assistant"})
-             v? (valid-aggregation? content-aggregation)
-             next-state (if v? (assoc state :llm/context nc) state)]
-         [(reset-aggregation-state next-state) (when (valid-aggregation? content-aggregation) {:out [(frame/llm-context nc)]})])
-
       :else [state])))
 
-(defn- get-tool [tool-name tools]
-  (first (filter #(= tool-name (get-in % [:function :name])) tools)))
+(defn- llm-sentence-assembler-impl
+  "Takes in llm-text-chunk frames and returns a full sentence. Useful for
+  generating speech sentence by sentence, instead of waiting for the full LLM message."
+  ([] {:ins {:in "Channel for llm text chunks"}
+       :outs {:out "Channel for assembled speak frames"}})
+  ([_] {:acc nil})
+  ([{:keys [acc]} _ msg]
+   (when (frame/llm-text-chunk? msg)
+     (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
+       (if sentence
+         (do
+           (t/log! :info ["AI: " sentence])
+           [{:acc accumulator} {:out [(frame/speak-frame sentence)]}])
+         [{:acc accumulator}])))))
 
-(defn assistant-context-assembler-init
-  [args]
-  (let [tool-read (a/chan 100)
-        tool-write (a/chan 100)
-        tool-call-loop
-        #(loop []
-           (when-let [frame (a/<!! tool-write)]
-             (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
-             (let [context (:frame/data frame)
-                   tool-call-msg (-> context :messages last)
-                   tool-call (-> tool-call-msg :tool_calls first)
-                   tool-id (:id tool-call)
-                   fname (get-in tool-call [:function :name])
-                   args (u/parse-if-json (get-in tool-call [:function :arguments]))
-                   fndef (get-tool fname (:tools context))
-                   f (get-in fndef [:function :handler])
-                   transition-cb (get-in fndef [:function :transition-cb])]
-               (t/log! {:id :tool-caller :level :debug} ["Got tool-call-request" tool-call])
-               (if (fn? f)
-                 (let [tool-result (u/await-or-return f args)
-                       tool-result-frame (frame/llm-tool-call-result
-                                           {:request tool-call-msg
-                                            :result {:role :tool
-                                                     :content [{:type :text
-                                                                :text (u/json-str tool-result)}]
-                                                     :tool_call_id tool-id}
-                                            ;; don't run llm if this is a transition
-                                            ;; function, to wait for the new context
-                                            ;; messages from the new scenario node
-                                            :properties {:run-llm? (nil? transition-cb)
-                                                         :on-update transition-cb}})]
+;; =============================================================================
+;; Processors
 
-                   (a/>!! tool-read tool-result-frame))
-                 (a/>!! tool-read (frame/llm-tool-call-result
-                                    {:request tool-call-msg
-                                     :result {:role :tool
-                                              :content [{:type :text
-                                                         :text "Tool not found"}]
-                                              :tool_call_id tool-id}}))))
-             (recur)))]
-    ((flow/futurize tool-call-loop :exec :io))
-    (merge args {::flow/in-ports {:tool-read tool-read}
-                 ::flow/out-ports {:tool-write tool-write}})))
+(def context-aggregator
+  "Aggregates context messages. Keeps the full conversation history."
+  (flow/process
+    {:describe (fn [] {:ins {:sys-in "Channel for receiving system messages that take priority"
+                             :in "Channel for aggregation messages"}
+                       :outs {:out "Channel where new context aggregations are put"}
+                       :params {:llm/context "Initial LLM context. See schema/LLMContext"
+                                :aggregator/debug? "Optional When true, debug logs will be called"}})
+
+     :workload :compute
+     :init context-aggregator-init
+     :transform context-aggregator-transform}))
 
 (def assistant-context-assembler
-  "Takes streaming tool-call request tokens and returns a new context with the
-  tool call result if a tool registered is available."
+  "Assembles streaming tool-call request or message tokens from the LLM."
   (flow/process
     {:describe
      (fn []
@@ -376,5 +365,10 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         :outs {:out "Channel for output new contexts with tool call results"}
         :params {:llm/context "Initial LLM context. See schema/LLMContext"
                  :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
-     :init assistant-context-assembler-init
+     :init identity
      :transform assistant-context-assembler-transform}))
+
+(def llm-sentence-assembler
+  "Takes in llm-text-chunk frames and returns a full sentence. Useful for
+  generating speech sentence by sentence, instead of waiting for the full LLM message."
+  (flow/step-process #'llm-sentence-assembler-impl))

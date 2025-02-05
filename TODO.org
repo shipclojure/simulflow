@@ -21,11 +21,6 @@ CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
 
 * TODO Add local transport (microphone + speaker out)
 
-* TODO Fix end the call function
-:LOGBOOK:
-CLOCK: [2025-01-29 Wed 18:03]--[2025-01-29 Wed 18:10] =>  0:07
-:END:
-
 * TODO Add TTFT metric
 
 * TODO Add LLM usage metrics based on chunks responses [[https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage][API docs for usage]]
@@ -33,79 +28,25 @@ CLOCK: [2025-01-29 Wed 18:03]--[2025-01-29 Wed 18:10] =>  0:07
 * TODO research [[https://github.com/phronmophobic/clj-media][clojure-media]] for dedicated ffmpeg support for media conversion
 
 * TODO Make a helper to create easier connections between processors
-Help me decide on the best course of action relating to voice-fn.
-
-Currently, as you can see, the connections between processors are manual to support speed.
-:conns [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
-             [[:transport-in :out] [:deepgram-transcriptor :in]]
-             [[:deepgram-transcriptor :out] [:user-context-aggregator :in]]
-             [[:user-context-aggregator :out] [:llm :in]]
-             [[:llm :out] [:assistant-context-aggregator :in]]
-
-             ;; cycle so that context aggregators are in sync
-             [[:assistant-context-aggregator :out] [:user-context-aggregator :in]]
-             [[:user-context-aggregator :out] [:assistant-context-aggregator :in]]
-
-             [[:llm :out] [:llm-sentence-assembler :in]]
-             [[:llm-sentence-assembler :out] [:tts :in]]
-
-             [[:tts :out] [:audio-splitter :in]]
-             [[:transport-in :sys-out] [:realtime-out :sys-in]]
-             [[:audio-splitter :out] [:realtime-out :in]]]
-
-
-However, this isn't user friendly. An alternative would be that all processors just send forward what they receive and if another processor cares about that frame downstream, will use it.
-
-objective 50/50
-BEFORE YOU ANSWER, I want you to write two detailed paragraphs, one arguing for each of these solutions - do not jump to conclusions, seriously consider both approaches.
-
-After you finish, tell me wherer of these solutions is obviously better than the other and why. "
-
-
-
-Let me carefully consider both approaches:
-
-Argument for Explicit Connections:
-The current approach of explicit connections provides clear, predictable data flow paths that are easy to reason about and debug. When connections are explicitly defined, we can immediately understand the topology of our system and track how data moves through it. This approach enforces a strict contract between processors, making it impossible for unintended data flows to occur. It also allows for performance optimizations since we're not broadcasting frames to processors that don't need them. From a system design perspective, explicit connections follow the principle of least surprise and make it easier to maintain backward compatibility when making changes. The topology becomes a part of the system's documentation, clearly showing the relationships between components.
-
-Argument for Implicit Frame Routing:
-A system where processors simply forward frames and downstream components decide what to process would be significantly more flexible and user-friendly. This approach follows the philosophy of data-oriented programming where data flows freely and components react to it based on their interests. It would make it much easier to add new processors without having to modify the connection topology, following the open-closed principle. This design would be more resilient to changes since processors would be truly decoupled from each other. It would also be more intuitive for users who wouldn't need to understand the entire system topology to add a new processor - they would just need to know what frame types they care about.
-
-After careful consideration, I believe the explicit connections approach is actually better, for several critical reasons:
-
-1. Debugging and Observability:
-- With explicit connections, you can trace exactly where frames are going
-- Performance issues can be pinpointed to specific connections
-- System topology can be visualized and understood clearly
-
-2. Performance:
-- No wasted processing of frames by components that don't need them
-- Clear backpressure paths
-- More efficient resource utilization
-
-3. Error Prevention:
-- Prevents accidental frame routing that could cause subtle bugs
-- Makes it impossible to create circular dependencies unintentionally
-- Validates system topology at startup
-
-4. System Understanding:
-- Forces developers to think about and document data flow
-- Makes system boundaries explicit
-- Provides clear documentation through configuration
-
-However, I would suggest a middle ground: Keep the explicit connections but provide higher-level abstractions for common patterns. For example:
-
 #+begin_src clojure
-(def voice-pipeline
-  (pipeline/define
-    {:transcription [:transport-in :deepgram :user-context]
-     :conversation  [:user-context :llm :assistant-context]
-     :synthesis     [:llm :sentence-assembler :tts :audio-splitter :transport-out]}))
+(def phone-flow
+  (voice-fn/create-flow {:language :en
+                         :transport {:mode :telephony
+                                     :in (input-channel)
+                                     :out (output-channel)}
+                         :transcriptor {:proc asr/deepgram-processor
+                                        :args {:transcription/api-key (secret [:deepgram :api-key])
+                                               :transcription/model :nova-2}}
+                         :llm {:proc llm/openai-llm-process
+
+                               :args {:openai/api-key (secret [:openai :new-api-sk])
+                                      :llm/model "gpt-4o-mini"}}
+                         :tts {:proc tts/elevenlabs-tts-process
+                               :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                                      :elevenlabs/model-id "eleven_flash_v2_5"}}}))
 #+end_src
 
-This would give you the benefits of explicit connections while making it more user-friendly. The higher-level abstraction could even generate the detailed connections automatically while maintaining the performance and debugging benefits of explicit connections.
 
-This solution maintains the core benefits of explicit connections while addressing the user-friendliness concern that motivated considering implicit routing.
 
 
 * TODO Add Gladia as a transcription provider

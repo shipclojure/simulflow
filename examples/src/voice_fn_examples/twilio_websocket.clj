@@ -110,17 +110,18 @@
                                        :transcription/language :en
                                        :transcription/encoding :mulaw
                                        :transcription/sample-rate sample-rate}}
-        :user-context-aggregator  {:proc context/user-aggregator-process
-                                   :args {:llm/context llm-context
-                                          :aggregator/debug? true}}
-        :assistant-context-aggregator {:proc context/assistant-context-assembler
-                                       :args {:llm/context llm-context
-                                              :debug? true}}
+        :context-aggregator  {:proc context/context-aggregator
+                              :args {:llm/context llm-context
+                                     :aggregator/debug? true}}
+
         :llm {:proc llm/openai-llm-process
               :args {:openai/api-key (secret [:openai :new-api-sk])
                      :llm/model "gpt-4o-mini"}}
 
-        :llm-sentence-assembler {:proc (flow/step-process #'context/sentence-assembler)}
+        :assistant-context-assembler {:proc context/assistant-context-assembler
+                                      :args {:debug? true}}
+
+        :llm-sentence-assembler {:proc context/llm-sentence-assembler}
         :tts {:proc tts/elevenlabs-tts-process
               :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
                      :elevenlabs/model-id "eleven_flash_v2_5"
@@ -143,14 +144,15 @@
      :conns (concat
               [[[:transport-in :sys-out] [:deepgram-transcriptor :sys-in]]
                [[:transport-in :out] [:deepgram-transcriptor :in]]
-               [[:deepgram-transcriptor :out] [:user-context-aggregator :in]]
-               [[:user-context-aggregator :out] [:llm :in]]
-               [[:llm :out] [:assistant-context-aggregator :in]]
 
-               ;; cycle so that context aggregators are in sync
-               [[:assistant-context-aggregator :out] [:user-context-aggregator :in]]
-               [[:user-context-aggregator :out] [:assistant-context-aggregator :in]]
+               [[:deepgram-transcriptor :out] [:context-aggregator :in]]
+               [[:context-aggregator :out] [:llm :in]]
 
+               ;; Aggregate full context
+               [[:llm :out] [:assistant-context-assembler :in]]
+               [[:assistant-context-assembler :out] [:context-aggregator :in]]
+
+               ;; Assemble sentence by sentence for fast speech
                [[:llm :out] [:llm-sentence-assembler :in]]
                [[:llm-sentence-assembler :out] [:tts :in]]
 

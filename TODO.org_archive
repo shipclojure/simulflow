@@ -198,3 +198,15 @@ If the function :handler returns a channel, the tool-caller will block until a r
 #+end_src
 
 After this, basically we can just emit a =frame/llm-context= and that will update the current context. However the scenario manager needs to
+
+* DONE Fix end the call function
+CLOSED: [2025-02-05 Wed 08:34]
+:PROPERTIES:
+:ARCHIVE_TIME: 2025-02-05 Wed 08:34
+:ARCHIVE_FILE: ~/workspace/voice-fn/TODO.org
+:ARCHIVE_CATEGORY: TODO
+:ARCHIVE_TODO: DONE
+:END:
+:LOGBOOK:
+CLOCK: [2025-01-29 Wed 18:03]--[2025-01-29 Wed 18:10] =>  0:07
+:END:

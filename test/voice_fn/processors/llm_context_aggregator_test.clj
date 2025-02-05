@@ -1,7 +1,6 @@
 (ns voice-fn.processors.llm-context-aggregator-test
   (:require
    [clojure.core.async :as a]
-   [clojure.core.async.flow :as flow]
    [midje.sweet :refer [fact facts]]
    [voice-fn.frame :as frame]
    [voice-fn.mock-data :as mock]
@@ -47,7 +46,7 @@
                                                               {:role :assistant :content "How are you doing?"}]))
 
 (facts
-  "about user speech aggregation"
+  "about context aggregation"
   (let [config {:llm/context {:messages [{:role :assistant :content "You are a helpful assistant"}]}}
         state (partial merge config)
         sstate (state {:aggregating? true
@@ -125,7 +124,8 @@
                              :tool_call_id "call_LCEOwyJ6wsqC5rzJRH0uMnR8"}
                 tool-request {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}
                 context {:messages [{:role "system", :content "You are a voice agent operating via phone. Be concise. The input you receive comes from a speech-to-text (transcription) system that isn't always efficient and may send unclear text. Ask for clarification when you're unsure what the person said."}
-                                    {:role "user", :content "What's the weather in New York?"}]
+                                    {:role "user", :content "What's the weather in New York?"}
+                                    tool-request]
                          :tools [{:type :function
                                   :function {:name "get_weather"
                                              :description "Get the current weather of a location"
@@ -137,7 +137,7 @@
                                                           :additionalProperties false}
                                              :strict true}}]}
                 s (assoc sstate :llm/context context)
-                new-context (update-in context [:messages] conj tool-request tool-result)
+                new-context (update-in context [:messages] conj tool-result)
                 [new-context-state {:keys [out]}] (sut/context-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
                                                                                                                        :request tool-request}))
                 context-frame (first out)]
@@ -197,49 +197,144 @@
                :llm/context cu}
 
         (frame/llm-context? out-frame)
-        (:frame/data out-frame) => cu))))
+        (:frame/data out-frame) => cu))
+    (fact
+      "Handles llm-context-messages-append frames"
+      (let [initial-context {:messages [{:role :system :content "Initial context"}]
+                             :tools [{:type :function
+                                      :function {:name "get_weather"
+                                                 :description "Get the current weather of a location"
+                                                 :handler (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))
+                                                 :parameters {:type :object
+                                                              :required [:town]
+                                                              :properties {:town {:type :string
+                                                                                  :description "Town for which to retrieve the current weather"}}
+                                                              :additionalProperties false}
+                                                 :strict true}}]}
+            state (assoc sstate :llm/context initial-context)
+            new-messages [{:role :user :content "Hello"}
+                          {:role :assistant :content "Hi there"}]
+            tool-request {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}]
+
+        (fact "Updates context and routes based on properties"
+              ;; Case 1: Normal append with run-llm
+              (let [[new-state {:keys [out]}]
+                    (sut/context-aggregator-transform
+                      state nil
+                      (frame/llm-context-messages-append
+                        {:messages new-messages
+                         :properties {:run-llm? true}}))]
+
+                ;; Check state update
+                (get-in new-state [:llm/context :messages]) => [{:role :system :content "Initial context"}
+                                                                {:role :user :content "Hello"}
+                                                                {:role :assistant :content "Hi there"}]
+
+                ;; Check if message was sent to out channel
+                (count out) => 1
+                (frame/llm-context? (first out)) => true
+                (get-in (first out) [:frame/data :messages]) => [{:role :system :content "Initial context"}
+                                                                 {:role :user :content "Hello"}
+                                                                 {:role :assistant :content "Hi there"}])
+
+              ;; Case 2: Append with tool call
+              (let [[new-state {:keys [out tool-write]}]
+                    (sut/context-aggregator-transform
+                      state nil
+                      (frame/llm-context-messages-append
+                        {:messages (conj new-messages tool-request)
+                         :properties {:tool-call? true
+                                      :run-llm? false}}))]
+
+                ;; Check state update
+                (get-in new-state [:llm/context :messages]) => [{:role :system :content "Initial context"}
+                                                                {:role :user :content "Hello"}
+                                                                {:role :assistant :content "Hi there"}
+                                                                tool-request]
+
+                ;; Check if message was sent to tool-write channel
+                (count tool-write) => 1
+                (frame/llm-context? (first tool-write)) => true
+                (get-in (first tool-write) [:frame/data :messages]) => [{:role :system :content "Initial context"}
+                                                                        {:role :user :content "Hello"}
+                                                                        {:role :assistant :content "Hi there"}
+                                                                        tool-request]
+
+                ;; Verify no message sent to out channel when only tool-call? is true
+                out => nil)
+
+              ;; Case 3: Append with both tool call and run-llm
+              (let [[new-state {:keys [out tool-write]}]
+                    (sut/context-aggregator-transform
+                      state nil
+                      (frame/llm-context-messages-append
+                        {:messages (conj new-messages tool-request)
+                         :properties {:tool-call? true
+                                      :run-llm? true}}))]
+
+                ;; Check state update
+                (get-in new-state [:llm/context :messages]) => [{:role :system :content "Initial context"}
+                                                                {:role :user :content "Hello"}
+                                                                {:role :assistant :content "Hi there"}
+                                                                tool-request]
+
+                ;; Check if message was sent to both channels
+                (count tool-write) => 1
+                (count out) => 1
+
+                ;; Verify tool-write message
+                (frame/llm-context? (first tool-write)) => true
+                (get-in (first tool-write) [:frame/data :messages]) => [{:role :system :content "Initial context"}
+                                                                        {:role :user :content "Hello"}
+                                                                        {:role :assistant :content "Hi there"}
+                                                                        tool-request]
+
+                ;; Verify out message
+                (frame/llm-context? (first out)) => true
+                (get-in (first out) [:frame/data :messages]) => [{:role :system :content "Initial context"}
+                                                                 {:role :user :content "Hello"}
+                                                                 {:role :assistant :content "Hi there"}
+                                                                 tool-request]))))))
+
+(comment
+
+  (let [new-messages [{:role :user :content "Hello"}
+                      {:role :assistant :content "Hi there"}]
+        tool-request {:role :assistant, :tool_calls [{:id "call_LCEOwyJ6wsqC5rzJRH0uMnR8", :type :function, :function {:name "get_weather", :arguments "{\"town\":\"New York\"}"}}]}]
+
+    (frame/llm-context-messages-append
+      {:messages (conj new-messages tool-request)
+       :properties {:tool-call? true
+                    :run-llm? true}}))
+
+  ,)
 
 (def chunk->frame (comp frame/llm-tool-call-chunk first :tool_calls :delta first :choices))
 
 (facts
   "about assistant response aggregation"
-  (let [config {:llm/context {:messages [{:role "assistant" :content "You are a helpful assistant"}
-                                         {:role "user" :content "Hello there"}]}}
-        state (partial merge config)
-        ;; State after start frame
-        sstate (state {:function-arguments nil
-                       :function-name nil
-                       :tool-call-id nil
-                       :content-aggregation nil})
+  (let [;; Start state
+        sstate {:function-arguments nil
+                :function-name nil
+                :tool-call-id nil
+                :content-aggregation nil}
         ;; State after text accumulation
-        ststate (state {:content-aggregation "Hi! How can I help you?"
-                        :function-arguments nil
-                        :function-name nil
-                        :tool-call-id nil})
-        ;; State after complete sequence (final state)
-        stestate (state {:content-aggregation nil
-                         :function-arguments nil
-                         :function-name nil
-                         :tool-call-id nil
-                         :llm/context {:messages [{:role "assistant" :content "You are a helpful assistant"}
-                                                  {:role "user" :content "Hello there"}
-                                                  {:role :assistant
-                                                   :content [{:text  "Hi! How can I help you?" :type :text}]}]}})]
+        ststate (merge sstate {:content-aggregation "Hi! How can I help you?"})]
 
     (fact "S T E -> X"
-          (sut/assistant-context-assembler-transform config nil
-            (frame/llm-full-response-start true)) => [sstate]
           (sut/assistant-context-assembler-transform sstate nil
-            (frame/llm-text-chunk "Hi! How can I help you?")) => [ststate]
+                                                     (frame/llm-full-response-start true)) => [sstate]
+          (sut/assistant-context-assembler-transform sstate nil
+                                                     (frame/llm-text-chunk "Hi! How can I help you?")) => [ststate]
           (let [[next-state {:keys [out]}] (sut/assistant-context-assembler-transform ststate nil
-                                             (frame/llm-full-response-end true))
+                                                                                      (frame/llm-full-response-end true))
                 frame (first out)]
-            next-state => stestate
-            (:frame/type frame) => :frame.llm/context
-            (:frame/data frame) => {:messages [{:role "assistant" :content "You are a helpful assistant"}
-                                               {:role "user" :content "Hello there"}
-                                               {:role :assistant
-                                                :content [{:text  "Hi! How can I help you?" :type :text}]}]}))
+            next-state => sstate
+            (:frame/type frame) => :frame.llm/context-messages-append
+            (:frame/data frame) => {:messages [{:role :assistant
+                                                :content [{:text  "Hi! How can I help you?" :type :text}]}]
+                                    :properties {:run-llm? false
+                                                 :tool-call? false}}))
 
     (fact "S T T T T T E -> X (streaming tokens pattern)"
           (let [token-chunks ["Hi" "!" " How" " can" " I" " help" " you" "?"]
@@ -256,40 +351,21 @@
                                     (map frame/llm-text-chunk token-chunks))
 
                 ;; Final state after end frame
-                [next-state {:keys [out]}] (sut/assistant-context-assembler-transform
-                                             final-state
-                                             nil
-                                             (frame/llm-full-response-end true))
+                [_ {:keys [out]}] (sut/assistant-context-assembler-transform
+                                    final-state
+                                    nil
+                                    (frame/llm-full-response-end true))
                 frame (first out)]
 
             ;; Verify intermediate state has accumulated all tokens
             (get final-state :content-aggregation) => expected-response
 
-            ;; Verify final state and output
-            next-state => (state {:content-aggregation nil
-                                  :function-arguments nil
-                                  :function-name nil
-                                  :tool-call-id nil
-                                  :llm/context {:messages [{:role "assistant"
-                                                            :content "You are a helpful assistant"}
-                                                           {:role "user"
-                                                            :content "Hello there"}
-                                                           {:role :assistant
-                                                            :content [{:text expected-response :type :text}]}]}})
+            (:frame/type frame) => :frame.llm/context-messages-append
+            (:frame/data frame) => {:messages [{:role :assistant
+                                                :content [{:text expected-response :type :text}]}]
+                                    :properties {:run-llm? false
+                                                 :tool-call? false}}))
 
-            (:frame/type frame) => :frame.llm/context
-            (:frame/data frame) => {:messages [{:role "assistant"
-                                                :content "You are a helpful assistant"}
-                                               {:role "user"
-                                                :content "Hello there"}
-                                               {:role :assistant
-                                                :content [{:text expected-response :type :text}]}]}))
-
-    (fact "updates current context if a frame is received"
-          (let [new-context {:messages [{:content "You are a helpful assistant" :role :assistant}
-                                        {:content "Hello there" :role "user"}
-                                        {:content "How can I help" :role :assistant}]}]
-            (sut/assistant-context-assembler-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))
     (fact
       "Handles tool call streams"
       (let [final-state (reduce (fn [current-state frame]
@@ -301,34 +377,20 @@
                                 sstate
                                 (map chunk->frame mock/mock-tool-call-response))
             ;; Final state after end frame
-            [next-state {:keys [out tool-write]}] (sut/assistant-context-assembler-transform
-                                                    final-state
-                                                    nil
-                                                    (frame/llm-full-response-end true))
-            out-frame (first out)
-            tool-write-frame (first tool-write)]
-        next-state => {:content-aggregation nil
-                       :function-arguments nil
-                       :function-name nil
-                       :tool-call-id nil
-                       :llm/context {:messages [{:content "You are a helpful assistant"
-                                                 :role "assistant"}
-                                                {:content "Hello there" :role "user"}
-                                                {:role :assistant
-                                                 :tool_calls [{:function {:arguments "{\"ticker\":\"MSFT\",\"fields\":[\"price\",\"volume\"],\"date\":\"2023-10-10\"}"
-                                                                          :name "retrieve_latest_stock_data"}
-                                                               :id "call_frPVnoe8ruDicw50T8sLHki7"
-                                                               :type :function}]}]}}
-        (= out-frame tool-write-frame) => true
-
-        (:frame/type out-frame) => :frame.llm/context
-        (:frame/data out-frame) => {:messages [{:content "You are a helpful assistant" :role "assistant"}
-                                               {:content "Hello there" :role "user"}
-                                               {:role :assistant
+            [next-state {:keys [out]}] (sut/assistant-context-assembler-transform
+                                         final-state
+                                         nil
+                                         (frame/llm-full-response-end true))
+            out-frame (first out)]
+        next-state => sstate
+        (:frame/type out-frame) => :frame.llm/context-messages-append
+        (:frame/data out-frame) => {:messages [{:role :assistant
                                                 :tool_calls [{:function {:arguments "{\"ticker\":\"MSFT\",\"fields\":[\"price\",\"volume\"],\"date\":\"2023-10-10\"}"
                                                                          :name "retrieve_latest_stock_data"}
                                                               :id "call_frPVnoe8ruDicw50T8sLHki7"
-                                                              :type :function}]}]}))
+                                                              :type :function}]}]
+                                    :properties {:run-llm? false
+                                                 :tool-call? true}}))
     (fact "Handles tool calls with no arguments"
           (let [final-state (reduce (fn [current-state frame]
                                       (let [[next-state] (sut/assistant-context-assembler-transform
@@ -339,45 +401,23 @@
                               sstate
                               (map chunk->frame mock/mock-tool-call-response-single-argument))
                 ;; Final state after end frame
-                [next-state {:keys [out tool-write]}] (sut/assistant-context-assembler-transform
-                                                        final-state
-                                                        nil
-                                                        (frame/llm-full-response-end true))
-                out-frame (first out)
-                tool-write-frame (first tool-write)]
-            next-state => {:content-aggregation nil
-                           :function-arguments nil
-                           :function-name nil
-                           :tool-call-id nil
-                           :llm/context {:messages [{:content "You are a helpful assistant"
-                                                     :role "assistant"}
-                                                    {:content "Hello there" :role "user"}
-                                                    {:role :assistant
-                                                     :tool_calls [{:function {:arguments "{}"
-                                                                              :name "end_call"}
-                                                                   :id "call_J9MSffmnxdPj8r28tNzCO8qj"
-                                                                   :type :function}]}]}}
-            (= out-frame tool-write-frame) => true
-
-            (:frame/type out-frame) => :frame.llm/context
-            (:frame/data out-frame) => {:messages [{:content "You are a helpful assistant" :role "assistant"}
-                                                   {:content "Hello there" :role "user"}
-                                                   {:role :assistant
+                [next-state {:keys [out]}] (sut/assistant-context-assembler-transform
+                                             final-state
+                                             nil
+                                             (frame/llm-full-response-end true))
+                out-frame (first out)]
+            next-state => sstate
+            (:frame/type out-frame) => :frame.llm/context-messages-append
+            (:frame/data out-frame) => {:messages [{:role :assistant
                                                     :tool_calls [{:function {:arguments "{}"
                                                                              :name "end_call"}
                                                                   :id "call_J9MSffmnxdPj8r28tNzCO8qj"
-                                                                  :type :function}]}]}))
-    (fact
-      "Handles system-config-change frames"
-      (let [nc {:messages [{:role :system
-                            :content "Your context was just updated"}]}]
-        (sut/assistant-context-assembler-transform
-          sstate :sys-in
-          (frame/system-config-change
-            {:llm/context nc})) => [(assoc sstate :llm/context nc)]))))
+                                                                  :type :function}]}]
+                                        :properties {:run-llm? false
+                                                     :tool-call? true}}))))
 
 (facts
-  "About the tool calling loop"
+  "About the tool caller"
   (let [call-id "test-call-id"
         tools [{:type :function
                 :function
@@ -418,16 +458,12 @@
                                        :id "call_J9MSffmnxdPj8r28tNzCO8qj"
                                        :type :function}]}]
 
-        {::flow/keys [in-ports out-ports]} (sut/assistant-context-assembler-init {})
-        tool-read (:tool-read in-ports)
-        tool-write (:tool-write out-ports)
         async-context (frame/llm-context {:messages async-messages :tools tools})
         sync-context (frame/llm-context {:messages sync-messages :tools tools})]
 
     (fact
       "Handles sync calls correctly"
-      (a/>!! tool-write sync-context)
-      (let [res (a/<!! tool-read)]
+      (let [res (sut/handle-tool-call sync-context)]
         (frame/llm-tool-call-result? res) => true
         (:frame/data res) => {:result {:content [{:text "The weather in New York is 17 degrees celsius" :type :text}]
                                        :role :tool
@@ -441,8 +477,7 @@
                                            :on-update nil}}))
     (fact
       "Handles async calls correctly"
-      (a/>!! tool-write async-context)
-      (let [res (a/<!! tool-read)]
+      (let [res (sut/handle-tool-call async-context)]
         (frame/llm-tool-call-result? res) => true
         (:frame/data res) => {:properties {:on-update nil :run-llm? true}
                               :request {:role :assistant
@@ -451,6 +486,4 @@
                                                       :type :function}]}
                               :result {:content [{:text "Call with id test-call-id has ended" :type :text}]
                                        :role :tool
-                                       :tool_call_id "call_J9MSffmnxdPj8r28tNzCO8qj"}}))
-    (a/close! tool-read)
-    (a/close! tool-write)))
+                                       :tool_call_id "call_J9MSffmnxdPj8r28tNzCO8qj"}}))))
