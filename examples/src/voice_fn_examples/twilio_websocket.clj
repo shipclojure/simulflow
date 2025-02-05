@@ -113,14 +113,14 @@
                                        :transcription/sample-rate sample-rate}}
         :context-aggregator  {:proc context/context-aggregator
                               :args {:llm/context llm-context
-                                     :aggregator/debug? true}}
+                                     :aggregator/debug? false}}
 
         :llm {:proc llm/openai-llm-process
               :args {:openai/api-key (secret [:openai :new-api-sk])
                      :llm/model "gpt-4o-mini"}}
 
         :assistant-context-assembler {:proc context/assistant-context-assembler
-                                      :args {:debug? true}}
+                                      :args {:debug? false}}
 
         :llm-sentence-assembler {:proc context/llm-sentence-assembler}
         :tts {:proc tts/elevenlabs-tts-process
@@ -305,7 +305,7 @@
                     (a/close! in)
                     (a/close! out)
                     (reset! call-ongoing? false))
-        :on-error (fn on-error [ws error]
+        :on-error (fn on-error [_ error]
                     (prn error)
                     (t/log! :debug error))
         :on-ping (fn on-ping [ws payload]
