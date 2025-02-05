@@ -195,7 +195,11 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
              _ (when debug?
                  (t/log! {:level :debug :id id} ["SCENARIO UPDATE" scenario]))
              nc (handle-scenario-update (:llm/context state) scenario)]
-         [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}])
+         [(assoc state :llm/context nc) (when (:run-llm? (:properties scenario))
+                                          {:out [(frame/llm-context nc)]})])
+
+      (frame/speak-frame? frame)
+      [(update-in state [:llm/context :messages] conj {:role :assistant :content (:frame/data frame)})]
 
       (user-speech-frame? frame) (user-speech-aggregator-transform state _ frame)
 

@@ -85,10 +85,11 @@
   N.B the graph connections: There must be a cycle for aggregators, to have the
   best results: user-context-aggregator -> llm -> assistant-context-aggregator
   -> user-context-aggregator"
-  [{:keys [llm-context extra-procs in out extra-conns]
+  [{:keys [llm-context extra-procs in out extra-conns language]
     :or {llm-context {:messages [{:role "system"
                                   :content "You are a helpful assistant "}]}
          extra-procs {}
+         language :en
          extra-conns []}}]
   (let [encoding :ulaw
         sample-rate 8000
@@ -107,7 +108,7 @@
                                        :transcription/smart-format? true
                                        :transcription/model :nova-2
                                        :transcription/utterance-end-ms 1000
-                                       :transcription/language :en
+                                       :transcription/language language
                                        :transcription/encoding :mulaw
                                        :transcription/sample-rate sample-rate}}
         :context-aggregator  {:proc context/context-aggregator
@@ -129,7 +130,7 @@
                      :voice/stability 0.5
                      :voice/similarity-boost 0.8
                      :voice/use-speaker-boost? true
-                     :flow/language :en
+                     :flow/language language
                      :audio.out/encoding encoding
                      :audio.out/sample-rate sample-rate}}
         :audio-splitter {:proc transport/audio-splitter
@@ -259,7 +260,7 @@
              ;; add gateway process for scenario
              :extra-procs {:scenario {:proc (flow/step-process #'sm/scenario-in-process)}}
              :extra-conns [[[:scenario :speak-out] [:tts :in]]
-                           [[:scenario :context-out] [:user-context-aggregator :in]]]}))
+                           [[:scenario :context-out] [:context-aggregator :in]]]}))
 
         s (sm/scenario-manager {:flow flow
                                 :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel

@@ -186,7 +186,7 @@
                                    :maximum 12}}
                            :required [:size]}
                           :transition-to :get-time}}]}
-            scu (frame/scenario-context-update cu)
+            scu (frame/scenario-context-update (assoc cu :properties {:run-llm? true}))
             [ns {:keys [out]}] (sut/context-aggregator-transform start :in scu)
             out-frame (first out)]
         ns => {:aggregating? true
@@ -294,7 +294,17 @@
                 (get-in (first out) [:frame/data :messages]) => [{:role :system :content "Initial context"}
                                                                  {:role :user :content "Hello"}
                                                                  {:role :assistant :content "Hi there"}
-                                                                 tool-request]))))))
+                                                                 tool-request]))))
+    (fact
+      "Handles speak frames by adding them to assistant context"
+      (let [initial-context {:messages [{:role :system :content "Initial context"}]
+                             :tools []}
+            state (assoc sstate :llm/context initial-context)
+            [next-state out] (sut/context-aggregator-transform state nil (frame/speak-frame "Hello! How can I help you"))]
+        (:llm/context next-state) => {:messages [{:content "Initial context" :role :system}
+                                                 {:content "Hello! How can I help you" :role :assistant}]
+                                      :tools []}
+        out => nil))))
 
 (comment
 

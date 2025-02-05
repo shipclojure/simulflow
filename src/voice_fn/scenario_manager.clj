@@ -30,13 +30,16 @@
          [:nodes [:map-of
                   :keyword
                   [:map {:closed true}
+                   [:run-llm? {:optional true} :boolean]
                    [:role-messages {:optional true} [:vector schema/LLMSystemMessage]]
                    [:task-messages [:vector schema/LLMSystemMessage]]
                    [:functions [:vector [:or
                                          schema/LLMFunctionToolDefinitionWithHandling
                                          schema/LLMTransitionToolDefinition]]]
-                   [:pre-actions {:optional true} [:vector ScenarioAction]]
-                   [:post-actions {:optional true} [:vector ScenarioAction]]]]]]
+                   [:pre-actions {:optional true
+                                  :description "Actions to be invoked when the node is selected."} [:vector ScenarioAction]]
+                   [:post-actions {:optional true
+                                   :description "Actions to be invoked when the node will be replaced."} [:vector ScenarioAction]]]]]]
    [:fn {:error/message "Initial node not defined"}
     (fn [sc]
       (boolean (get-in sc [:nodes (:initial-node sc)])))]
@@ -104,13 +107,20 @@
         (t/log! :info ["SCENARIO" "NEW NODE" node-id])
         (let [node (get nodes node-id)
               tools (mapv (partial transition-fn this) (:functions node))
-              append-context (vec (concat (:role-messages node) (:task-messages node)))]
+              append-context (vec (concat (:role-messages node) (:task-messages node)))
+              prev-node-post-actions (get-in nodes [@current-node] :post-actions)]
+          (when prev-node-post-actions
+            (doseq [a (:post-actions node)] (handle-action a)))
           (reset! current-node node-id)
-          (flow/futurize #(do
-                            (doseq [a (:pre-actions node)] (handle-action a))
-                            (flow/inject flow flow-in-coord [(frame/scenario-context-update {:messages append-context
-                                                                                             :tools tools})])
-                            (doseq [a (:post-actions node)] (handle-action a))))))
+          (try
+            (t/log! "Sending new scenario")
+            (doseq [a (:pre-actions node)] (handle-action a))
+            (flow/inject flow flow-in-coord [(frame/scenario-context-update {:messages append-context
+                                                                             :tools tools
+                                                                             :properties {:run-llm? (if (boolean? (:run-llm? node)) (:run-llm? node) true)}})])
+
+            (catch Exception e
+              (t/log! :error e)))))
       (start [s]
         (when-not @initialized?
           (reset! initialized? true)
