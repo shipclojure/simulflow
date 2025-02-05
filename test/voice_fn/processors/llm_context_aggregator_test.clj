@@ -81,10 +81,10 @@
                          :seen-start-frame? false})]
 
     (fact "S T E -> X"
-          (sut/user-aggregator-transform config nil
+          (sut/context-aggregator-transform config nil
             (frame/user-speech-start true)) => [sstate]
-          (sut/user-aggregator-transform sstate nil (frame/transcription "Hello there")) => [ststate]
-          (let [[next-state {:keys [out]}] (sut/user-aggregator-transform ststate nil (frame/user-speech-stop true))
+          (sut/context-aggregator-transform sstate nil (frame/transcription "Hello there")) => [ststate]
+          (let [[next-state {:keys [out]}] (sut/context-aggregator-transform ststate nil (frame/user-speech-stop true))
                 frame (first out)]
             next-state => stestate
             (:frame/type frame) => :frame.llm/context
@@ -97,22 +97,22 @@
                                 :seen-end-frame? true
                                 :seen-interim-results? false
                                 :seen-start-frame? false})]
-            (sut/user-aggregator-transform sstate nil (frame/user-speech-stop true)) =>  [sestate]
+            (sut/context-aggregator-transform sstate nil (frame/user-speech-stop true)) =>  [sestate]
 
-            (let [[next-state {:keys [out]}] (sut/user-aggregator-transform sestate nil (frame/transcription "Hello there"))
+            (let [[next-state {:keys [out]}] (sut/context-aggregator-transform sestate nil (frame/transcription "Hello there"))
                   frame (first out)]
               next-state => (state stestate)
               (:frame/type frame) => :frame.llm/context
               (:frame/data frame) => {:messages [{:content "You are a helpful assistant" :role :assistant}
                                                  {:content "Hello there" :role "user"}]})))
     (fact "S I T E -> X"
-          (sut/user-aggregator-transform sstate nil (frame/transcription-interim "Hello there")) => [sistate]
-          (sut/user-aggregator-transform sistate nil (frame/transcription "Hello there"))  => [ststate])
+          (sut/context-aggregator-transform sstate nil (frame/transcription-interim "Hello there")) => [sistate]
+          (sut/context-aggregator-transform sistate nil (frame/transcription "Hello there"))  => [ststate])
 
     (fact "S I E I T -> X"
-          (sut/user-aggregator-transform sistate nil (frame/user-speech-stop true)) => [siestate]
-          (sut/user-aggregator-transform siestate nil (frame/transcription-interim "Hello, there")) => [siestate]
-          (let [[next-state {:keys [out]}] (sut/user-aggregator-transform siestate nil (frame/transcription "Hello there"))
+          (sut/context-aggregator-transform sistate nil (frame/user-speech-stop true)) => [siestate]
+          (sut/context-aggregator-transform siestate nil (frame/transcription-interim "Hello, there")) => [siestate]
+          (let [[next-state {:keys [out]}] (sut/context-aggregator-transform siestate nil (frame/transcription "Hello there"))
                 frame (first out)]
             next-state => (state stestate)
             (:frame/type frame) => :frame.llm/context
@@ -138,15 +138,15 @@
                                              :strict true}}]}
                 s (assoc sstate :llm/context context)
                 new-context (update-in context [:messages] conj tool-request tool-result)
-                [new-context-state {:keys [out]}] (sut/user-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
-                                                                                                                    :request tool-request}))
+                [new-context-state {:keys [out]}] (sut/context-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
+                                                                                                                       :request tool-request}))
                 context-frame (first out)]
             (:llm/context new-context-state) => new-context
             (:frame/data context-frame) => new-context
             (fact "Doesn't send context further if :send-llm? is false"
-                  (let [[new-context-state out] (sut/user-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
-                                                                                                                  :request tool-request
-                                                                                                                  :properties {:run-llm? false}}))]
+                  (let [[new-context-state out] (sut/context-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
+                                                                                                                     :request tool-request
+                                                                                                                     :properties {:run-llm? false}}))]
                     (:llm/context new-context-state) => new-context
                     out => nil))))
 
@@ -154,7 +154,7 @@
       "Handles system-config-change frames"
       (let [nc {:messages [{:role :system
                             :content "Your context was just updated"}]}]
-        (sut/user-aggregator-transform
+        (sut/context-aggregator-transform
           sstate :sys-in
           (frame/system-config-change
             {:llm/context nc})) => [(assoc sstate :llm/context nc)]))
@@ -187,7 +187,7 @@
                            :required [:size]}
                           :transition-to :get-time}}]}
             scu (frame/scenario-context-update cu)
-            [ns {:keys [out]}] (sut/user-aggregator-transform start :in scu)
+            [ns {:keys [out]}] (sut/context-aggregator-transform start :in scu)
             out-frame (first out)]
         ns => {:aggregating? true
                :aggregation ""
@@ -227,12 +227,12 @@
                                                    :content [{:text  "Hi! How can I help you?" :type :text}]}]}})]
 
     (fact "S T E -> X"
-          (sut/assistant-aggregator-transform config nil
-                                              (frame/llm-full-response-start true)) => [sstate]
-          (sut/assistant-aggregator-transform sstate nil
-                                              (frame/llm-text-chunk "Hi! How can I help you?")) => [ststate]
-          (let [[next-state {:keys [out]}] (sut/assistant-aggregator-transform ststate nil
-                                                                               (frame/llm-full-response-end true))
+          (sut/assistant-context-assembler-transform config nil
+            (frame/llm-full-response-start true)) => [sstate]
+          (sut/assistant-context-assembler-transform sstate nil
+            (frame/llm-text-chunk "Hi! How can I help you?")) => [ststate]
+          (let [[next-state {:keys [out]}] (sut/assistant-context-assembler-transform ststate nil
+                                             (frame/llm-full-response-end true))
                 frame (first out)]
             next-state => stestate
             (:frame/type frame) => :frame.llm/context
@@ -247,7 +247,7 @@
 
                 ;; Accumulate all token chunks
                 final-state (reduce (fn [current-state frame]
-                                      (let [[next-state] (sut/assistant-aggregator-transform
+                                      (let [[next-state] (sut/assistant-context-assembler-transform
                                                            current-state
                                                            nil
                                                            frame)]
@@ -256,7 +256,7 @@
                                     (map frame/llm-text-chunk token-chunks))
 
                 ;; Final state after end frame
-                [next-state {:keys [out]}] (sut/assistant-aggregator-transform
+                [next-state {:keys [out]}] (sut/assistant-context-assembler-transform
                                              final-state
                                              nil
                                              (frame/llm-full-response-end true))
@@ -289,11 +289,11 @@
           (let [new-context {:messages [{:content "You are a helpful assistant" :role :assistant}
                                         {:content "Hello there" :role "user"}
                                         {:content "How can I help" :role :assistant}]}]
-            (sut/assistant-aggregator-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))
+            (sut/assistant-context-assembler-transform ststate nil (frame/llm-context new-context)) => [(assoc ststate :llm/context new-context)]))
     (fact
       "Handles tool call streams"
       (let [final-state (reduce (fn [current-state frame]
-                                  (let [[next-state] (sut/assistant-aggregator-transform
+                                  (let [[next-state] (sut/assistant-context-assembler-transform
                                                        current-state
                                                        nil
                                                        frame)]
@@ -301,7 +301,7 @@
                                 sstate
                                 (map chunk->frame mock/mock-tool-call-response))
             ;; Final state after end frame
-            [next-state {:keys [out tool-write]}] (sut/assistant-aggregator-transform
+            [next-state {:keys [out tool-write]}] (sut/assistant-context-assembler-transform
                                                     final-state
                                                     nil
                                                     (frame/llm-full-response-end true))
@@ -331,7 +331,7 @@
                                                               :type :function}]}]}))
     (fact "Handles tool calls with no arguments"
           (let [final-state (reduce (fn [current-state frame]
-                                      (let [[next-state] (sut/assistant-aggregator-transform
+                                      (let [[next-state] (sut/assistant-context-assembler-transform
                                                            current-state
                                                            nil
                                                            frame)]
@@ -339,7 +339,7 @@
                               sstate
                               (map chunk->frame mock/mock-tool-call-response-single-argument))
                 ;; Final state after end frame
-                [next-state {:keys [out tool-write]}] (sut/assistant-aggregator-transform
+                [next-state {:keys [out tool-write]}] (sut/assistant-context-assembler-transform
                                                         final-state
                                                         nil
                                                         (frame/llm-full-response-end true))
@@ -371,7 +371,7 @@
       "Handles system-config-change frames"
       (let [nc {:messages [{:role :system
                             :content "Your context was just updated"}]}]
-        (sut/assistant-aggregator-transform
+        (sut/assistant-context-assembler-transform
           sstate :sys-in
           (frame/system-config-change
             {:llm/context nc})) => [(assoc sstate :llm/context nc)]))))
@@ -418,7 +418,7 @@
                                        :id "call_J9MSffmnxdPj8r28tNzCO8qj"
                                        :type :function}]}]
 
-        {::flow/keys [in-ports out-ports]} (sut/assistant-aggregator-init {})
+        {::flow/keys [in-ports out-ports]} (sut/assistant-context-assembler-init {})
         tool-read (:tool-read in-ports)
         tool-write (:tool-write out-ports)
         async-context (frame/llm-context {:messages async-messages :tools tools})

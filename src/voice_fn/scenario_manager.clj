@@ -106,10 +106,11 @@
               tools (mapv (partial transition-fn this) (:functions node))
               append-context (vec (concat (:role-messages node) (:task-messages node)))]
           (reset! current-node node-id)
-          (flow/futurize #(doseq [a (:pre-actions node)] (handle-action a)))
-          (flow/inject flow flow-in-coord [(frame/scenario-context-update {:messages append-context
-                                                                           :tools tools})])
-          (flow/futurize #(doseq [a (:post-actions node)] (handle-action a)))))
+          (flow/futurize #(do
+                            (doseq [a (:pre-actions node)] (handle-action a))
+                            (flow/inject flow flow-in-coord [(frame/scenario-context-update {:messages append-context
+                                                                                             :tools tools})])
+                            (doseq [a (:post-actions node)] (handle-action a))))))
       (start [s]
         (when-not @initialized?
           (reset! initialized? true)

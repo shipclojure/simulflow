@@ -44,8 +44,7 @@
   (let [new-messages (into (or (:messages context) []) messages)]
     (assoc context :messages new-messages :tools tools)))
 
-;; Aggregator for user
-(defn user-aggregator-transform
+(defn user-speech-aggregator-transform
   "Use cases implemented:
 S: Start, E: End, T: Transcription, I: Interim, X: Text
 
@@ -79,32 +78,6 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         id "context-aggregator-user"]
 
     (cond
-      (frame/system-config-change? frame)
-      ,[(if-let [context (:llm/context frame-data)] (assoc state :llm/context context) state)]
-
-      ;; user context aggregator is the source of truth for the llm context. The
-      ;; assistant aggregator will send tool result frames and the user context
-      ;; aggregator will send back the assembled new context
-      (frame/llm-tool-call-result? frame)
-      ,(let [tool-result (:frame/data frame)
-             {:keys [run-llm? on-update] :or {run-llm? true}} (:properties tool-result)
-             _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
-             nc (update-in context [:messages] conj (:request tool-result) (:result tool-result))]
-         (when (fn? on-update) (on-update))
-         [(assoc state :llm/context nc)
-          ;; Send the context further if :run-llm? is true. :run-llm? is false
-          ;; when the tool call was a scenario transition and we wait for the
-          ;; next scenario-context-update frame before we request a new llm
-          ;; inference
-          (when run-llm? {:out [(frame/llm-context nc)]})])
-
-      (frame/scenario-context-update? frame)
-      ,(let [scenario (:frame/data frame)
-             _ (when debug?
-                 (t/log! {:level :debug :id id} ["SCENARIO UPDATE" scenario]))
-             nc (handle-scenario-update (:llm/context state) scenario)]
-         [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}])
-
       (frame/user-speech-start? frame)
       ,(do
          (when debug?
@@ -168,8 +141,60 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
       :else [state])))
 
-(def user-aggregator-process
-  "Aggregates user messages into the conversation context"
+(def ^:private user-speech-predicates
+  #{frame/user-speech-start?
+    frame/user-speech-stop?
+    frame/transcription?
+    frame/transcription-interim?})
+
+(defn- user-speech-frame?
+  [frame]
+  (some #(% frame) user-speech-predicates))
+
+(defn context-aggregator-transform
+  [state _ frame]
+  (when (:aggregator/debug? state)
+    (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)}))
+
+  (let [debug? (:aggregator/debug? state)
+        {:llm/keys [context]} state
+
+        frame-data (:frame/data frame)
+        id "context-aggregator-user"]
+
+    (cond
+      (frame/system-config-change? frame)
+      ,[(if-let [context (:llm/context frame-data)] (assoc state :llm/context context) state)]
+
+      ;; context aggregator is the source of truth for the llm context. The
+      ;; assistant aggregator will send tool result frames and the user context
+      ;; aggregator will send back the assembled new context
+      (frame/llm-tool-call-result? frame)
+      ,(let [tool-result (:frame/data frame)
+             {:keys [run-llm? on-update] :or {run-llm? true}} (:properties tool-result)
+             _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
+             nc (update-in context [:messages] conj (:request tool-result) (:result tool-result))]
+         (when (fn? on-update) (on-update))
+         [(assoc state :llm/context nc)
+          ;; Send the context further if :run-llm? is true. :run-llm? is false
+          ;; when the tool call was a scenario transition and we wait for the
+          ;; next scenario-context-update frame before we request a new llm
+          ;; inference
+          (when run-llm? {:out [(frame/llm-context nc)]})])
+
+      (frame/scenario-context-update? frame)
+      ,(let [scenario (:frame/data frame)
+             _ (when debug?
+                 (t/log! {:level :debug :id id} ["SCENARIO UPDATE" scenario]))
+             nc (handle-scenario-update (:llm/context state) scenario)]
+         [(assoc state :llm/context nc) {:out [(frame/llm-context nc)]}])
+
+      (user-speech-frame? frame) (user-speech-aggregator-transform state _ frame)
+
+      :else [state])))
+
+(def context-aggregator-process
+  "Aggregates context messages. Keeps the full conversation history."
   (flow/process
     {:describe (fn [] {:ins {:sys-in "Channel for receiving system messages that take priority"
                              :in "Channel for aggregation messages"}
@@ -179,7 +204,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 
      :workload :compute
      :init identity
-     :transform user-aggregator-transform}))
+     :transform context-aggregator-transform}))
 
 (defn sentence-assembler
   "Takes in llm-text-chunk frames and returns a full sentence. Useful for
@@ -209,7 +234,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                                :text content-aggregation}]})]
     (assoc context :messages (conj (:messages context) next-msg))))
 
-(defn assistant-aggregator-transform
+(defn assistant-context-assembler-transform
   "Assembles assistant messages and tool call requests. When a tool call request
   is encountered, it is sent to the tool caller process. See the :init of the
   assistant-aggregator-process for details on the tool-caller."
@@ -296,7 +321,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 (defn- get-tool [tool-name tools]
   (first (filter #(= tool-name (get-in % [:function :name])) tools)))
 
-(defn assistant-aggregator-init
+(defn assistant-context-assembler-init
   [args]
   (let [tool-read (a/chan 100)
         tool-write (a/chan 100)
@@ -340,7 +365,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
     (merge args {::flow/in-ports {:tool-read tool-read}
                  ::flow/out-ports {:tool-write tool-write}})))
 
-(def assistant-context-aggregator
+(def assistant-context-assembler
   "Takes streaming tool-call request tokens and returns a new context with the
   tool call result if a tool registered is available."
   (flow/process
@@ -351,5 +376,5 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
         :outs {:out "Channel for output new contexts with tool call results"}
         :params {:llm/context "Initial LLM context. See schema/LLMContext"
                  :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
-     :init assistant-aggregator-init
-     :transform assistant-aggregator-transform}))
+     :init assistant-context-assembler-init
+     :transform assistant-context-assembler-transform}))

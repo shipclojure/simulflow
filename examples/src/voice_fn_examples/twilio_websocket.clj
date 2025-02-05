@@ -113,7 +113,7 @@
         :user-context-aggregator  {:proc context/user-aggregator-process
                                    :args {:llm/context llm-context
                                           :aggregator/debug? true}}
-        :assistant-context-aggregator {:proc context/assistant-context-aggregator
+        :assistant-context-aggregator {:proc context/assistant-context-assembler
                                        :args {:llm/context llm-context
                                               :debug? true}}
         :llm {:proc llm/openai-llm-process
