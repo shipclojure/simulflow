@@ -121,6 +121,7 @@
 
 (comment
 
+  ;; Start local ai flow - starts paused
   (let [{:keys [report-chan error-chan]} (flow/start local-ai)]
     (a/go-loop []
       (when-let [[msg c] (a/alts! [report-chan error-chan])]
@@ -128,7 +129,10 @@
           (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
         (recur))))
 
+  ;; Resume local ai -> you can now speak with the AI
   (flow/resume local-ai)
+
+  ;; Stop the conversation
   (flow/stop local-ai)
 
   ,)
