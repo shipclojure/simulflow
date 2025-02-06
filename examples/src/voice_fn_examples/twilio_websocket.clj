@@ -190,80 +190,6 @@
                                             :additionalProperties false}
                                :strict true}}]}}))})
 
-(def scenario-config
-  {:initial-node :start
-   :nodes
-   {:start
-    {:role-messages [{:role :system
-                      :content "You are a restaurant reservation assistant for La Maison, an upscale French restaurant. You must ALWAYS use one of the available functions to progress the conversation. This is a phone conversations and your responses will be converted to audio. Avoid outputting special characters and emojis. Be casual and friendly."}]
-     :task-messages [{:role :system
-                      :content "Warmly greet the customer and ask how many people are in their party."}]
-     :functions [{:type :function
-                  :function
-                  {:name "record_party_size"
-                   :handler (fn [{:keys [size]}] size)
-                   :description "Record the number of people in the party"
-                   :parameters
-                   {:type :object
-                    :properties
-                    {:size {:type :integer
-                            :description "The number of people that will dine."
-                            :minimum 1
-                            :maximum 12}}
-                    :required [:size]}
-                   :transition-to :get-time}}]}
-    :get-time
-    {:task-messages [{:role :system
-                      :content "Ask what time they'd like to dine. Restaurant is open 5 PM to 10 PM. After they provide a time, confirm it's within operating hours before recording. Use 24-hour format for internal recording (e.g., 17:00 for 5 PM)."}]
-     :functions [{:type :function
-                  :function {:name "record_time"
-                             :handler (fn [{:keys [time]}] time)
-                             :description "Record the requested time"
-                             :parameters {:type :object
-                                          :properties {:time {:type :string
-                                                              :pattern "^(17|18|19|20|21|22):([0-5][0-9])$"
-                                                              :description "Reservation time in 24-hour format (17:00-22:00)"}}
-                                          :required [:time]}
-                             :transition-to :confirm}}]}
-
-    :confirm
-    {:task-messages [{:role :system
-                      :content "Confirm the reservation details and end the conversation. Say back to the client the details of the reservation: \"Ok! So a reservation for X people at Y PM. Is this corret?\" "}]
-     :functions [{:type :function
-                  :function {:name "end"
-                             :description "End the conversation"
-                             :parameters {:type :object, :properties {}}
-                             :transition-to :end}}]}
-    :end {:task-messages [{:role :system, :content "Thank them and end the conversation."}]
-          :functions []
-          :post-actions [{:type :end-conversation}]}}})
-
-(defn scenario-example
-  "A scenario is a predefined, highly structured conversation. LLM performance
-  degrades when it has a big complex prompt to enact, so to ensure a consistent
-  output use scenarios that transition the LLM into a new scenario node with a clear
-  instruction for the current node."
-  [in out]
-  (let [flow
-        (flow/create-flow
-          (phone-flow
-            {:in in
-             :out out
-             :llm/context {:messages []
-                           :tools []}
-
-             ;; add gateway process for scenario
-             :extra-procs {:scenario {:proc (flow/step-process #'sm/scenario-in-process)}}
-             :extra-conns [[[:scenario :speak-out] [:tts :in]]
-                           [[:scenario :context-out] [:context-aggregator :in]]]}))
-
-        s (sm/scenario-manager {:flow flow
-                                :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel
-                                :scenario-config scenario-config})]
-
-    {:flow flow
-     :scenario s}))
-
 (defn make-twilio-ws-handler
   [make-flow]
   (fn [req]
@@ -311,7 +237,7 @@
                      :post {:handler twilio-inbound-handler}}]
    ["/ws" {:summary "Websocket endpoint to receive a twilio call"
            ;; Change param to make-twilio-ws-handler to change example flow used
-           :get {:handler (make-twilio-ws-handler scenario-example)}}]])
+           :get {:handler (make-twilio-ws-handler tool-use-example)}}]])
 
 (def app
   (ring/ring-handler
