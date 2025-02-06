@@ -11,6 +11,8 @@
    [voice-fn.transport :as transport]
    [voice-fn.utils.core :as u]))
 
+(t/set-min-level! :debug)
+
 (defn make-local-flow
   "This example showcases a voice AI agent for the local computer.  Audio is
   usually encoded as PCM at 16kHz frequency (sample rate) and it is mono (1
@@ -117,7 +119,7 @@
                 [[:audio-splitter :out] [:transport-out :in]]]
                extra-conns)})))
 
-(def local-ai (make-local-flow))
+(def local-ai (make-local-flow {:debug? true}))
 
 (comment
 

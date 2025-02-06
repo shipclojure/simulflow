@@ -116,7 +116,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
            (not (nil? frame-data))
            (not= "" (str/trim frame-data)))
       ,(let [new-agg (:frame/data frame)]
-         (t/log! {:level :debug :id id} ["TRANSCRIPTION: " new-agg])
+         (t/log! {:level :info :id id} ["TRANSCRIPTION: " new-agg])
          ;; if we seen end frame, we send aggregation
          ;; else
          (if aggregating?
