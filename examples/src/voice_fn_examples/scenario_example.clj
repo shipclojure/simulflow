@@ -57,7 +57,7 @@
                              :transition-to :end}}]}
     :end {:task-messages [{:role :system, :content "Thank them and end the conversation."}]
           :functions []
-          :post-actions [{:type :end-conversation}]}}})
+          :pre-actions [{:type :end-conversation}]}}})
 
 (defn scenario-example
   "A scenario is a predefined, highly structured conversation. LLM performance
