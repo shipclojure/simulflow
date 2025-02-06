@@ -24,8 +24,26 @@
   ([] (make-local-flow {}))
   ([{:keys [llm-context extra-procs extra-conns encoding debug?
             sample-rate language sample-size-bits channels chunk-duration-ms]
-     :or {llm-context {:messages [{:role "system"
-                                   :content "You are a helpful assistant "}]}
+     :or {llm-context {:messages
+                       [{:role "system"
+                         :content "You are a voice agent operating via phone. Be
+                       concise. The input you receive comes from a
+                       speech-to-text (transcription) system that isn't always
+                       efficient and may send unclear text. Ask for
+                       clarification when you're unsure what the person said."}]
+                       :tools
+                       [{:type :function
+                         :function
+                         {:name "get_weather"
+                          :handler (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))
+                          :description "Get the current weather of a location"
+                          :parameters {:type :object
+                                       :required [:town]
+                                       :properties {:town {:type :string
+                                                           :description "Town for which to retrieve the current weather"}}
+                                       :additionalProperties false}
+                          :strict true}}]}
+
           encoding :pcm-signed
           sample-rate 16000
           sample-size-bits 16
@@ -119,20 +137,19 @@
                 [[:audio-splitter :out] [:transport-out :in]]]
                extra-conns)})))
 
-(def local-ai (make-local-flow {:debug? true}))
+(def local-ai (make-local-flow))
 
 (comment
 
   ;; Start local ai flow - starts paused
   (let [{:keys [report-chan error-chan]} (flow/start local-ai)]
+    ;; Resume local ai -> you can now speak with the AI
+    (flow/resume local-ai)
     (a/go-loop []
       (when-let [[msg c] (a/alts! [report-chan error-chan])]
         (when (map? msg)
           (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
         (recur))))
-
-  ;; Resume local ai -> you can now speak with the AI
-  (flow/resume local-ai)
 
   ;; Stop the conversation
   (flow/stop local-ai)

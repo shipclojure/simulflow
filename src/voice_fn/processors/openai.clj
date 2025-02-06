@@ -147,10 +147,12 @@
     ;; Start request only when the last message in the context is by the user
 
     (a/>!! out-c (frame/llm-full-response-start true))
-    (let [stream-ch (stream-openai-chat-completion (merge {:model model
-                                                           :api-key api-key
-                                                           :messages (:messages context)
-                                                           :tools (mapv u/->tool-fn (:tools context))}))]
+    (let [stream-ch (try (stream-openai-chat-completion (merge {:model model
+                                                                :api-key api-key
+                                                                :messages (:messages context)
+                                                                :tools (mapv u/->tool-fn (:tools context))}))
+                         (catch Exception e
+                           (t/log! :error e)))]
 
       (a/go-loop []
         (when-let [chunk (a/<! stream-ch)]
@@ -169,17 +171,18 @@
 (def openai-llm-process
   (flow/process
     {:describe (fn [] {:ins {:in "Channel for incoming context aggregations"}
-                       :outs {:out "Channel where streaming responses will go"}})
-     :params {:llm/model "Openai model used"
-              :openai/api-key "OpenAI Api key"
-              :llm/temperature "Optional temperature parameter for the llm inference"
-              :llm/max-tokens "Optional max tokens to generate"
-              :llm/presence-penalty "Optional (-2.0 to 2.0)"
-              :llm/top-p "Optional nucleus sampling threshold"
-              :llm/seed "Optional seed used for deterministic sampling"
-              :llm/max-completion-tokens "Optional Max tokens in completion"
-              :llm/extra "Optional extra model parameters"}
-     :workload :io
+                       :outs {:out "Channel where streaming responses will go"}
+                       :params {:llm/model "Openai model used"
+                                :openai/api-key "OpenAI Api key"
+                                :llm/temperature "Optional temperature parameter for the llm inference"
+                                :llm/max-tokens "Optional max tokens to generate"
+                                :llm/presence-penalty "Optional (-2.0 to 2.0)"
+                                :llm/top-p "Optional nucleus sampling threshold"
+                                :llm/seed "Optional seed used for deterministic sampling"
+                                :llm/max-completion-tokens "Optional Max tokens in completion"
+                                :llm/extra "Optional extra model parameters"}
+                       :workload :io})
+
      :transition (fn [{::flow/keys [in-ports out-ports]} transition]
                    (when (= transition ::flow/stop)
                      (doseq [port (concat (vals in-ports) (vals out-ports))]
