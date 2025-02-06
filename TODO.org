@@ -20,6 +20,9 @@ CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
 * TODO Research webrtc support
 
 * TODO Add local transport (microphone + speaker out)
+:LOGBOOK:
+CLOCK: [2025-02-06 Thu 08:07]--[2025-02-06 Thu 08:32] =>  0:25
+:END:
 
 * TODO Add TTFT metric
 

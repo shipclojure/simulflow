@@ -236,7 +236,10 @@
                        (close! line))
                      (doseq [port (concat (vals in-ports) (vals out-ports))]
                        (a/close! port))))
-     :init (fn [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]}]
+     :init (fn [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
+                 :or {sample-rate 16000
+                      channels 1
+                      sample-size-bits 16}}]
 
              (let [;; send every 10ms to account for network
                    duration (or duration-ms 20)

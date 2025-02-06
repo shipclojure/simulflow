@@ -79,11 +79,7 @@
 
 (defn phone-flow
   "This example showcases a voice AI agent for the phone. Phone audio is usually
-  encoded as MULAW at 8kHz frequency (sample rate) and it is mono (1 channel).
-
-  N.B the graph connections: There must be a cycle for aggregators, to have the
-  best results: user-context-aggregator -> llm -> assistant-context-aggregator
-  -> user-context-aggregator"
+  encoded as MULAW at 8kHz frequency (sample rate) and it is mono (1 channel)."
   [{:keys [llm-context extra-procs in out extra-conns language]
     :or {llm-context {:messages [{:role "system"
                                   :content "You are a helpful assistant "}]}

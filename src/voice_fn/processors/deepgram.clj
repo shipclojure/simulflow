@@ -24,7 +24,7 @@
   [{:transcription/keys [interim-results? punctuate? model sample-rate utterance-end-ms language  vad-events? smart-format? encoding channels]
     :or {interim-results? false
          punctuate? false}}]
-  (u/append-search-params deepgram-url (u/without-nils {:encoding encoding
+  (u/append-search-params deepgram-url (u/without-nils {:encoding (deepgram-encoding encoding encoding)
                                                         :language language
                                                         :sample_rate sample-rate
                                                         :model model

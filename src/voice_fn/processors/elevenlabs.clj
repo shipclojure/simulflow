@@ -15,14 +15,15 @@
 
 (def elevenlabs-encoding
   "Mapping from clojure sound encoding to elevenlabs format"
-  {:ulaw :ulaw_8000
-   :mp3 :mp3_44100})
+  {:ulaw :ulaw
+   :mp3 :mp3
+   :pcm-signed :pcm
+   :pcm-unsigned :pcm
+   :pcm-float :pcm})
 
 (defn encoding->elevenlabs
-  ([format]
-   (elevenlabs-encoding format))
-  ([format sample-rate]
-   (keyword (str (name format) "_" sample-rate))))
+  [format sample-rate]
+  (keyword (str (name (elevenlabs-encoding format)) "_" sample-rate)))
 
 (defn make-elevenlabs-ws-url
   [args]
