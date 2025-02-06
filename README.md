@@ -1,29 +1,8 @@
 # voice-fn - Real-time Voice AI Pipeline Framework
 
-## Table of Contents
-
-
-1.  [Core Features](#org9f6c898)
-2.  [Quick Start: Twilio WebSocket Example](#org71c1ebd)
-3.  [Supported Providers](#orga92dd94)
-    1.  [Text-to-Speech (TTS)](#orgb60103e)
-    2.  [Speech-to-Text (STT)](#orgf138736)
-    3.  [Large Language Models (LLM)](#org532c7b9)
-4.  [Key Concepts](#org28a4b3f)
-    1.  [Flows](#org40af940)
-    2.  [Frames](#org1759685)
-    3.  [Processes](#orgbd1d5f8)
-5.  [Adding Custom Processes](#orgf87c620)
-6.  [Built With](#orgaf805b6)
-7.  [License](#org5082853)
-
-
 `voice-fn` is a Clojure framework for building real-time voice AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, and AI interactions with built-in support for major AI providers.
 
-This project's status is *experimental*. Expect breaking changes.
-
-
-<a id="org9f6c898"></a>
+This project's status is **_experimental_**. Expect breaking changes.
 
 ## Core Features
 
@@ -34,8 +13,6 @@ This project's status is *experimental*. Expect breaking changes.
 -   **Flexible Frame System:** Type-safe message passing between pipeline components
 -   **Built-in Services:** Ready-to-use integrations with major AI providers
 
-
-<a id="org71c1ebd"></a>
 
 ## Quick Start: Local example
 ```clojure
@@ -56,10 +33,7 @@ This project's status is *experimental*. Expect breaking changes.
   "This example showcases a voice AI agent for the local computer.  Audio is
   usually encoded as PCM at 16kHz frequency (sample rate) and it is mono (1
   channel).
-
-  :transport-in & :transport-out don't specify the audio configuration because
-  these are the defaults. See each process for details
-  "
+    "
   ([] (make-local-flow {}))
   ([{:keys [llm-context extra-procs extra-conns encoding debug?
             sample-rate language sample-size-bits channels chunk-duration-ms]
@@ -186,12 +160,10 @@ Which roughly translates to:
 
 See [examples](./examples/src/voice_fn_examples/) for more usages.
 
-<a id="orga92dd94"></a>
 
 ## Supported Providers
 
 
-<a id="orgb60103e"></a>
 
 ### Text-to-Speech (TTS)
 
@@ -200,8 +172,6 @@ See [examples](./examples/src/voice_fn_examples/) for more usages.
     -   Features: Real-time streaming, multiple voices, multilingual support
 
 
-<a id="orgf138736"></a>
-
 ### Speech-to-Text (STT)
 
 -   **Deepgram**
@@ -209,21 +179,14 @@ See [examples](./examples/src/voice_fn_examples/) for more usages.
     -   Features: Real-time transcription, punctuation, smart formatting
 
 
-<a id="org532c7b9"></a>
-
-### Large Language Models (LLM)
+### Text Based Large Language Models (LLM)
 
 -   **OpenAI**
     -   Models: `gpt-4o-mini`(fastest, cheapest),  `gpt-4`, `gpt-3.5-turbo` and more
     -   Features: Function calling, streaming responses
 
 
-<a id="org28a4b3f"></a>
-
 ## Key Concepts
-
-
-<a id="org40af940"></a>
 
 ### Flows
 
@@ -236,8 +199,16 @@ The core building block of voice-fn pipelines:
     -   Data transformers
 -   Managed by `core.async.flow` for lifecycle control
 
+### Transport
 
-<a id="org1759685"></a>
+The modality through which audio comes and goes from the voice ai pipeline. Example transport modalities:
+
+- local (microphone + speakers)
+- telephony (twilio through websocket)
+- webRTC (browser support) - TODO
+- async (through in & out core async channels)
+
+You will see processors like `:transport-in` & `:transport-out`
 
 ### Frames
 
@@ -253,8 +224,6 @@ Each frame has a type and optionally a schema for the data contained in it.
 See [frame.clj](./src/voice_fn/frame.clj) for all possible frames.
 
 
-<a id="orgbd1d5f8"></a>
-
 ### Processes
 
 Components that transform frames:
@@ -265,20 +234,21 @@ Components that transform frames:
 -   Implement the `flow/process` protocol
 
 
-<a id="orgf87c620"></a>
-
 ## Adding Custom Processes
 
+```clojure
     (defn custom-processor []
       (flow/process
         {:describe (fn [] {:ins {:in "Input channel"}
                            :outs {:out "Output channel"}})
-         :init (fn [args] {:state args})
+         :init identity
          :transform (fn [state in msg]
                       [state {:out [(process-message msg)]}])}))
+```
 
 
-<a id="orgaf805b6"></a>
+Read core.async.flow docs for more information about flow precesses.
+
 
 ## Built With
 
@@ -287,8 +257,6 @@ Components that transform frames:
 -   [Hato](<https://github.com/gnarroway/hato>) - WebSocket support
 -   [Malli](<https://github.com/metosin/malli>) - Schema validation
 
-
-<a id="org5082853"></a>
 
 ## Acknowledgements
 
