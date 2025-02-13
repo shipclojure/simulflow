@@ -108,7 +108,7 @@ Allow Microphone access when prompted.
          :tts {:proc tts/elevenlabs-tts-process
                :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
                       :elevenlabs/model-id "eleven_flash_v2_5"
-                      :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+                      :elevenlabs/voice-id (secret [:elevenlabs :voice-id])
                       :voice/stability 0.5
                       :voice/similarity-boost 0.8
                       :voice/use-speaker-boost? true
