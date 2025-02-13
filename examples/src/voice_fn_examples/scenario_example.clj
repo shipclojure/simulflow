@@ -71,7 +71,7 @@
                               :tools []}
 
                 ;; add gateway process for scenario to inject frames
-                :extra-procs {:scenario {:proc (flow/step-process #'sm/scenario-in-process)}}
+                :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}}
                 :extra-conns [[[:scenario :speak-out] [:tts :in]]
                               [[:scenario :context-out] [:context-aggregator :in]]]})
 
@@ -102,5 +102,4 @@
 
   ;; Stop the conversation
   (flow/stop (:flow s))
-
   ,)

@@ -334,6 +334,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   ([] {:ins {:in "Channel for llm text chunks"}
        :outs {:out "Channel for assembled speak frames"}})
   ([_] {:acc nil})
+  ([state _] state)
   ([{:keys [acc]} _ msg]
    (when (frame/llm-text-chunk? msg)
      (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
@@ -375,4 +376,4 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 (def llm-sentence-assembler
   "Takes in llm-text-chunk frames and returns a full sentence. Useful for
   generating speech sentence by sentence, instead of waiting for the full LLM message."
-  (flow/step-process #'llm-sentence-assembler-impl))
+  (flow/process #'llm-sentence-assembler-impl))
