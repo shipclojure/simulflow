@@ -15,6 +15,22 @@ This project's status is **_experimental_**. Expect breaking changes.
 
 
 ## Quick Start: Local example
+
+First, create a `resources/secrets.edn`:
+
+```edn
+{:deepgram {:api-key ""}
+ :elevenlabs {:api-key ""
+              :voice-id ""}
+ :groq {:api-key ""}
+ :openai {:new-api-sk ""}}
+```
+
+Obtain the API keys from the respective providers and fill in the blank values.
+
+Start a REPL and evaluate the snippets in the `(comment ...)` blocks to start the flows.
+Allow Microphone access when prompted.
+
 ```clojure
 (ns voice-fn-examples.local
   (:require
