@@ -32,5 +32,4 @@
 /core/.lsp/
 /examples/.calva/
 .idea/
-.clj-kondo/
 *.iml
