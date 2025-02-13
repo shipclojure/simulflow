@@ -29,9 +29,8 @@
 /target
 /resources/secrets.edn
 /core/resources/secrets.edn
-/core/.clj-kondo/.cache
 /core/.lsp/
 /examples/.calva/
-/.idea/
-/core/.idea/
-/core/core.iml
+.idea/
+.clj-kondo/
+*.iml

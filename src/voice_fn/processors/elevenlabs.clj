@@ -30,9 +30,9 @@
   (let [{:audio.out/keys [encoding sample-rate]
          :flow/keys [language]
          :elevenlabs/keys [model-id voice-id]
-         :or {model-id "eleven_flash_v2_5"
-              voice-id "cjVigY5qzO86Huf0OWal"}}
+         :or {model-id "eleven_flash_v2_5"}}
         args]
+    (assert voice-id "Voice ID is required")
     (u/append-search-params (format xi-tts-websocket-url voice-id)
                             {:model_id model-id
                              :language_code language
@@ -42,7 +42,7 @@
   (make-elevenlabs-ws-url
     {:elevenlabs/api-key (secrets/secret [:elevenlabs :api-key])
      :elevenlabs/model-id "eleven_flash_v2_5"
-     :elevenlabs/voice-id "7sJPxFeMXAVWZloGIqg2"
+     :elevenlabs/voice-id (secrets/secret [:elevenlabs :voice-id])
      :voice/stability 0.5
      :voice/similarity-boost 0.8
      :voice/use-speaker-boost? true}))

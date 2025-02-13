@@ -135,6 +135,7 @@
        :outs {:speak-out "Channel where speak-frames will be put. Should be connected to text to speech process"
               :context-out "Channel where context frames will be put"}})
   ([_] nil)
+  ([state _] state)
   ([_ _ frame]
    [nil (cond-> {:context-out [frame]}
           (frame/speak-frame? frame) (assoc :speak-out [frame]))]))
