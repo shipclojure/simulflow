@@ -509,13 +509,25 @@
        [:handler [:=> [:cat :map] :any]]
        [:transition-cb {:optional true} [:=> :cat :nil]]]]]))
 
+(def TransitionTo
+  [:or
+   :keyword
+   [:and
+    [:=> [:cat :map] :any]
+    [:fn {:error/message "Transition function must return a valid node keyword"}
+     (fn [f]
+       (try
+         (let [result (f {})]
+           (keyword? result))
+         (catch Exception _ false)))]]])
+
 (def LLMTransitionToolDefinition
   (mu/merge LLMFunctionToolDefinitionWithHandling
             [:map {:closed true}
              [:function
               [:map
                [:handler {:optional true} [:=> [:cat :map] :any]]
-               [:transition-to :keyword]]]]))
+               [:transition-to TransitionTo]]]]))
 
 (def RegisteredFunctions [:map-of :string [:map
                                            [:tool [:=> [:cat :map] :any]]

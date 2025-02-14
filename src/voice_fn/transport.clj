@@ -4,7 +4,7 @@
    [clojure.core.async.flow :as flow]
    [taoensso.telemere :as t]
    [uncomplicate.clojure-sound.core :refer [open! read! start! stop! write!]]
-   [uncomplicate.clojure-sound.sampled :refer [audio-format line line-info]]
+   [uncomplicate.clojure-sound.sampled :refer [audio-format flush! line line-info]]
    [uncomplicate.commons.core :refer [close!]]
    [voice-fn.frame :as frame]
    [voice-fn.schema :as schema]
@@ -14,7 +14,7 @@
    [voice-fn.utils.core :as u])
   (:import
    (java.util Arrays)
-   (javax.sound.sampled AudioFormat AudioSystem DataLine$Info TargetDataLine)))
+   (javax.sound.sampled AudioFormat AudioSystem DataLine$Info)))
 
 (def AsyncOutputProcessorSchema
   [:map
@@ -233,6 +233,7 @@
                    (when (= transition ::flow/stop)
                      (when-let [line (::speaker-line state)]
                        (stop! line)
+                       (flush! line)
                        (close! line))
                      (doseq [port (concat (vals in-ports) (vals out-ports))]
                        (a/close! port))))

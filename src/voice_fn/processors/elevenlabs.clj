@@ -157,7 +157,7 @@
                    keep-alive #(loop []
                                  (when @alive?
                                    (a/<!! (a/timeout 3000))
-                                   (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
+                                   (t/log! {:level :trace :id :elevenlabs} "Sending keep-alive message")
                                    (ws/send! ws-conn keep-alive-message)
                                    (recur)))]
                ((flow/futurize write-to-ws :exec :io))
@@ -192,5 +192,7 @@
                         [(assoc state :audio/acc attempt)]))
                     (cond
                       (frame/speak-frame? msg)
-                      [state {:ws-write [msg]}]
+                      (do
+                        (t/log! {:id :elevenlabs :level :debug} ["SPEAK" (:frame/data msg)])
+                        [state {:ws-write [msg]}])
                       :else [state])))}))

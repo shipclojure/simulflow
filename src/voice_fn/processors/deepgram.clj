@@ -169,7 +169,7 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
                    keep-alive #(loop []
                                  (when @alive?
                                    (a/<!! (a/timeout 3000))
-                                   (t/log! {:level :debug :id :deepgram} "Sending keep-alive message")
+                                   (t/log! {:level :trace :id :deepgram} "Sending keep-alive message")
                                    (ws/send! ws-conn keep-alive-payload)
                                    (recur)))]
                ((flow/futurize write-to-ws :exec :io))

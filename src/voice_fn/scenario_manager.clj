@@ -17,7 +17,7 @@
   [:or
    [:map
     [:type (schema/flex-enum ["tts-say"])]
-    [:text :string]]
+    [:text [:or :string [:vector :string]]]]
    [:map
     [:type (schema/flex-enum ["end-conversation"])]]
    [:map
@@ -50,7 +50,8 @@
                                             vals
                                             (mapcat :functions)
                                             (keep (fn [f] (get-in f [:function :transition-to])))
-                                            (remove nil?))
+                                            (remove #(or (nil? %)
+                                                         (fn? %))))
                            invalid-transition (first (remove nodes transitions))]
                        (when invalid-transition
                          (format "Unreachable node: %s" invalid-transition))))}
@@ -60,7 +61,8 @@
                              vals
                              (mapcat :functions)
                              (keep (fn [f] (get-in f [:function :transition-to])))
-                             (remove nil?))]
+                             (remove #(or (nil? %)
+                                        (fn? %))))]
         (every? defined-nodes transitions)))]])
 
 (defprotocol Scenario
@@ -79,8 +81,13 @@
   [scenario tool]
   (let [fndef (:function tool)
         handler (:handler fndef)
-        next-node (:transition-to fndef)
-        cb #(set-node scenario next-node)]
+
+        next-node-or-fn (:transition-to fndef)
+        cb (if (fn? next-node-or-fn)
+             (fn [args]
+               (let [next-node (next-node-or-fn args)]
+                 (set-node scenario next-node)))
+             (fn [_] (set-node scenario next-node-or-fn)))]
     (cond-> tool
       true (update-in [:function] dissoc :transition-to)
       true (assoc-in [:function :transition-cb] cb)
@@ -96,10 +103,14 @@
         initialized? (atom false)
         tts-action? #(contains? #{:tts-say "tts-say"} (:type %))
         end-action? #(contains? #{:end-conversation "end-conversation"} (:type %))
-        handle-action #(cond
-                         (tts-action? %) (flow/inject flow flow-in-coord [(frame/speak-frame (:text %))])
-                         (end-action? %) (flow/stop flow)
-                         :else ((:handler %)))]
+        handle-action (fn [a]
+                        (cond
+                          (tts-action? a)
+                          (flow/inject flow flow-in-coord (if (coll? (:text a))
+                                                            (mapv #(frame/speak-frame %) (:text a))
+                                                            [(frame/speak-frame (:text a))]))
+                          (end-action? a) (flow/stop flow)
+                          :else ((:handler a))))]
     (reify Scenario
       (current-node [_] @current-node)
       (set-node [this node-id]
@@ -113,11 +124,10 @@
             (doseq [a (:post-actions node)] (handle-action a)))
           (reset! current-node node-id)
           (try
-            (t/log! "Sending new scenario")
-            (doseq [a (:pre-actions node)] (handle-action a))
             (flow/inject flow flow-in-coord [(frame/scenario-context-update {:messages append-context
                                                                              :tools tools
                                                                              :properties {:run-llm? (if (boolean? (:run-llm? node)) (:run-llm? node) true)}})])
+            (doseq [a (:pre-actions node)] (handle-action a))
 
             (catch Exception e
               (t/log! :error e)))))

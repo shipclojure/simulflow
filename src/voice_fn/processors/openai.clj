@@ -14,7 +14,8 @@
 (def openai-completions-url "https://api.openai.com/v1/chat/completions")
 
 (defn stream-openai-chat-completion
-  [{:keys [api-key messages tools model]}]
+  [{:keys [api-key messages tools model]
+    :or {model "gpt-4o-mini"}}]
   (:body (request/sse-request {:request {:url openai-completions-url
                                          :headers {"Authorization" (str "Bearer " api-key)
                                                    "Content-Type" "application/json"}
@@ -23,8 +24,9 @@
                                          :body (u/json-str (cond-> {:messages messages
                                                                     :stream true
                                                                     :model model}
-                                                             tools (assoc :tools tools)))}
+                                                             (pos? (count tools)) (assoc :tools tools)))}
                                :params {:stream/close? true}})))
+
 (defn normal-chat-completion
   [{:keys [api-key messages tools model]}]
   (http/request {:url openai-completions-url
@@ -36,7 +38,7 @@
                  :body (u/json-str (cond-> {:messages messages
                                             :stream true
                                             :model model}
-                                     tools (assoc :tools tools)))}))
+                                     (pos? (count tools)) (assoc :tools tools)))}))
 
 (comment
   (require '[voice-fn.secrets :refer [secret]])
