@@ -340,7 +340,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
      (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
        (if sentence
          (do
-           (t/log! :info ["AI: " sentence])
+           (t/log! {:level :trace :id :sentence-assembler} ["AI: " sentence])
            [{:acc accumulator} {:out [(frame/speak-frame sentence)]}])
          [{:acc accumulator}])))))
 
