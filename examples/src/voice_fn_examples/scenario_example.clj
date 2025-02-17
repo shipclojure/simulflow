@@ -71,7 +71,7 @@
                 {;; Don't add any context because the scenario will handle that
                  :llm/context {:messages []
                                :tools []}
-                 :language :ro
+                 :language :en
 
                  ;; add gateway process for scenario to inject frames
                  :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}}
