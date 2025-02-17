@@ -16,8 +16,7 @@
 (def groq-completions-url (str groq-api-url "/chat/completions"))
 
 (defn stream-groq-chat-completion
-  [{:keys [api-key messages tools model]
-    :or {model "gpt-4o-mini"}}]
+  [{:keys [api-key messages tools model]}]
   (:body (request/sse-request {:request {:url groq-completions-url
                                          :headers {"Authorization" (str "Bearer " api-key)
                                                    "Content-Type" "application/json"}
