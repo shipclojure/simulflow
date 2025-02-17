@@ -1,10 +1,12 @@
 (ns voice-fn.processors.groq
   (:require
    [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
    [hato.client :as http]
+   [malli.core :as m]
+   [malli.transform :as mt]
+   [taoensso.telemere :as t]
    [voice-fn.frame :as frame]
-   [voice-fn.pipeline :as pipeline]
-   [voice-fn.protocol :as p]
    [voice-fn.schema :as schema]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.utils.core :as u]
@@ -14,15 +16,17 @@
 (def groq-completions-url (str groq-api-url "/chat/completions"))
 
 (defn stream-groq-chat-completion
-  [{:keys [api-key messages model]}]
+  [{:keys [api-key messages tools model]
+    :or {model "gpt-4o-mini"}}]
   (:body (request/sse-request {:request {:url groq-completions-url
                                          :headers {"Authorization" (str "Bearer " api-key)
                                                    "Content-Type" "application/json"}
 
                                          :method :post
-                                         :body (u/json-str {:messages messages
-                                                            :stream true
-                                                            :model model})}
+                                         :body (u/json-str (cond-> {:messages messages
+                                                                    :stream true
+                                                                    :model model}
+                                                             (pos? (count tools)) (assoc :tools tools)))}
                                :params {:stream/close? true}})))
 
 (comment
@@ -45,6 +49,8 @@
        :data
        (map :id))
   ,)
+
+(def delta (comp :delta first :choices))
 
 (def GroqLLMConfigSchema
   [:map
@@ -77,47 +83,75 @@
     [:string
      {:description "Groq API key"
       :secret true ;; Marks this as sensitive data
-      :min 40      ;; OpenAI API keys are typically longer
+      :min 40      ;; Groq API keys are typically longer
       :error/message "Invalid Groq API key format"}]]])
 
-(defmethod pipeline/create-processor :processor.llm/groq
-  [id]
-  (reify p/Processor
-    (processor-id [_] id)
+(defn flow-do-completion!
+  "Handle completion requests for Groq LLM models"
+  [state out-c context]
+  (let [{:llm/keys [model] :groq/keys [api-key]} state]
+    ;; Start request only when the last message in the context is by the user
 
-    (processor-schema [_] GroqLLMConfigSchema)
+    (a/>!! out-c (frame/llm-full-response-start true))
+    (let [stream-ch (try (stream-groq-chat-completion (merge {:model model
+                                                              :api-key api-key
+                                                              :messages (:messages context)
+                                                              :tools (mapv u/->tool-fn (:tools context))}))
+                         (catch Exception e
+                           (t/log! :error e)))]
 
-    (accepted-frames [_] #{:frame.context/messages :frame.control/interrupt-start})
+      (a/go-loop []
+        (when-let [chunk (a/<! stream-ch)]
+          (let [d (delta chunk)]
+            (if (= chunk :done)
+              (a/>! out-c (frame/llm-full-response-end true))
+              (do
+                (if-let [tool-call (first (:tool_calls d))]
+                  (do
+                    (t/log! ["SENDING TOOL CALL" tool-call])
+                    (a/>! out-c (frame/llm-tool-call-chunk tool-call)))
+                  (when-let [c (:content d)]
+                    (a/>! out-c (frame/llm-text-chunk c))))
+                (recur)))))))))
 
-    (make-processor-config [_ _ processor-config]
-      processor-config)
+(def groq-llm-process
+  (flow/process
+    {:describe (fn [] {:ins {:in "Channel for incoming context aggregations"}
+                       :outs {:out "Channel where streaming responses will go"}
+                       :params {:llm/model "Openai model used"
+                                :groq/api-key "Groq Api key"
+                                :llm/temperature "Optional temperature parameter for the llm inference"
+                                :llm/max-tokens "Optional max tokens to generate"
+                                :llm/presence-penalty "Optional (-2.0 to 2.0)"
+                                :llm/top-p "Optional nucleus sampling threshold"
+                                :llm/seed "Optional seed used for deterministic sampling"
+                                :llm/max-completion-tokens "Optional Max tokens in completion"}
+                       :workload :io})
 
-    (process-frame [_ pipeline processor-config frame]
-      (let [{:llm/keys [model] :groq/keys [api-key]} processor-config]
-        ;; Start request only when the last message in the context is by the user
-        (cond
-          (and (frame/llm-context? frame)
-               (u/user-last-message? (:frame/data frame))
-               (not (pipeline/interrupted? @pipeline)))
-          (do
-            (pipeline/send-frame! pipeline (frame/llm-full-response-start true))
-            (let [stream-ch (stream-groq-chat-completion {:model model
-                                                          :api-key api-key
-                                                          :messages (:frame/data frame)})]
-              (swap! pipeline assoc-in [id :stream-ch] stream-ch)
-              (a/go-loop []
-                (when-let [chunk (a/<! stream-ch)]
-                  (if (= chunk :done)
-                    (do
-                      (pipeline/send-frame! pipeline (frame/llm-full-response-end true))
-                      (swap! pipeline update-in [id] dissoc :stream-ch))
-                    (do
-                      (pipeline/send-frame! pipeline (frame/llm-text-chunk (u/token-content chunk)))
-                      (recur)))))))
+     :transition (fn [{::flow/keys [in-ports out-ports]} transition]
+                   (when (= transition ::flow/stop)
+                     (doseq [port (concat (vals in-ports) (vals out-ports))]
+                       (a/close! port))))
+     :init (fn [params]
+             (let [state (m/decode GroqLLMConfigSchema params mt/default-value-transformer)
+                   llm-write (a/chan 100)
+                   llm-read (a/chan 1024)
+                   write-to-llm #(loop []
+                                   (if-let [frame (a/<!! llm-write)]
+                                     (do
+                                       (t/log! :info ["AI REQUEST" (:frame/data frame)])
+                                       (assert (or (frame/llm-context? frame)
+                                                   (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
+                                       (flow-do-completion! state llm-read (:frame/data frame))
+                                       (recur))
+                                     (t/log! {:level :info :id :llm} "Closing llm loop")))]
+               ((flow/futurize write-to-llm :exec :io))
+               {::flow/in-ports {:llm-read llm-read}
+                ::flow/out-ports {:llm-write llm-write}}))
 
-          ;; If interrupt-start frame is sent, we cancel the current token
-          ;; generation if one is in progress
-          (frame/control-interrupt-start? frame)
-          (when-let [stream-ch (get-in @pipeline [id :stream-ch])]
-            (a/close! stream-ch)
-            (swap! pipeline update-in [id] dissoc :stream-ch)))))))
+     :transform (fn [state in msg]
+                  (if (= in :llm-read)
+                    [state {:out [msg]}]
+                    (cond
+                      (frame/llm-context? msg)
+                      [state {:llm-write [msg]}])))}))
