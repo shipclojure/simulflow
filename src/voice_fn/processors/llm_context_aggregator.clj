@@ -243,7 +243,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
             ;; function, to wait for the new context
             ;; messages from the new scenario node
             :properties {:run-llm? (nil? transition-cb)
-                         :on-update #(transition-cb args)}}))
+                         :on-update #(when transition-cb (transition-cb args))}}))
        (frame/llm-tool-call-result
          {:request tool-call-msg
           :result (tool-result-adapter {:result "Tool not found"
