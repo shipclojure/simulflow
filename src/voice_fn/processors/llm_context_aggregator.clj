@@ -208,51 +208,60 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 (defn- get-tool [tool-name tools]
   (first (filter #(= tool-name (get-in % [:function :name])) tools)))
 
+(defn default-tool-result-adapter
+  "Tool result in the openai format"
+  [{:keys [result tool-id]}]
+  {:role :tool
+   :content [{:type :text
+              :text (if (string? result) result (u/json-str result))}]
+   :tool_call_id tool-id})
+
 (defn handle-tool-call
   "Given a llm-context frame with the last message being a tool call request,
   return the result of that tool call request as a `llm-tool-call-result` frame."
-  [frame]
-  (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
-  (let [context (:frame/data frame)
-        tool-call-msg (-> context :messages last)
-        tool-call (-> tool-call-msg :tool_calls first)
-        tool-id (:id tool-call)
-        fname (get-in tool-call [:function :name])
-        args (u/parse-if-json (get-in tool-call [:function :arguments]))
-        fndef (get-tool fname (:tools context))
-        f (get-in fndef [:function :handler])
-        transition-cb (get-in fndef [:function :transition-cb])]
-    (if (fn? f)
-      (let [tool-result (u/await-or-return f args)]
-        (frame/llm-tool-call-result
-          {:request tool-call-msg
-           :result {:role :tool
-                    :content [{:type :text
-                               :text (u/json-str tool-result)}]
-                    :tool_call_id tool-id}
-           ;; don't run llm if this is a transition
-           ;; function, to wait for the new context
-           ;; messages from the new scenario node
-           :properties {:run-llm? (nil? transition-cb)
-                        :on-update #(transition-cb args)}}))
-      (frame/llm-tool-call-result
-        {:request tool-call-msg
-         :result {:role :tool
-                  :content [{:type :text
-                             :text "Tool not found"}]
-                  :tool_call_id tool-id}}))))
+  ([frame]
+   (handle-tool-call frame default-tool-result-adapter))
+  ([frame tool-result-adapter]
+   (assert (frame/llm-context? frame) "Tool caller accepts only llm-context frames")
+   (let [context (:frame/data frame)
+         tool-call-msg (-> context :messages last)
+         tool-call (-> tool-call-msg :tool_calls first)
+         tool-id (:id tool-call)
+         fname (get-in tool-call [:function :name])
+         args (u/parse-if-json (get-in tool-call [:function :arguments]))
+         fndef (get-tool fname (:tools context))
+         f (get-in fndef [:function :handler])
+         transition-cb (get-in fndef [:function :transition-cb])]
+     (if (fn? f)
+       (let [tool-result (u/await-or-return f args)]
+         (frame/llm-tool-call-result
+           {:request tool-call-msg
+            :result (tool-result-adapter {:result tool-result
+                                          :tool-id tool-id
+                                          :fname fname})
+            ;; don't run llm if this is a transition
+            ;; function, to wait for the new context
+            ;; messages from the new scenario node
+            :properties {:run-llm? (nil? transition-cb)
+                         :on-update #(transition-cb args)}}))
+       (frame/llm-tool-call-result
+         {:request tool-call-msg
+          :result (tool-result-adapter {:result "Tool not found"
+                                        :tool-it tool-id
+                                        :fname fname})})))))
 
 (defn context-aggregator-init
   "Launches tool caller process. The tool caller process handles calling tool call
   requests from the LLM and sends back the results to be aggregated into the
   context."
-  [args]
+  [{:llm/keys [tool-result-adapter]
+    :or {tool-result-adapter default-tool-result-adapter} :as args}]
   (let [tool-read (a/chan 100)
         tool-write (a/chan 100)
         tool-call-loop
         #(loop []
            (when-let [frame (a/<!! tool-write)]
-             (a/>!! tool-read (handle-tool-call frame))
+             (a/>!! tool-read (handle-tool-call frame tool-result-adapter))
              (recur)))]
     ((flow/futurize tool-call-loop :exec :io))
     (merge args {::flow/in-ports {:tool-read tool-read}
@@ -354,6 +363,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                              :in "Channel for aggregation messages"}
                        :outs {:out "Channel where new context aggregations are put"}
                        :params {:llm/context "Initial LLM context. See schema/LLMContext"
+                                :llm/tool-result-adapter "Adapter used to transform tool call results into accepted formats. Defaults to openai format"
                                 :aggregator/debug? "Optional When true, debug logs will be called"}})
 
      :workload :compute

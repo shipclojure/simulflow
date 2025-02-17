@@ -29,6 +29,19 @@
                                                              (pos? (count tools)) (assoc :tools tools)))}
                                :params {:stream/close? true}})))
 
+(defn normal-chat-completion
+  [{:keys [api-key messages tools model]}]
+  (http/request {:url groq-completions-url
+                 :headers {"Authorization" (str "Bearer " api-key)
+                           "Content-Type" "application/json"}
+
+                 :throw-on-error? false
+                 :method :post
+                 :body (u/json-str (cond-> {:messages messages
+                                            :stream true
+                                            :model model}
+                                     (pos? (count tools)) (assoc :tools tools)))}))
+
 (comment
 
   (map u/token-content (a/<!! (a/into [] (stream-groq-chat-completion
@@ -113,6 +126,14 @@
                   (when-let [c (:content d)]
                     (a/>! out-c (frame/llm-text-chunk c))))
                 (recur)))))))))
+
+(defn tool-result-adapter
+  "Transform tool results to the groq format"
+  [{:keys [result tool-id fname]}]
+  {:role :tool
+   :name fname
+   :content (if (string? result) result (u/json-str result))
+   :tool_call_id tool-id})
 
 (def groq-llm-process
   (flow/process

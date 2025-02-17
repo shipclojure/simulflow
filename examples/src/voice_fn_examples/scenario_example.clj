@@ -4,7 +4,9 @@
    [clojure.core.async.flow :as flow]
    [taoensso.telemere :as t]
    [voice-fn-examples.local :as local]
-   [voice-fn.scenario-manager :as sm]))
+   [voice-fn.processors.groq :as groq]
+   [voice-fn.scenario-manager :as sm]
+   [voice-fn.secrets :refer [secret]]))
 
 (def scenario-config
   {:initial-node :start
@@ -69,18 +71,26 @@
                {;; Don't add any context because the scenario will handle that
                 :llm/context {:messages []
                               :tools []}
+                 ;; add gateway process for scenario to inject frames
+                 :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}
 
-                ;; add gateway process for scenario to inject frames
-                :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}}
-                :extra-conns [[[:scenario :speak-out] [:tts :in]]
-                              [[:scenario :context-out] [:context-aggregator :in]]]})
+                               ;; Use groq instead of openai
+                               :llm {:proc groq/groq-llm-process
+                                     :args {:api-key (secret [:groq :api-key])
+                                            :model "llama-3.3-70b-versatile"}}
 
-        s (sm/scenario-manager {:flow flow
-                                :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel
-                                :scenario-config scenario-config})]
+                               ;; Groq has a different tool result format than openai
+                               :context-aggregator  {:args {:llm/tool-result-adapter groq/tool-result-adapter}}}
 
-    {:flow flow
-     :scenario s}))
+                 :extra-conns [[[:scenario :speak-out] [:tts :in]]
+                               [[:scenario :context-out] [:context-aggregator :in]]]})
+
+         s (sm/scenario-manager {:flow flow
+                                 :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel
+                                 :scenario-config scenario})]
+
+     {:flow flow
+      :scenario s})))
 
 (comment
 
