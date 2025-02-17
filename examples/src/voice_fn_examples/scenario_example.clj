@@ -4,9 +4,7 @@
    [clojure.core.async.flow :as flow]
    [taoensso.telemere :as t]
    [voice-fn-examples.local :as local]
-   [voice-fn.processors.groq :as groq]
-   [voice-fn.scenario-manager :as sm]
-   [voice-fn.secrets :refer [secret]]))
+   [voice-fn.scenario-manager :as sm]))
 
 (def scenario-config
   {:initial-node :start
@@ -66,28 +64,24 @@
   degrades when it has a big complex prompt to enact, so to ensure a consistent
   output use scenarios that transition the LLM into a new scenario node with a clear
   instruction for the current node."
-  []
-  (let [flow (local/make-local-flow
-               {;; Don't add any context because the scenario will handle that
-                :llm/context {:messages []
-                              :tools []}
+  ([]
+   (scenario-example {:initial-node :start}))
+  ([{:keys [initial-node]}]
+   (let [flow (local/make-local-flow
+                {;; Don't add any context because the scenario will handle that
+                 :llm/context {:messages []
+                               :tools []}
+                 :language :ro
+
                  ;; add gateway process for scenario to inject frames
-                 :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}
-
-                               ;; Use groq instead of openai
-                               :llm {:proc groq/groq-llm-process
-                                     :args {:api-key (secret [:groq :api-key])
-                                            :model "llama-3.3-70b-versatile"}}
-
-                               ;; Groq has a different tool result format than openai
-                               :context-aggregator  {:args {:llm/tool-result-adapter groq/tool-result-adapter}}}
+                 :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}}
 
                  :extra-conns [[[:scenario :speak-out] [:tts :in]]
                                [[:scenario :context-out] [:context-aggregator :in]]]})
 
          s (sm/scenario-manager {:flow flow
                                  :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel
-                                 :scenario-config scenario})]
+                                 :scenario-config (assoc scenario-config :initial-node initial-node)})]
 
      {:flow flow
       :scenario s})))
@@ -95,7 +89,7 @@
 (comment
 
   ;; create flow & scenario
-  (def s (scenario-example))
+  (def s (scenario-example {:initial-node :start}))
 
   ;; Start local ai flow - starts paused
   (let [{:keys [report-chan error-chan]} (flow/start (:flow s))]
