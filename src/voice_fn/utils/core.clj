@@ -175,4 +175,4 @@
   "Monotonic time in milliseconds. Used to check if we should send the next chunk
   of audio."
   []
-  (int (/ (System/nanoTime)  1e6)))
+  (long (/ (System/nanoTime)  1e6)))
