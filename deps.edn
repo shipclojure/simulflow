@@ -35,4 +35,15 @@
                                metosin/reitit {:mvn/version "0.7.2"}}
                   :extra-paths ["./examples/src"]}
   :clj-kondo {:replace-deps {clj-kondo/clj-kondo {:mvn/version "RELEASE"}}
-              :main-opts ["-m" "clj-kondo.main"]}}}
+              :main-opts ["-m" "clj-kondo.main"]}
+  :storm {:classpath-overrides {org.clojure/clojure nil}
+          :extra-deps {com.github.flow-storm/clojure {:mvn/version "1.12.0-3"}
+                       com.github.flow-storm/flow-storm-dbg {:mvn/version "4.2.0-SNAPSHOT"}
+                       com.github.flow-storm/flow-storm-async-flow-plugin {:mvn/version "1.0.0-SNAPSHOT"}}
+          :jvm-opts ["-Dclojure.storm.instrumentEnable=true"
+                     "-Dclojure.storm.instrumentOnlyPrefixes=clojure.core.async.flow,voice-fn"
+                     "-Dflowstorm.jarEditorCommand=emacsclient -n +<<LINE>>:0 <<JAR>>/<<FILE>>"
+                     "-Dflowstorm.fileEditorCommand=emacsclient -n +<<LINE>>:0 <<FILE>>"
+
+                     "-Dvisualvm.display.name=VoceFnExample"
+                     "-Djdk.attach.allowAttachSelf" "-XX:+UnlockDiagnosticVMOptions" "-XX:+DebugNonSafepoints"]}}}
