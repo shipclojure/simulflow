@@ -118,19 +118,29 @@
         (t/log! :info ["SCENARIO" "NEW NODE" node-id])
         (let [node (get nodes node-id)
               tools (mapv (partial transition-fn this) (:functions node))
-              append-context (vec (concat (:role-messages node) (:task-messages node)))
-              prev-node-post-actions (get-in nodes [@current-node] :post-actions)]
-          (when prev-node-post-actions
-            (doseq [a (:post-actions node)] (handle-action a)))
-          (reset! current-node node-id)
+              context (vec (->> (concat (:role-messages node) (:task-messages node))
+                                (remove nil?)))
+              ;; post actions from previous node
+              post-actions (when @current-node (get-in nodes [@current-node :post-actions]))
+              pre-actions (:pre-actions node)]
+
           (try
-            (flow/inject flow flow-in-coord [(frame/scenario-context-update {:messages append-context
-                                                                             :tools tools
-                                                                             :properties {:run-llm? (if (boolean? (:run-llm? node)) (:run-llm? node) true)}})])
-            (doseq [a (:pre-actions node)] (handle-action a))
+            (when (seq post-actions) (doseq [a post-actions]
+                                       (handle-action a)))
+
+            (reset! current-node node-id)
+            (flow/inject
+              flow
+              flow-in-coord
+              [(frame/scenario-context-update {:messages context
+                                               :tools tools
+                                               :properties {:run-llm? (get node :run-llm? true)}})])
+            (when (seq pre-actions) (doseq [a pre-actions]
+                                      (handle-action a)))
 
             (catch Exception e
               (t/log! :error e)))))
+
       (start [s]
         (when-not @initialized?
           (reset! initialized? true)
