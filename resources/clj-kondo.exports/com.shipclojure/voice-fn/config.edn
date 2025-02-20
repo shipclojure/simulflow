@@ -1,0 +1,2 @@
+{:lint-as {uncomplicate.commons.core/with-release clojure.core/let}
+ :hooks {:analyze-call {voice-fn.frame/defframe hooks.defframe/defframe}}}
