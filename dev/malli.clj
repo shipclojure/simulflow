@@ -8,7 +8,7 @@
   (malli-dev/start!)
 
   ;; create export file
-  (let [export-file (io/file "resources/clj-kondo/clj-kondo.exports/com.shipclojure/voice-fn-types/config.edn")]
+  (let [export-file (io/file "resources/clj-kondo.exports/com.shipclojure/voice-fn-types/config.edn")]
 
     ;; make parents if not exist
     (io/make-parents export-file)
