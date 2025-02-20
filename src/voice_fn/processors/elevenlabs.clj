@@ -186,8 +186,11 @@
                     ;; to be concattenated until the final json can be parsed
                     (let [attempt (u/parse-if-json (str acc msg))]
                       (if (map? attempt)
-                        [(assoc state :audio/acc "") (when-let [audio (:audio attempt)]
-                                                       {:out [(frame/audio-output-raw (u/decode-base64 audio))]})]
+                        [(assoc state :audio/acc "")
+                         (when-let [audio (:audio attempt)]
+                           {:out [(frame/audio-output-raw (u/decode-base64 audio))
+                                  (frame/xi-audio-out attempt)]})]
+
                         ;; continue concatenating
                         [(assoc state :audio/acc attempt)]))
                     (cond

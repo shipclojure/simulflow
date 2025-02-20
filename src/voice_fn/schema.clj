@@ -567,6 +567,8 @@
    [:llm/context LLMContext]
    [:llm/registered-functions {:optional true} RegisteredFunctions]
    [:transport/in-ch CoreAsyncChannel]
-   [:transport/out-ch CoreAsyncChannel]])
+   [:transport/out-ch CoreAsyncChannel]
+   [:twilio/call-sid :string]
+   [:twilio/stream-sid :string]])
 
 (def PartialConfigSchema (mu/optional-keys PipelineConfigSchema))

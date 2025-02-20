@@ -48,8 +48,10 @@
         out-frames (partial merge-with into output)]
     (condp = (:event data)
       "start" [state (if-let [stream-sid (:streamSid data)]
-                       (out-frames {:sys-out [(frame/system-config-change {:twilio/stream-sid stream-sid
-                                                                           :transport/serializer (make-twilio-serializer stream-sid)})]})
+                       (out-frames {:sys-out [(frame/system-config-change
+                                                (u/without-nils {:twilio/stream-sid stream-sid
+                                                                 :twilio/call-sid (get-in data [:start :callSid])
+                                                                 :transport/serializer (make-twilio-serializer stream-sid)}))]})
                        (out-frames {}))]
       "media"
       [state (out-frames {:out [(frame/audio-input-raw

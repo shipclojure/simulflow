@@ -1,2 +1,1 @@
-{:config-paths ["../resources/clj-kondo.exports/com.shipclojure/voice-fn"
-                "../resources/clj-kondo.exports/com.shipclojure/voice-fn-types"]}
+{:config-paths ["../resources/clj-kondo.exports/com.shipclojure/voice-fn"]}

@@ -2,6 +2,7 @@
   "Defines the core frame concept and frame creation functions for the voice-fn pipeline.
    A frame represents a discrete unit of data or control flow in the pipeline."
   (:require
+   [malli.clj-kondo :as mc]
    [malli.core :as m]
    [malli.error :as me]
    [voice-fn.schema :as schema]))
@@ -243,14 +244,14 @@
 (def XiAlignment [:map
                   [:charStartTimesMs [:vector :int]]
                   [:chars [:vector :string]]
-                  [:charDurationMs [:vector :int]]])
+                  [:charDurationsMs [:vector :int]]])
 
 (defframe xi-audio-out
   "Frame containing the full output from elevenlabs including chars & timings for chars"
   {:type :frame.xi/audio-out
    :schema [:map
-            [:alignment XiAlignment]
-            [:normalizedAlignment XiAlignment]
+            [:alignment [:maybe XiAlignment]]
+            [:normalizedAlignment {:optional true} [:maybe XiAlignment]]
             [:audio :string] ;; base64 audio
             [:isFinal [:maybe :boolean]]]})
 
@@ -302,3 +303,9 @@
 (defframe text-input
   "Text input frame for LLM processing"
   {:type :frame.text/input})
+
+(comment
+
+  (mc/emit!)
+
+  ,)

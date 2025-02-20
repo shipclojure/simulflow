@@ -12,7 +12,7 @@
                 [(api/token-node 'defn) frame-name docstring
                  (api/vector-node [(api/token-node 'data)])
                  (api/list-node
-                   [(api/token-node 'create-frame)
+                   [(api/token-node 'voice-fn.frame/create-frame)
                     frame-type
                     (api/token-node 'data)])])
               (api/list-node
