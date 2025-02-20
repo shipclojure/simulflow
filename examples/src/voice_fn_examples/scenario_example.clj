@@ -88,6 +88,7 @@
 
 (comment
 
+  (def call-in-progress? (atom false))
   ;; create flow & scenario
   (def s (scenario-example {:initial-node :start}))
 
@@ -97,13 +98,19 @@
     (sm/start (:scenario s))
     ;; Resume local ai -> you can now speak with the AI
     (flow/resume (:flow s))
+    (reset! call-in-progress? true)
     ;; Monitor report & error channels
-    (a/go-loop []
-      (when-let [[msg c] (a/alts! [report-chan error-chan])]
-        (when (map? msg)
-          (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
-        (recur))))
+    (a/thread
+      (loop []
+        (when @call-in-progress?
+          (when-let [[msg c] (a/alts!! [report-chan error-chan])]
+            (when (map? msg)
+              (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
+            (recur))))))
 
   ;; Stop the conversation
-  (flow/stop (:flow s))
+  (do
+    (flow/stop (:flow s))
+    (reset! call-in-progress? false))
+
   ,)
