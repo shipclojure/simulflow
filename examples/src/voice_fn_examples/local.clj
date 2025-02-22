@@ -3,10 +3,10 @@
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [taoensso.telemere :as t]
-   [voice-fn.processors.deepgram :as asr]
-   [voice-fn.processors.elevenlabs :as tts]
+   [voice-fn.processors.deepgram :as deepgram]
+   [voice-fn.processors.elevenlabs :as xi]
    [voice-fn.processors.llm-context-aggregator :as context]
-   [voice-fn.processors.openai :as llm]
+   [voice-fn.processors.openai :as openai]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport :as transport]
    [voice-fn.utils.core :as u]))
@@ -63,7 +63,7 @@
                                :audio-in/channels channels
                                :audio-in/sample-size-bits sample-size-bits}}
          ;; raw-audio-input -> transcription frames
-         :transcriptor {:proc asr/deepgram-processor
+         :transcriptor {:proc deepgram/deepgram-processor
                         :args {:transcription/api-key (secret [:deepgram :api-key])
                                :transcription/interim-results? true
                                :transcription/punctuate? false
@@ -82,7 +82,7 @@
                                       :aggregator/debug? debug?}}
 
          ;; Takes llm-context frames and produces new llm-text-chunk & llm-tool-call-chunk frames
-         :llm {:proc llm/openai-llm-process
+         :llm {:proc openai/openai-llm-process
                :args {:openai/api-key (secret [:openai :new-api-sk])
                       :llm/model "gpt-4o-mini"}}
 
@@ -94,7 +94,7 @@
          :llm-sentence-assembler {:proc context/llm-sentence-assembler}
 
          ;; speak-frames -> audio-output-raw frames
-         :tts {:proc tts/elevenlabs-tts-process
+         :tts {:proc xi/elevenlabs-tts-process
                :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
                       :elevenlabs/model-id "eleven_flash_v2_5"
                       :elevenlabs/voice-id (secret [:elevenlabs :voice-id])
