@@ -1,9 +1,13 @@
-(ns user
-  (:require
-   [clj-reload.core :as reload]))
+(ns user)
 
-(reload/init {:dirs ["src" "dev" "test" "../examples/src"]})
+(defmacro jit [sym]
+  `(requiring-resolve '~sym))
+
+(defonce initiated-clj-reload? (atom false))
 
 (defn reset
   []
-  (reload/reload))
+  (when-not @initiated-clj-reload?
+    ((jit clj-reload.core/init) {:dirs ["src" "dev" "test" "../examples/src"]})
+    (reset! initiated-clj-reload? true))
+  ((jit clj-reload.core/reload)))
