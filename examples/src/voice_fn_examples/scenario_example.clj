@@ -12,12 +12,15 @@
    {:start
     ;; Role messages dictate how the AI should behave. Ideally :role-messages
     ;; should be present on the :initial-node as they persist for the rest of the conversation
-    {:role-messages [{:role :system
+    {:run-llm? true ;; Run the AI when this node is set. We don't run inference as we will run pre-defined speech
+     :role-messages [{:role :system
                       :content "You are a restaurant reservation assistant for La Maison, an upscale French restaurant. You must ALWAYS use one of the available functions to progress the conversation. This is a phone conversations and your responses will be converted to audio. Avoid outputting special characters and emojis. Be casual and friendly."}]
      ;; task-messages signify the current task the AI has. Each node requires a
      ;; task
      :task-messages [{:role :system
                       :content "Warmly greet the customer and ask how many people are in their party."}]
+     :pre-actions [{:type :tts-say
+                    :text "Hello! Welcome to La Maison! How many people are in your party?"}]
      :functions [{:type :function
                   :function
                   {:name "record_party_size"
