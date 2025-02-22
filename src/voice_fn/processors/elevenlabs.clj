@@ -132,7 +132,7 @@
                    alive? (atom true)
                    conf {:on-open (fn [ws]
                                     (let [configuration (begin-stream-message args)]
-                                      (t/log! :info ["Elevenlabs websocket connection open. Sending configuration message" configuration])
+                                      (t/log! :debug ["Elevenlabs websocket connection open. Sending configuration message" configuration])
                                       (ws/send! ws configuration)))
                          :on-message (fn [_ws ^HeapCharBuffer data _last?]
                                        (a/put! ws-read (str data)))
@@ -140,8 +140,8 @@
                                      (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
                          :on-close (fn [_ws code reason]
                                      (reset! alive? false)
-                                     (t/log! :info ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))}
-                   _ (t/log! {:level :info :id :elevenlabs} "Connecting to transcription websocket")
+                                     (t/log! :debug ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))}
+                   _ (t/log! {:level :debug :id :elevenlabs} "Connecting to transcription websocket")
                    ws-conn @(ws/websocket
                               url
                               conf)
