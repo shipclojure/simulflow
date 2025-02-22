@@ -27,7 +27,7 @@
      :or {llm-context {:messages
                        [{:role "system"
                          :content "You are a voice agent operating via phone. Be
-                       concise. The input you receive comes from a
+                       concise in your answers. The input you receive comes from a
                        speech-to-text (transcription) system that isn't always
                        efficient and may send unclear text. Ask for
                        clarification when you're unsure what the person said."}]
@@ -137,21 +137,29 @@
                 [[:audio-splitter :out] [:transport-out :in]]]
                extra-conns)})))
 
-(def local-ai (make-local-flow))
-
 (comment
 
+  (require '[flow-storm.plugins.async-flow.all])
+
+  (def local-ai (make-local-flow))
+
+  (defonce flow-started? (atom false))
   ;; Start local ai flow - starts paused
   (let [{:keys [report-chan error-chan]} (flow/start local-ai)]
+    (reset! flow-started? true)
     ;; Resume local ai -> you can now speak with the AI
     (flow/resume local-ai)
-    (a/go-loop []
-      (when-let [[msg c] (a/alts! [report-chan error-chan])]
-        (when (map? msg)
-          (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
-        (recur))))
+    (a/thread
+      (loop []
+        (when @flow-started?
+          (when-let [[msg c] (a/alts! [report-chan error-chan])]
+            (when (map? msg)
+              (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
+            (recur))))))
 
   ;; Stop the conversation
-  (flow/stop local-ai)
+  (do
+    (flow/stop local-ai)
+    (reset! flow-started? false))
 
   ,)
