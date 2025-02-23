@@ -4,6 +4,8 @@
 
 This project's status is **_experimental_**. Expect breaking changes.
 
+[![Watch the video](https://img.youtube.com/vi/HwoGMhIx5w0/0.jpg)](https://youtu.be/HwoGMhIx5w0?t=345)
+
 ## Core Features
 
 -   **Flow-Based Architecture:** Built on `core.async.flow` for robust concurrent processing
