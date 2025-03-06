@@ -23,7 +23,8 @@
 (defn make-websocket-url
   [{:transcription/keys [interim-results? punctuate? model sample-rate utterance-end-ms language  vad-events? smart-format? encoding channels]
     :or {interim-results? false
-         punctuate? false}}]
+         punctuate? false
+         channels 1}}]
   (u/append-search-params deepgram-url (u/without-nils {:encoding (deepgram-encoding encoding encoding)
                                                         :language language
                                                         :sample_rate sample-rate
@@ -134,6 +135,7 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
                                 :transcription/model "Model used for transcription"
                                 :transcription/utterance-end-ms "silence time after speech in ms until utterance is considered ended"
                                 :transcription/language "Language for speech"
+                                :transcription/channels "Number of channels for audio (1 or 2)"
                                 :transcription/encoding "Audio encoding of the input audio"
                                 :transcription/sample-rate "Sample rate of the input audio"}
                        :workload :io})
@@ -153,7 +155,7 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
                                             (reset! alive? false)
                                             (t/log! {:level :info :id :deepgram-transcriptor} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason]))}
 
-                   _ (t/log! {:level :info :id :deepgram-transcriptor} "Connecting to transcription websocket")
+                   _ (t/log! {:level :info :id :deepgram-transcriptor} ["Connecting to transcription websocket" websocket-url])
                    ws-conn @(ws/websocket
                               websocket-url
                               conn-config)
@@ -161,8 +163,7 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
                    write-to-ws #(loop []
                                   (when @alive?
                                     (when-let [msg (a/<!! ws-write-chan)]
-                                      (cond
-                                        (and (frame/audio-input-raw? msg) @alive?)
+                                      (when (and (frame/audio-input-raw? msg) @alive?)
                                         (do
                                           (ws/send! ws-conn (:frame/data msg))
                                           (recur))))))
@@ -200,6 +201,5 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
                           frames (deepgram-event->frames m)]
                       [state {:out frames}])
                     (cond
-                      (frame/audio-input-raw? msg)
-                      [state {:ws-write [msg]}]
+                      (frame/audio-input-raw? msg) [state {:ws-write [msg]}]
                       :else [state])))}))

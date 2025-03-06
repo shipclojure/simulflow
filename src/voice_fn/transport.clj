@@ -61,6 +61,12 @@
       [state (out-frames {:sys-out [(frame/system-stop true)]})]
       [state])))
 
+(defn async-in-transform
+  [state _ input]
+  (if (bytes? input)
+    [state {:out [(frame/audio-input-raw input)]}]
+    [state]))
+
 (defn line-supported?
   [^DataLine$Info info]
   (AudioSystem/isLineSupported info))
@@ -142,6 +148,23 @@
               :twilio/handle-event handle-event})
 
      :transform twilio-transport-in-transform}))
+
+(def async-transport-in
+  "Takes in twilio events and transforms them into audio-input-raw and config
+  changes."
+  (flow/process
+    {:describe (fn [] {:outs {:out "Channel on which audio frames are put"}
+                       :params {:transport/in-ch "Channel from which input comes. Input should be byte array"}})
+
+     :transition (fn [{::flow/keys [in-ports out-ports]} transition]
+                   (when (= transition ::flow/stop)
+                     (doseq [port (remove nil? (concat (vals in-ports) (vals out-ports)))]
+                       (a/close! port))))
+
+     :init (fn [{:transport/keys [in-ch] :twilio/keys [handle-event]}]
+             {::flow/in-ports {:in in-ch}})
+
+     :transform async-in-transform}))
 
 (def realtime-transport-out-processor
   "Processor that streams audio out in real time so we can account for
