@@ -7,6 +7,7 @@
    [voice-fn.processors.elevenlabs :as xi]
    [voice-fn.processors.llm-context-aggregator :as context]
    [voice-fn.processors.openai :as openai]
+   [voice-fn.processors.silence-monitor :refer [silence-monitor]]
    [voice-fn.secrets :refer [secret]]
    [voice-fn.transport :as transport]
    [voice-fn.utils.core :as u]))
@@ -120,7 +121,8 @@
                                 :audio.out/duration-ms chunk-duration-ms}}
          :prn-sink {:proc (flow/process
                             {:describe (fn [] {:ins {:in "gimme stuff to print!"}})
-                             :transform (fn [_ _ v] (prn v))})}}
+                             :transform (fn [_ _ v] (prn v))})}
+         :silence-monitor {:proc silence-monitor}}
         extra-procs)
       :conns (concat
                [[[:transport-in :out] [:transcriptor :in]]
@@ -138,7 +140,11 @@
 
                 [[:tts :out] [:audio-splitter :in]]
                 [[:audio-splitter :out] [:transport-out :in]]
-                [[:transport-out :out] [:prn-sink :in]]]
+                [[:transport-out :out] [:prn-sink :in]]
+                [[:transport-out :out] [:silence-monitor :in]]
+                [[:transcriptor :out] [:silence-monitor :in]]
+                [[:silence-monitor :out] [:context-aggregator :in]]
+                [[:silence-monitor :out] [:tts :in]]]
                extra-conns)})))
 
 (comment
