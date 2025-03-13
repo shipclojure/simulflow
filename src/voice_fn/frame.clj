@@ -271,6 +271,21 @@
    :scheam :boolean})
 
 ;;
+;; Bot Interaction Frmaes
+;; Frames for handling bot speech events
+;;
+
+(defframe bot-speech-start
+  "Bot started speaking"
+  {:type :frame.bot/speech-start
+   :schema :boolean})
+
+(defframe bot-speech-stop
+  "Bot stopped speaking"
+  {:type :frame.bot/speech-stop
+   :scheam :boolean})
+
+;;
 ;; Control Frames
 ;; Frames for pipeline flow control
 ;;

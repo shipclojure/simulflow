@@ -117,7 +117,10 @@
                          :args {:audio.out/sample-rate sample-rate
                                 :audio.out/sample-size-bits sample-size-bits
                                 :audio.out/channels channels
-                                :audio.out/duration-ms chunk-duration-ms}}}
+                                :audio.out/duration-ms chunk-duration-ms}}
+         :prn-sink {:proc (flow/process
+                            {:describe (fn [] {:ins {:in "gimme stuff to print!"}})
+                             :transform (fn [_ _ v] (prn v))})}}
         extra-procs)
       :conns (concat
                [[[:transport-in :out] [:transcriptor :in]]
@@ -134,7 +137,8 @@
                 [[:llm-sentence-assembler :out] [:tts :in]]
 
                 [[:tts :out] [:audio-splitter :in]]
-                [[:audio-splitter :out] [:transport-out :in]]]
+                [[:audio-splitter :out] [:transport-out :in]]
+                [[:transport-out :out] [:prn-sink :in]]]
                extra-conns)})))
 
 (comment
