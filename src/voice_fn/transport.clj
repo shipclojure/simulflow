@@ -217,7 +217,7 @@
 
                    ;; Monitor for end of speech
                    speech-monitor #(loop []
-                                     (a/<!! (a/timeout 1000)) ;; Check every 100ms
+                                     (a/<!! (a/timeout 1000)) ;; Check every 1000ms
                                      (let [now (u/mono-time)
                                            silence-duration (- now @last-audio-time)]
                                        ;; If we've been silent for 2x chunk duration and were speaking
