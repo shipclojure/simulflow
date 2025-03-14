@@ -4,6 +4,17 @@
    [clojure.core.async.flow :as flow]
    [voice-fn.frame :as frame]))
 
+(defn speech-start?
+  [frame]
+  (or (frame/user-speech-start? frame)
+      (frame/bot-speech-start? frame)))
+
+(defn speech-stop?
+  [frame]
+  (or
+    (frame/user-speech-stop? frame)
+    (frame/bot-speech-stop? frame)))
+
 (defn voice-activity-frame?
   [frame]
   (or (frame/user-speech-start? frame)
@@ -24,13 +35,18 @@
                       prompts #{"Are you still there?"}}}]
              (let [input-ch (a/chan 1024)
                    speak-ch (a/chan 1024)
+                   speaking? (atom true)
                    silence-detection-loop #(loop []
                                              (when-let [[frame c] (a/alts!! [(a/timeout timeout-ms) input-ch])]
                                                (if (and (= c input-ch)
                                                         (voice-activity-frame? frame))
-                                                 (recur)
-                                                 (do (a/>!! speak-ch (frame/speak-frame (rand-nth (vec prompts))))
-                                                     (recur)))))]
+                                                 (do
+                                                   (when (speech-start? frame) (reset! speaking? true))
+                                                   (when (speech-stop? frame) (reset! speaking? false))
+                                                   (recur))
+                                                 (do
+                                                   (when-not @speaking? (a/>!! speak-ch (frame/speak-frame (rand-nth (vec prompts)))))
+                                                   (recur)))))]
                ((flow/futurize silence-detection-loop :exec :io))
                {::flow/out-ports {:input input-ch}
                 ::flow/in-ports {:speak-out speak-ch}}))
