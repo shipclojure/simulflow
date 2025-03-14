@@ -189,7 +189,7 @@
              (assert out-chan "Required :transport/out-chan for sending output")
              (let [;; send every 10ms to account for network
                    duration (or duration-ms 20)
-                   sending-interval (/ duration 2)
+                   sending-interval (* duration 1.1)
                    next-send-time (atom (u/mono-time))
 
                    ;; Track bot speaking state
@@ -211,6 +211,7 @@
 
                                         ;; Send audio with timing control
                                         (a/<!! (a/timeout (- @next-send-time now)))
+                                        (t/log! {:level :trace :id :transport} "Sending realtime out")
                                         (a/>!! out-chan msg)
                                         (reset! next-send-time (+ now sending-interval)))
                                       (recur)))

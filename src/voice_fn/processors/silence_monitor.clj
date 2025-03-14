@@ -15,6 +15,12 @@
     (frame/user-speech-stop? frame)
     (frame/bot-speech-stop? frame)))
 
+(defn user-msg?
+  [frame]
+  (or
+    (frame/user-speech-stop? frame)
+    (frame/user-speech-start? frame)))
+
 (defn voice-activity-frame?
   [frame]
   (or (frame/user-speech-start? frame)
@@ -30,22 +36,30 @@
                        :params {:inactivity/timeout-ms "Timeout in ms before sending inactivity prompt. Default 5000ms"
                                 :inactivity/prompts "Dictionary with messages to send when inactivity is detected. Default 'Are you still there?'"}})
 
-     :init (fn [{:inactivity/keys [timeout-ms prompts]
+     :init (fn [{:inactivity/keys [timeout-ms prompts end-call-prompts]
                  :or {timeout-ms 5000
-                      prompts #{"Are you still there?"}}}]
+                      prompts #{"Are you still there?"}
+                      end-call-prompts #{"Goodbye!"}}}]
              (let [input-ch (a/chan 1024)
                    speak-ch (a/chan 1024)
                    speaking? (atom true)
+                   silence-message-count (atom 0)
                    silence-detection-loop #(loop []
                                              (when-let [[frame c] (a/alts!! [(a/timeout timeout-ms) input-ch])]
                                                (if (and (= c input-ch)
                                                         (voice-activity-frame? frame))
                                                  (do
+                                                   (when (user-msg? frame) (reset! silence-message-count 0))
                                                    (when (speech-start? frame) (reset! speaking? true))
                                                    (when (speech-stop? frame) (reset! speaking? false))
                                                    (recur))
                                                  (do
-                                                   (when-not @speaking? (a/>!! speak-ch (frame/speak-frame (rand-nth (vec prompts)))))
+                                                   (when-not @speaking?
+                                                     (swap! silence-message-count inc)
+                                                     ;; End the call if we prompted for activity 3 times
+                                                     (if  (>= @silence-message-count  3)
+                                                       (a/>!! speak-ch (frame/speak-frame (rand-nth (vec end-call-prompts))))
+                                                       (a/>!! speak-ch (frame/speak-frame (rand-nth (vec prompts))))))
                                                    (recur)))))]
                ((flow/futurize silence-detection-loop :exec :io))
                {::flow/out-ports {:input input-ch}
