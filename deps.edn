@@ -3,7 +3,7 @@
         org.uncomplicate/clojure-sound {:mvn/version "0.3.0"}
         com.taoensso/telemere {:mvn/version "1.0.0-RC1"}
         metosin/malli {:mvn/version "0.17.0"}
-        org.clojure/core.async {:git/sha "88a7971196cd41fbc921df3f4c36a004a3f974d6" :git/url "https://github.com/clojure/core.async"}
+        org.clojure/core.async {:mvn/version "1.9.808-alpha1"}
         metosin/jsonista {:mvn/version "0.3.8"}
         com.microsoft.onnxruntime/onnxruntime {:mvn/version "1.20.0"}
         com.microsoft.onnxruntime/onnxruntime_gpu {:mvn/version "1.20.0"}

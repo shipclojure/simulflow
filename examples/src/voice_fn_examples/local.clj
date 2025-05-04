@@ -1,4 +1,5 @@
 (ns voice-fn-examples.local
+  {:clj-reload/no-unload true}
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
@@ -119,9 +120,11 @@
                                 :audio.out/sample-size-bits sample-size-bits
                                 :audio.out/channels channels
                                 :audio.out/duration-ms chunk-duration-ms}}
-         :prn-sink {:proc (flow/process
-                            {:describe (fn [] {:ins {:in "gimme stuff to print!"}})
-                             :transform (fn [_ _ v] (prn v))})}
+         :prn-sink {:proc (flow/process (fn
+                                          ([] {:ins {:in "gimme stuff to print!"}})
+                                          ([_] nil)
+                                          ([_ _] nil)
+                                          ([_ _ v] (prn v))))}
          :silence-monitor {:proc silence-monitor}}
         extra-procs)
       :conns (concat
@@ -149,11 +152,10 @@
 
 (comment
 
-  (require '[flow-storm.plugins.async-flow.all])
-
   (def local-ai (make-local-flow))
 
   (defonce flow-started? (atom false))
+
   ;; Start local ai flow - starts paused
   (let [{:keys [report-chan error-chan]} (flow/start local-ai)]
     (reset! flow-started? true)
@@ -162,7 +164,7 @@
     (a/thread
       (loop []
         (when @flow-started?
-          (when-let [[msg c] (a/alts! [report-chan error-chan])]
+          (when-let [[msg c] (a/alts!! [report-chan error-chan])]
             (when (map? msg)
               (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
             (recur))))))
