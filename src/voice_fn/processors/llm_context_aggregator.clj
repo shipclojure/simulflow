@@ -359,29 +359,31 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
 (def context-aggregator
   "Aggregates context messages. Keeps the full conversation history."
   (flow/process
-    (flow/map->step  {:describe (fn [] {:ins {:sys-in "Channel for receiving system messages that take priority"
-                                              :in "Channel for aggregation messages"}
-                                        :outs {:out "Channel where new context aggregations are put"}
-                                        :params {:llm/context "Initial LLM context. See schema/LLMContext"
-                                                 :llm/tool-result-adapter "Adapter used to transform tool call results into accepted formats. Defaults to openai format"
-                                                 :aggregator/debug? "Optional When true, debug logs will be called"}})
+    (flow/map->step
+      {:describe (fn [] {:ins {:sys-in "Channel for receiving system messages that take priority"
+                               :in "Channel for aggregation messages"}
+                         :outs {:out "Channel where new context aggregations are put"}
+                         :params {:llm/context "Initial LLM context. See schema/LLMContext"
+                                  :llm/tool-result-adapter "Adapter used to transform tool call results into accepted formats. Defaults to openai format"
+                                  :aggregator/debug? "Optional When true, debug logs will be called"}})
 
-                      :workload :compute
-                      :init context-aggregator-init
-                      :transform context-aggregator-transform})))
+       :workload :compute
+       :init context-aggregator-init
+       :transform context-aggregator-transform})))
 
 (def assistant-context-assembler
   "Assembles streaming tool-call request or message tokens from the LLM."
   (flow/process
-    (flow/map->step {:describe
-                     (fn []
-                       {:ins {:sys-in "Channel for receiving system messages that take priority"
-                              :in "Channel for streaming tool call requests"}
-                        :outs {:out "Channel for output new contexts with tool call results"}
-                        :params {:llm/context "Initial LLM context. See schema/LLMContext"
-                                 :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
-                     :init identity
-                     :transform assistant-context-assembler-transform})))
+    (flow/map->step
+      {:describe
+       (fn []
+         {:ins {:sys-in "Channel for receiving system messages that take priority"
+                :in "Channel for streaming tool call requests"}
+          :outs {:out "Channel for output new contexts with tool call results"}
+          :params {:llm/context "Initial LLM context. See schema/LLMContext"
+                   :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
+       :init identity
+       :transform assistant-context-assembler-transform})))
 
 (def llm-sentence-assembler
   "Takes in llm-text-chunk frames and returns a full sentence. Useful for

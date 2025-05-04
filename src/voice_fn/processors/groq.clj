@@ -136,42 +136,43 @@
 
 (def groq-llm-process
   (flow/process
-    (flow/map->step {:describe (fn [] {:ins {:in "Channel for incoming context aggregations"}
-                                       :outs {:out "Channel where streaming responses will go"}
-                                       :params {:llm/model "Groq model used"
-                                                :groq/api-key "Groq Api key"
-                                                :llm/temperature "Optional temperature parameter for the llm inference"
-                                                :llm/max-tokens "Optional max tokens to generate"
-                                                :llm/presence-penalty "Optional (-2.0 to 2.0)"
-                                                :llm/top-p "Optional nucleus sampling threshold"
-                                                :llm/seed "Optional seed used for deterministic sampling"
-                                                :llm/max-completion-tokens "Optional Max tokens in completion"}
-                                       :workload :io})
+    (flow/map->step
+      {:describe (fn [] {:ins {:in "Channel for incoming context aggregations"}
+                         :outs {:out "Channel where streaming responses will go"}
+                         :params {:llm/model "Groq model used"
+                                  :groq/api-key "Groq Api key"
+                                  :llm/temperature "Optional temperature parameter for the llm inference"
+                                  :llm/max-tokens "Optional max tokens to generate"
+                                  :llm/presence-penalty "Optional (-2.0 to 2.0)"
+                                  :llm/top-p "Optional nucleus sampling threshold"
+                                  :llm/seed "Optional seed used for deterministic sampling"
+                                  :llm/max-completion-tokens "Optional Max tokens in completion"}
+                         :workload :io})
 
-                     :transition (fn [{::flow/keys [in-ports out-ports]} transition]
-                                   (when (= transition ::flow/stop)
-                                     (doseq [port (concat (vals in-ports) (vals out-ports))]
-                                       (a/close! port))))
-                     :init (fn [params]
-                             (let [state (m/decode GroqLLMConfigSchema params mt/default-value-transformer)
-                                   llm-write (a/chan 100)
-                                   llm-read (a/chan 1024)
-                                   write-to-llm #(loop []
-                                                   (if-let [frame (a/<!! llm-write)]
-                                                     (do
-                                                       (t/log! :info ["AI REQUEST" (:frame/data frame)])
-                                                       (assert (or (frame/llm-context? frame)
-                                                                   (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
-                                                       (flow-do-completion! state llm-read (:frame/data frame))
-                                                       (recur))
-                                                     (t/log! {:level :info :id :llm} "Closing llm loop")))]
-                               ((flow/futurize write-to-llm :exec :io))
-                               {::flow/in-ports {:llm-read llm-read}
-                                ::flow/out-ports {:llm-write llm-write}}))
+       :transition (fn [{::flow/keys [in-ports out-ports]} transition]
+                     (when (= transition ::flow/stop)
+                       (doseq [port (concat (vals in-ports) (vals out-ports))]
+                         (a/close! port))))
+       :init (fn [params]
+               (let [state (m/decode GroqLLMConfigSchema params mt/default-value-transformer)
+                     llm-write (a/chan 100)
+                     llm-read (a/chan 1024)
+                     write-to-llm #(loop []
+                                     (if-let [frame (a/<!! llm-write)]
+                                       (do
+                                         (t/log! :info ["AI REQUEST" (:frame/data frame)])
+                                         (assert (or (frame/llm-context? frame)
+                                                     (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
+                                         (flow-do-completion! state llm-read (:frame/data frame))
+                                         (recur))
+                                       (t/log! {:level :info :id :llm} "Closing llm loop")))]
+                 ((flow/futurize write-to-llm :exec :io))
+                 {::flow/in-ports {:llm-read llm-read}
+                  ::flow/out-ports {:llm-write llm-write}}))
 
-                     :transform (fn [state in msg]
-                                  (if (= in :llm-read)
-                                    [state {:out [msg]}]
-                                    (cond
-                                      (frame/llm-context? msg)
-                                      [state {:llm-write [msg]}])))})))
+       :transform (fn [state in msg]
+                    (if (= in :llm-read)
+                      [state {:out [msg]}]
+                      (cond
+                        (frame/llm-context? msg)
+                        [state {:llm-write [msg]}])))})))
