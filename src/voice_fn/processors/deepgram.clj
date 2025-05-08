@@ -165,9 +165,8 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
                                     (when @alive?
                                       (when-let [msg (a/<!! ws-write-chan)]
                                         (when (and (frame/audio-input-raw? msg) @alive?)
-                                          (do
-                                            (ws/send! ws-conn (:frame/data msg))
-                                            (recur))))))
+                                          (ws/send! ws-conn (:frame/data msg))
+                                          (recur)))))
                      keep-alive #(loop []
                                    (when @alive?
                                      (a/<!! (a/timeout 3000))
