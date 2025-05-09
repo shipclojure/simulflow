@@ -245,13 +245,14 @@
     (flow/map->step {:describe (fn [] {:outs {:out "Channel on which audio frames are put"}
                                        :params {:audio-in/sample-rate "Sample rate for audio input. Default 16000"
                                                 :audio-in/channels "Channels for audio input. Default 1"
-                                                :audio-in/sample-size-bits "Sample size in bits. Default 16"}})
-                     :init (fn [{:audio-in/keys [sample-rate sample-size-bits channels]
+                                                :audio-in/sample-size-bits "Sample size in bits. Default 16"
+                                                :audio-in/buffer-size "Size of the buffer mic capture buffer"}})
+                     :init (fn [{:audio-in/keys [sample-rate sample-size-bits channels buffer-size]
                                  :or {sample-rate 16000
                                       channels 1
-                                      sample-size-bits 16}}]
-                             (let [buffer-size (frame-buffer-size sample-rate)
-                                   af (audio-format sample-rate sample-size-bits channels)
+                                      sample-size-bits 16
+                                      buffer-size (frame-buffer-size sample-rate)}}]
+                             (let [af (audio-format sample-rate sample-size-bits channels)
                                    line (open-line! :target af)
                                    out-ch (a/chan 1024)
                                    buffer (byte-array buffer-size)
