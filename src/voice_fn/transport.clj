@@ -278,7 +278,8 @@
                                    (when (and (= transiton ::flow/stop)
                                               (fn? (::close state)))
                                      (t/log! :info "Closing transport in")
-                                     ((::close state))))
+                                     ((::close state)))
+                                   state)
                      :transform (fn [state _ frame]
                                   [state {:out [frame]}])})))
 
