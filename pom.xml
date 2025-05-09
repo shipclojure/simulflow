@@ -2,8 +2,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.shipclojure</groupId>
+  <packaging>jar</packaging>
   <artifactId>voice-fn</artifactId>
-  <version>0.1.0-alfa</version>
   <name>shipclojure/voice-fn</name>
   <description>A Clojure framework for building real-time voice-enabled AI applications. voice-fn handles the orchestration of speech recognition, audio processing, and AI service integration with the elegance of functional programming.</description>
   <url>https://github.com/shipclojure/voice-fn</url>
@@ -24,6 +24,27 @@
     <developerConnection>scm:git:ssh://git@github.com/shipclojure/voice-fn.git</developerConnection>
     <tag>v0.1.0-alfa</tag>
   </scm>
+  <version>0.1.0</version>
+  <build>
+    <sourceDirectory>src</sourceDirectory>
+  </build>
+  <repositories>
+    <repository>
+      <id>clojars</id>
+      <url>https://repo.clojars.org/</url>
+    </repository>
+    <repository>
+      <id>cognitect-dev-tools</id>
+      <url>https://dev-tools.cognitect.com/maven/releases/</url>
+    </repository>
+  </repositories>
+  <distributionManagement>
+    <repository>
+      <id>clojars</id>
+      <name>Clojars repository</name>
+      <url>https://clojars.org/repo</url>
+    </repository>
+  </distributionManagement>
   <dependencies>
     <dependency>
       <groupId>com.microsoft.onnxruntime</groupId>
@@ -66,29 +87,14 @@
       <version>1.2.107</version>
     </dependency>
     <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>core.async</artifactId>
+      <version>1.9.808-alpha1</version>
+    </dependency>
+    <dependency>
       <groupId>com.taoensso</groupId>
       <artifactId>telemere</artifactId>
       <version>1.0.0-RC1</version>
     </dependency>
   </dependencies>
-  <build>
-    <sourceDirectory>src</sourceDirectory>
-  </build>
-  <repositories>
-    <repository>
-      <id>clojars</id>
-      <url>https://repo.clojars.org/</url>
-    </repository>
-    <repository>
-      <id>cognitect-dev-tools</id>
-      <url>https://dev-tools.cognitect.com/maven/releases/</url>
-    </repository>
-  </repositories>
-  <distributionManagement>
-    <repository>
-      <id>clojars</id>
-      <name>Clojars repository</name>
-      <url>https://clojars.org/repo</url>
-    </repository>
-  </distributionManagement>
 </project>

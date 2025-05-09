@@ -1,6 +1,13 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+## [0.1.3-alpha]
+### Added
+- Scenario Manager for handling complex conversation flows
+- Silence detection with automatic inactivity prompts
+- Bot speaking events tracking
+- End call prompts when no activity is detected
+
 ## [0.1.2] - 2024-01-30
 ### Added
 - Support for tool use. See [llm-context-aggregator.clj](./src/voice_fn/processors/llm_context_aggregator.clj)
@@ -29,5 +36,6 @@ We can use the config-change frame to do this. And every processor takes what it
 ### Removed
 - `pipeline.clj` - Removed in favor of `core.async.flow`
 
-[Unreleased]: https://github.com/ovistoica/voice-fn/compare/0.1.1...HEAD
+[0.1.3-alpha]: https://github.com/ovistoica/voice-fn/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/ovistoica/voice-fn/compare/0.1.3-alpha...HEAD
 [0.1.1]: https://github.com/ovistoica/voice-fn/compare/0.1.0...0.1.1
