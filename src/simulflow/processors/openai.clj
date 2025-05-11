@@ -2,9 +2,9 @@
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
-   [hato.client :as http]
    [malli.core :as m]
    [malli.transform :as mt]
+   [simulflow.async :as async]
    [simulflow.frame :as frame]
    [simulflow.schema :as schema]
    [simulflow.utils.core :as u]
@@ -12,16 +12,6 @@
    [taoensso.telemere :as t]))
 
 (def openai-completions-url "https://api.openai.com/v1/chat/completions")
-
-(comment
-  (require '[simulflow.secrets :refer [secret]])
-  (def context {:messages [{:role "system", :content "You are a helpful assistant "} {:role :system, :content "You are a restaurant reservation assistant for La Maison, an upscale French restaurant. You must ALWAYS use one of the available functions to progress the conversation. This is a phone conversations and your responses will be converted to audio. Avoid outputting special characters and emojis. Be casual and friendly."} {:role :system, :content "Warmly greet the customer and ask how many people are in their party."} {:role "user", :content "It's gonna be 5 people."} {:role :assistant, :tool_calls [{:id "call_CBFGmrwUrrzcmsgvI9kvqdjc", :type :function, :function {:name "record_party_size", :arguments "{\"size\":5}"}}]} {:role :tool, :content [{:type :text, :text "5"}], :tool_call_id "call_CBFGmrwUrrzcmsgvI9kvqdjc"} {:role :system, :content "Ask what time they'd like to dine. Restaurant is open 5 PM to 10 PM. After they provide a time, confirm it's within operating hours before recording. Use 24-hour format for internal recording (e.g., 17:00 for 5 PM)."} {:role "user", :content "At around 4 o'clock in the afternoon."}], :tools [{:type :function, :function {:name "record_time" :description "Record the requested time", :parameters {:type :object, :properties {:time {:type :string, :pattern "^(17|18|19|20|21|22):([0-5][0-9])$", :description "Reservation time in 24-hour format (17:00-22:00)"}}, :required [:time]}, :transition_to :confirm}}]})
-  (a/<!! (a/into [] (request/stream-chat-completion {:messages (:messages context)
-                                                     :tools (mapv u/->tool-fn (:tools context))
-                                                     :api-key (secret [:openai :new-api-sk])
-                                                     :model "gpt-4o-mini"})))
-
-  ,)
 
 (def OpenAILLMConfigSchema
   [:map
@@ -35,8 +25,8 @@
       [;; GPT-4 Models
        "gpt-4"
        "gpt-4-32k"
-       "gpt-4-1106-preview"   ;; GPT-4 Turbo
-       "gpt-4-vision-preview" ;; GPT-4 Vision
+       "gpt-4-1106-preview"    ;; GPT-4 Turbo
+       "gpt-4-vision-preview"  ;; GPT-4 Vision
        ;; GPT-3.5 Models
        "gpt-3.5-turbo"
        "gpt-3.5-turbo-16k"
@@ -129,19 +119,20 @@
                          (catch Exception e
                            (t/log! :error e)))]
 
-      (a/go-loop []
-        (when-let [chunk (a/<! stream-ch)]
-          (let [d (delta chunk)]
-            (if (= chunk :done)
-              (a/>! out-c (frame/llm-full-response-end true))
-              (do
-                (if-let [tool-call (first (:tool_calls d))]
+      ((async/vfuturize
+         #(loop []
+            (when-let [chunk (a/<!! stream-ch)]
+              (let [d (delta chunk)]
+                (if (= chunk :done)
+                  (a/>!! out-c (frame/llm-full-response-end true))
                   (do
-                    (t/log! ["SENDING TOOL CALL" tool-call])
-                    (a/>! out-c (frame/llm-tool-call-chunk tool-call)))
-                  (when-let [c (:content d)]
-                    (a/>! out-c (frame/llm-text-chunk c))))
-                (recur)))))))))
+                    (if-let [tool-call (first (:tool_calls d))]
+                      (do
+                        (t/log! ["SENDING TOOL CALL" tool-call])
+                        (a/>!! out-c (frame/llm-tool-call-chunk tool-call)))
+                      (when-let [c (:content d)]
+                        (a/>!! out-c (frame/llm-text-chunk c))))
+                    (recur)))))))))))
 
 (def openai-llm-process
   (flow/process
