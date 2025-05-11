@@ -1,9 +1,22 @@
 # simulflow - Real-time Voice AI Pipeline Framework
 
-`simulflow` is a Clojure framework for building real-time voice AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, and AI interactions with built-in support for major AI providers.
+```
+“Daydreaming is the first awakening of what we call simulflow. It is
+an essential tool of rational thought. With it you can clear the mind for
+better thinking.”
+```
+– Frank Herbert, _Heretics of Dune_
+
+```
+Bene Gesserit also have the ability to practice simulflow, literally the simultaneous flow of several threads of consciousness at any given time; mental multitasking, as it were. The combination of simulflow with their analytical abilities and Other Memory is responsible for the frightening intelligence of the average Bene Gesserit.
+```
+– Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simulflow)
+
+`simulflow` is a Clojure framework for building real-time multimodal AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, video and AI interactions with built-in support for major AI providers.
 
 This project's status is **_experimental_**. Expect breaking changes.
 
+## Video presentation:
 [![Watch the video](https://img.youtube.com/vi/HwoGMhIx5w0/0.jpg)](https://youtu.be/HwoGMhIx5w0?t=345)
 
 ## Core Features
@@ -11,7 +24,7 @@ This project's status is **_experimental_**. Expect breaking changes.
 -   **Flow-Based Architecture:** Built on `core.async.flow` for robust concurrent processing
 -   **Data-First Design:** Define AI pipelines as data structures for easy configuration and modification
 -   **Streaming Architecture:** Efficient real-time audio and text processing
--   **Extensible Processors:** Simple protocol-based system for adding new processing components
+-   **Extensible:** Seamless to add new processors to embed into AI flows
 -   **Flexible Frame System:** Type-safe message passing between pipeline components
 -   **Built-in Services:** Ready-to-use integrations with major AI providers
 
