@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
+   [simulflow.async :refer [vthread-loop]]
    [simulflow.frame :as frame]))
 
 (defn speech-start?
@@ -44,25 +45,25 @@
                (let [input-ch (a/chan 1024)
                      speak-ch (a/chan 1024)
                      speaking? (atom true)
-                     silence-message-count (atom 0)
-                     silence-detection-loop #(loop []
-                                               (when-let [[frame c] (a/alts!! [(a/timeout timeout-ms) input-ch])]
-                                                 (if (and (= c input-ch)
-                                                          (voice-activity-frame? frame))
-                                                   (do
-                                                     (when (user-msg? frame) (reset! silence-message-count 0))
-                                                     (when (speech-start? frame) (reset! speaking? true))
-                                                     (when (speech-stop? frame) (reset! speaking? false))
-                                                     (recur))
-                                                   (do
-                                                     (when-not @speaking?
-                                                       (swap! silence-message-count inc)
-                                                       ;; End the call if we prompted for activity 3 times
-                                                       (if  (>= @silence-message-count  3)
-                                                         (a/>!! speak-ch (frame/speak-frame (rand-nth (vec end-call-prompts))))
-                                                         (a/>!! speak-ch (frame/speak-frame (rand-nth (vec prompts))))))
-                                                     (recur)))))]
-                 ((flow/futurize silence-detection-loop :exec :io))
+                     silence-message-count (atom 0)]
+                 (vthread-loop []
+                   (when-let [[frame c] (a/alts!! [(a/timeout timeout-ms) input-ch])]
+                     (if (and (= c input-ch)
+                              (voice-activity-frame? frame))
+                       (do
+                         (when (user-msg? frame) (reset! silence-message-count 0))
+                         (when (speech-start? frame) (reset! speaking? true))
+                         (when (speech-stop? frame) (reset! speaking? false))
+                         (recur))
+                       (do
+                         (when-not @speaking?
+                           (swap! silence-message-count inc)
+                           ;; End the call if we prompted for activity 3 times
+                           (if  (>= @silence-message-count  3)
+                             (a/>!! speak-ch (frame/speak-frame (rand-nth (vec end-call-prompts))))
+                             (a/>!! speak-ch (frame/speak-frame (rand-nth (vec prompts))))))
+                         (recur)))))
+
                  {::flow/out-ports {:input input-ch}
                   ::flow/in-ports {:speak-out speak-ch}}))
        :transition (fn [{::flow/keys [out-ports]} transition]

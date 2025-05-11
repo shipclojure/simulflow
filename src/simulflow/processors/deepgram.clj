@@ -3,6 +3,7 @@
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [hato.websocket :as ws]
+   [simulflow.async :refer [vthread-loop]]
    [simulflow.frame :as frame]
    [simulflow.schema :as schema :refer [flex-enum]]
    [simulflow.utils.core :as u]
@@ -159,23 +160,19 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
                      _ (t/log! {:level :info :id :deepgram-transcriptor} ["Connecting to transcription websocket" websocket-url])
                      ws-conn @(ws/websocket
                                 websocket-url
-                                conn-config)
-
-                     write-to-ws #(loop []
-                                    (when @alive?
-                                      (when-let [msg (a/<!! ws-write-chan)]
-                                        (when (and (frame/audio-input-raw? msg) @alive?)
-                                          (ws/send! ws-conn (:frame/data msg))
-                                          (recur)))))
-                     keep-alive #(loop []
-                                   (when @alive?
-                                     (a/<!! (a/timeout 3000))
-                                     (t/log! {:level :trace :id :deepgram} "Sending keep-alive message")
-                                     (ws/send! ws-conn keep-alive-payload)
-                                     (recur)))]
-                 ((flow/futurize write-to-ws :exec :io))
-                 ((flow/futurize keep-alive :exec :io))
-
+                                conn-config)]
+                 (vthread-loop []
+                   (when @alive?
+                     (when-let [msg (a/<!! ws-write-chan)]
+                       (when (and (frame/audio-input-raw? msg) @alive?)
+                         (ws/send! ws-conn (:frame/data msg))
+                         (recur)))))
+                 (vthread-loop []
+                   (when @alive?
+                     (a/<!! (a/timeout 3000))
+                     (t/log! {:level :trace :id :deepgram} "Sending keep-alive message")
+                     (ws/send! ws-conn keep-alive-payload)
+                     (recur)))
                  {:websocket/conn ws-conn
                   :websocket/alive? alive?
                   ::flow/in-ports {:ws-read ws-read-chan}

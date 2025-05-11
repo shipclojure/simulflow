@@ -4,7 +4,7 @@
    [clojure.core.async.flow :as flow]
    [malli.core :as m]
    [malli.transform :as mt]
-   [simulflow.async :as async]
+   [simulflow.async :refer [vthread-loop]]
    [simulflow.frame :as frame]
    [simulflow.schema :as schema]
    [simulflow.utils.core :as u]
@@ -119,20 +119,19 @@
                          (catch Exception e
                            (t/log! :error e)))]
 
-      ((async/vfuturize
-         #(loop []
-            (when-let [chunk (a/<!! stream-ch)]
-              (let [d (delta chunk)]
-                (if (= chunk :done)
-                  (a/>!! out-c (frame/llm-full-response-end true))
+      (vthread-loop []
+        (when-let [chunk (a/<!! stream-ch)]
+          (let [d (delta chunk)]
+            (if (= chunk :done)
+              (a/>!! out-c (frame/llm-full-response-end true))
+              (do
+                (if-let [tool-call (first (:tool_calls d))]
                   (do
-                    (if-let [tool-call (first (:tool_calls d))]
-                      (do
-                        (t/log! ["SENDING TOOL CALL" tool-call])
-                        (a/>!! out-c (frame/llm-tool-call-chunk tool-call)))
-                      (when-let [c (:content d)]
-                        (a/>!! out-c (frame/llm-text-chunk c))))
-                    (recur)))))))))))
+                    (t/log! ["SENDING TOOL CALL" tool-call])
+                    (a/>!! out-c (frame/llm-tool-call-chunk tool-call)))
+                  (when-let [c (:content d)]
+                    (a/>!! out-c (frame/llm-text-chunk c))))
+                (recur)))))))))
 
 (def openai-llm-process
   (flow/process
@@ -156,17 +155,17 @@
                      :init (fn [params]
                              (let [state (m/decode OpenAILLMConfigSchema params mt/default-value-transformer)
                                    llm-write (a/chan 100)
-                                   llm-read (a/chan 1024)
-                                   write-to-llm #(loop []
-                                                   (if-let [frame (a/<!! llm-write)]
-                                                     (do
-                                                       (t/log! :info ["AI REQUEST" (:frame/data frame)])
-                                                       (assert (or (frame/llm-context? frame)
-                                                                   (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
-                                                       (flow-do-completion! state llm-read (:frame/data frame))
-                                                       (recur))
-                                                     (t/log! {:level :info :id :llm} "Closing llm loop")))]
-                               ((flow/futurize write-to-llm :exec :io))
+                                   llm-read (a/chan 1024)]
+                               (vthread-loop []
+                                 (if-let [frame (a/<!! llm-write)]
+                                   (do
+                                     (t/log! :info ["AI REQUEST" (:frame/data frame)])
+                                     (assert (or (frame/llm-context? frame)
+                                                 (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
+                                     (flow-do-completion! state llm-read (:frame/data frame))
+                                     (recur))
+                                   (t/log! {:level :info :id :llm} "Closing llm loop")))
+
                                {::flow/in-ports {:llm-read llm-read}
                                 ::flow/out-ports {:llm-write llm-write}}))
 
