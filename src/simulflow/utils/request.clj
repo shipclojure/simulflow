@@ -6,6 +6,7 @@
    [clojure.string :as string]
    [hato.client :as http]
    [hato.middleware :as hm]
+   [simulflow.async :as async]
    [simulflow.utils.core :as u])
   (:import
    (java.io InputStream)))
@@ -53,32 +54,34 @@
                                                               {:as :stream})))
         buffer-size (calc-buffer-size params)
         events (a/chan (a/buffer buffer-size) (map parse-event))]
-    (a/thread
-      (try
-        (loop [byte-coll []]
-          (let [byte-arr (byte-array (max 1 (.available event-stream)))
-                bytes-read (.read event-stream byte-arr)]
+    ((async/vfuturize
+       (fn []
+         (try
+           (loop [byte-coll []]
+             (let [byte-arr (byte-array (max 1 (.available event-stream)))
+                   bytes-read (.read event-stream byte-arr)]
 
-            (if (neg? bytes-read)
+               (if (neg? bytes-read)
 
-              ;; Input stream closed, exiting read-loop
-              nil
+                 ;; Input stream closed, exiting read-loop
+                 nil
 
-              (let [next-byte-coll (concat byte-coll (seq byte-arr))
-                    data (slurp (byte-array next-byte-coll))]
-                (if-let [es (not-empty (re-seq event-mask data))]
-                  (if (every? true? (map #(a/>!! events %) es))
-                    (recur (drop (apply + (map #(count (.getBytes ^String %)) es))
-                                 next-byte-coll))
+                 (let [next-byte-coll (concat byte-coll (seq byte-arr))
+                       data (slurp (byte-array next-byte-coll))]
+                   (if-let [es (not-empty (re-seq event-mask data))]
+                     (if (every? true? (map #(a/>!! events %) es))
+                       (recur (drop (apply + (map #(count (.getBytes ^String %)) es))
+                                    next-byte-coll))
 
-                    ;; Output stream closed, exiting read-loop
-                    nil)
+                       ;; Output stream closed, exiting read-loop
+                       nil)
 
-                  (recur next-byte-coll))))))
-        (finally
-          (when close?
-            (a/close! events))
-          (.close event-stream))))
+                     (recur next-byte-coll))))))
+           (finally
+             (when close?
+               (a/close! events))
+             (.close event-stream))))))
+
     events))
 
 (defn sse-request
@@ -134,6 +137,40 @@
    hm/wrap-form-params
    hm/wrap-nested-params
    hm/wrap-method])
+
+(def openai-completions-url "https://api.openai.com/v1/chat/completions")
+
+(defn stream-chat-completion
+  [{:keys [api-key messages tools model response-format completions-url]
+    :or {model "gpt-4o-mini"
+         completions-url openai-completions-url}}]
+  (:body (sse-request {:request {:url completions-url
+                                 :headers {"Authorization" (str "Bearer " api-key)
+                                           "Content-Type" "application/json"}
+
+                                 :method :post
+                                 :body (u/json-str (cond-> {:messages messages
+                                                            :stream true
+                                                            :response_format response-format
+                                                            :model model}
+                                                     (pos? (count tools)) (assoc :tools tools)))}
+                       :params {:stream/close? true}})))
+
+(defn normal-chat-completion
+  [{:keys [api-key messages tools model response-format stream completions-url]
+    :or {model "gpt-4o-mini"
+         stream false}}]
+  (http/request {:url openai-completions-url
+                 :headers {"Authorization" (str "Bearer " api-key)
+                           "Content-Type" "application/json"}
+
+                 :throw-on-error? false
+                 :method :post
+                 :body (u/json-str (cond-> {:messages messages
+                                            :stream stream
+                                            :response_format response-format
+                                            :model model}
+                                     (pos? (count tools)) (assoc :tools tools)))}))
 
 (comment
   (require '[simulflow.secrets :refer [secret]])
