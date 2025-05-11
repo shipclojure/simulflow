@@ -6,7 +6,7 @@
    [clojure.string :as string]
    [hato.client :as http]
    [hato.middleware :as hm]
-   [simulflow.async :as async]
+   [simulflow.async :refer [vthread vthread-loop]]
    [simulflow.utils.core :as u])
   (:import
    (java.io InputStream)))
@@ -16,12 +16,11 @@
 (defn deliver-events
   [events {:keys [on-next]}]
   (when on-next
-    (a/go
-      (loop []
-        (when-let [event (a/<! events)]
-          (when (not= :done event)
-            (on-next event)
-            (recur)))))))
+    (vthread-loop []
+      (when-let [event (a/<!! events)]
+        (when (not= :done event)
+          (on-next event)
+          (recur))))))
 
 (defn- parse-openai-event [raw-event]
   (let [data-idx (string/index-of raw-event "{")
@@ -54,33 +53,32 @@
                                                               {:as :stream})))
         buffer-size (calc-buffer-size params)
         events (a/chan (a/buffer buffer-size) (map parse-event))]
-    ((async/vfuturize
-       (fn []
-         (try
-           (loop [byte-coll []]
-             (let [byte-arr (byte-array (max 1 (.available event-stream)))
-                   bytes-read (.read event-stream byte-arr)]
+    (vthread
+      (try
+        (loop [byte-coll []]
+          (let [byte-arr (byte-array (max 1 (.available event-stream)))
+                bytes-read (.read event-stream byte-arr)]
 
-               (if (neg? bytes-read)
+            (if (neg? bytes-read)
 
-                 ;; Input stream closed, exiting read-loop
-                 nil
+              ;; Input stream closed, exiting read-loop
+              nil
 
-                 (let [next-byte-coll (concat byte-coll (seq byte-arr))
-                       data (slurp (byte-array next-byte-coll))]
-                   (if-let [es (not-empty (re-seq event-mask data))]
-                     (if (every? true? (map #(a/>!! events %) es))
-                       (recur (drop (apply + (map #(count (.getBytes ^String %)) es))
-                                    next-byte-coll))
+              (let [next-byte-coll (concat byte-coll (seq byte-arr))
+                    data (slurp (byte-array next-byte-coll))]
+                (if-let [es (not-empty (re-seq event-mask data))]
+                  (if (every? true? (map #(a/>!! events %) es))
+                    (recur (drop (apply + (map #(count (.getBytes ^String %)) es))
+                                 next-byte-coll))
 
-                       ;; Output stream closed, exiting read-loop
-                       nil)
+                    ;; Output stream closed, exiting read-loop
+                    nil)
 
-                     (recur next-byte-coll))))))
-           (finally
-             (when close?
-               (a/close! events))
-             (.close event-stream))))))
+                  (recur next-byte-coll))))))
+        (finally
+          (when close?
+            (a/close! events))
+          (.close event-stream))))
 
     events))
 

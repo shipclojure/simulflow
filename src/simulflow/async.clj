@@ -1,6 +1,6 @@
 (ns simulflow.async
   (:require
-   [clojure.core.async :refer [go-loop]]
+   [clojure.core.async :as a]
    [clojure.core.async.flow :as flow])
   (:import
    (java.util.concurrent Executors)))
@@ -12,7 +12,7 @@
     (catch ClassNotFoundException _
       false)))
 
-(def ^:private virtual-executor
+(defonce ^:private vthread-executor
   (when virtual-threads-supported?
     (Executors/newVirtualThreadPerTaskExecutor)))
 
@@ -22,7 +22,7 @@
   ([f & {:keys [exec]
          :or {exec :mixed}}]
    (if virtual-threads-supported?
-     (flow/futurize f :exec virtual-executor)
+     (flow/futurize f :exec vthread-executor)
      (flow/futurize f :exec exec))))
 
 (defmacro vthread
