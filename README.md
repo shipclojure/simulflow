@@ -8,11 +8,16 @@ better thinking.”
 – Frank Herbert, _Heretics of Dune_
 
 ```
-Bene Gesserit also have the ability to practice simulflow, literally the simultaneous flow of several threads of consciousness at any given time; mental multitasking, as it were. The combination of simulflow with their analytical abilities and Other Memory is responsible for the frightening intelligence of the average Bene Gesserit.
+“Bene Gesserit also have the ability to practice simulflow, literally the
+simultaneous flow of several threads of consciousness at any given time; mental
+multitasking, as it were. The combination of simulflow with their analytical
+abilities and Other Memory is responsible for the frightening intelligence of
+the average Bene Gesserit.”
 ```
+
 – Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simulflow)
 
-`simulflow` is a Clojure framework for building real-time multimodal AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, video and AI interactions with built-in support for major AI providers.
+This library brings the bene gesserit simulflow power to your AI assistants. `simulflow` is a Clojure framework for building real-time multimodal AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, video and AI interactions with built-in support for major AI providers.
 
 This project's status is **_experimental_**. Expect breaking changes.
 
