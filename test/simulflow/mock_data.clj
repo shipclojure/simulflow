@@ -1,4 +1,4 @@
-(ns voice-fn.mock-data)
+(ns simulflow.mock-data)
 
 (def stock-trade-retrieve-function
   {:type :function
