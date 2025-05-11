@@ -1,4 +1,4 @@
-(ns voice-fn.scenario-manager
+(ns simulflow.scenario-manager
   "Scenario Manager is a way to build structured conversations with the underlying
   LLM. In enables you to create predefined conversation scenarios that follow a
   specific flow. Use it when the interaction is highly structured.
@@ -9,9 +9,9 @@
    [clojure.core.async.flow :as flow]
    [malli.core :as m]
    [malli.error :as me]
-   [taoensso.telemere :as t]
-   [voice-fn.frame :as frame]
-   [voice-fn.schema :as schema]))
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
+   [taoensso.telemere :as t]))
 
 (def ScenarioAction
   [:or

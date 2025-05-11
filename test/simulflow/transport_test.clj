@@ -1,9 +1,9 @@
-(ns voice-fn.transport-test
+(ns simulflow.transport-test
   (:require
    [midje.sweet :as midje :refer [fact facts]]
-   [voice-fn.frame :as frame]
-   [voice-fn.transport :as sut]
-   [voice-fn.utils.core :as u]))
+   [simulflow.frame :as frame]
+   [simulflow.transport :as sut]
+   [simulflow.utils.core :as u]))
 
 (def test-config-change-frame (frame/system-config-change {:llm/context {:messages [{:role :system :content "You are a cool llm"}]}}))
 (defn twilio-start-handle-event [event]

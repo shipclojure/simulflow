@@ -1,12 +1,12 @@
-(ns voice-fn.processors.deepgram
+(ns simulflow.processors.deepgram
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [hato.websocket :as ws]
-   [taoensso.telemere :as t]
-   [voice-fn.frame :as frame]
-   [voice-fn.schema :as schema :refer [flex-enum]]
-   [voice-fn.utils.core :as u])
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema :refer [flex-enum]]
+   [simulflow.utils.core :as u]
+   [taoensso.telemere :as t])
   (:import
    (java.nio HeapCharBuffer)))
 

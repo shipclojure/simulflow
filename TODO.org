@@ -1,4 +1,4 @@
-#+TITLE: Tasks to do for voice-fn
+#+TITLE: Tasks to do for simulflow
 
 * TODO Add pipeline interruptions :mvp:
 
@@ -33,7 +33,7 @@ CLOCK: [2025-02-06 Thu 08:07]--[2025-02-06 Thu 08:32] =>  0:25
 * TODO Make a helper to create easier connections between processors
 #+begin_src clojure
 (def phone-flow
-  (voice-fn/create-flow {:language :en
+  (simulflow/create-flow {:language :en
                          :transport {:mode :telephony
                                      :in (input-channel)
                                      :out (output-channel)}

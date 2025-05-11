@@ -1,15 +1,15 @@
-(ns voice-fn.processors.openai
+(ns simulflow.processors.openai
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [hato.client :as http]
    [malli.core :as m]
    [malli.transform :as mt]
-   [taoensso.telemere :as t]
-   [voice-fn.frame :as frame]
-   [voice-fn.schema :as schema]
-   [voice-fn.utils.core :as u]
-   [voice-fn.utils.request :as request]))
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
+   [simulflow.utils.core :as u]
+   [simulflow.utils.request :as request]
+   [taoensso.telemere :as t]))
 
 (def openai-completions-url "https://api.openai.com/v1/chat/completions")
 
@@ -45,7 +45,7 @@
                                      (pos? (count tools)) (assoc :tools tools)))}))
 
 (comment
-  (require '[voice-fn.secrets :refer [secret]])
+  (require '[simulflow.secrets :refer [secret]])
   (def context {:messages [{:role "system", :content "You are a helpful assistant "} {:role :system, :content "You are a restaurant reservation assistant for La Maison, an upscale French restaurant. You must ALWAYS use one of the available functions to progress the conversation. This is a phone conversations and your responses will be converted to audio. Avoid outputting special characters and emojis. Be casual and friendly."} {:role :system, :content "Warmly greet the customer and ask how many people are in their party."} {:role "user", :content "It's gonna be 5 people."} {:role :assistant, :tool_calls [{:id "call_CBFGmrwUrrzcmsgvI9kvqdjc", :type :function, :function {:name "record_party_size", :arguments "{\"size\":5}"}}]} {:role :tool, :content [{:type :text, :text "5"}], :tool_call_id "call_CBFGmrwUrrzcmsgvI9kvqdjc"} {:role :system, :content "Ask what time they'd like to dine. Restaurant is open 5 PM to 10 PM. After they provide a time, confirm it's within operating hours before recording. Use 24-hour format for internal recording (e.g., 17:00 for 5 PM)."} {:role "user", :content "At around 4 o'clock in the afternoon."}], :tools [{:type :function, :function {:name "record_time" :description "Record the requested time", :parameters {:type :object, :properties {:time {:type :string, :pattern "^(17|18|19|20|21|22):([0-5][0-9])$", :description "Reservation time in 24-hour format (17:00-22:00)"}}, :required [:time]}, :transition_to :confirm}}]})
   (a/<!! (a/into [] (stream-openai-chat-completion {:messages (:messages context)
                                                     :tools (mapv u/->tool-fn (:tools context))

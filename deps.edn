@@ -14,15 +14,15 @@
              "clojars" {:url "https://repo.clojars.org/"}}
 
  :pom {:group-id "com.shipclojure"
-       :artifact-id "voice-fn"
+       :artifact-id "simulflow"
        :version "0.1.3-alpha"
-       :name "voice-fn"
+       :name "simulflow"
        :description "A Clojure framework for building real-time voice-enabled AI applications"
-       :url "https://github.com/shipclojure/voice-fn"
-       :scm {:url "https://github.com/shipclojure/voice-fn"
+       :url "https://github.com/shipclojure/simulflow"
+       :scm {:url "https://github.com/shipclojure/simulflow"
              :tag "v0.1.3-alpha"
-             :connection "scm:git:git://github.com/shipclojure/voice-fn.git"
-             :dev-connection "scm:git:ssh://git@github.com/shipclojure/voice-fn.git"}
+             :connection "scm:git:git://github.com/shipclojure/simulflow.git"
+             :dev-connection "scm:git:ssh://git@github.com/shipclojure/simulflow.git"}
        :licenses [{:name "Eclipse Public License"
                    :url "http://www.eclipse.org/legal/epl-v10.html"}]
        :developers [{:name "Ovi Stoica"}]}
@@ -30,8 +30,8 @@
  {:build {:deps {io.github.clojure/tools.build {:mvn/version "0.9.4"}
                  slipset/deps-deploy {:mvn/version "0.2.1"}}
           :ns-default build}
-  :run {:main-opts ["-m" "voice-fn.transport.local.audio"]
-        :exec-fn voice-fn.transport.local.audio/main}
+  :run {:main-opts ["-m" "simulflow.transport.local.audio"]
+        :exec-fn simulflow.transport.local.audio/main}
   :dev {:extra-paths ["dev"]
         :extra-deps {djblue/portal {:mvn/version "0.58.5"}
                      criterium/criterium {:mvn/version "0.4.6"}
@@ -58,7 +58,7 @@
                        com.github.flow-storm/flow-storm-dbg {:mvn/version "4.2.0-SNAPSHOT"}
                        com.github.flow-storm/flow-storm-async-flow-plugin {:mvn/version "1.0.0-SNAPSHOT"}}
           :jvm-opts ["-Dclojure.storm.instrumentEnable=true"
-                     "-Dclojure.storm.instrumentOnlyPrefixes=clojure.core.async.flow,voice-fn"
+                     "-Dclojure.storm.instrumentOnlyPrefixes=clojure.core.async.flow,simulflow"
                      "-Dflowstorm.jarEditorCommand=emacsclient -n +<<LINE>>:0 <<JAR>>/<<FILE>>"
                      "-Dflowstorm.fileEditorCommand=emacsclient -n +<<LINE>>:0 <<FILE>>"
 

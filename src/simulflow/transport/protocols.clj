@@ -1,4 +1,4 @@
-(ns voice-fn.transport.protocols)
+(ns simulflow.transport.protocols)
 
 (defprotocol FrameSerializer
   (serialize-frame [this frame])

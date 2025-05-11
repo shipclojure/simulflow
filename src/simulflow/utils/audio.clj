@@ -1,4 +1,4 @@
-(ns voice-fn.utils.audio)
+(ns simulflow.utils.audio)
 
 (defn audio-chunk-size
   "Calculates the size of an audio chunk in bytes based on audio parameters.

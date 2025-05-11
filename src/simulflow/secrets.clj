@@ -1,4 +1,4 @@
-(ns voice-fn.secrets
+(ns simulflow.secrets
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]))

@@ -1,6 +1,6 @@
-# voice-fn - Real-time Voice AI Pipeline Framework
+# simulflow - Real-time Voice AI Pipeline Framework
 
-`voice-fn` is a Clojure framework for building real-time voice AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, and AI interactions with built-in support for major AI providers.
+`simulflow` is a Clojure framework for building real-time voice AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, and AI interactions with built-in support for major AI providers.
 
 This project's status is **_experimental_**. Expect breaking changes.
 
@@ -34,18 +34,18 @@ Start a REPL and evaluate the snippets in the `(comment ...)` blocks to start th
 Allow Microphone access when prompted.
 
 ```clojure
-(ns voice-fn-examples.local
+(ns simulflow-examples.local
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [taoensso.telemere :as t]
-   [voice-fn.processors.deepgram :as asr]
-   [voice-fn.processors.elevenlabs :as tts]
-   [voice-fn.processors.llm-context-aggregator :as context]
-   [voice-fn.processors.openai :as llm]
-   [voice-fn.secrets :refer [secret]]
-   [voice-fn.transport :as transport]
-   [voice-fn.utils.core :as u]))
+   [simulflow.processors.deepgram :as asr]
+   [simulflow.processors.elevenlabs :as tts]
+   [simulflow.processors.llm-context-aggregator :as context]
+   [simulflow.processors.openai :as llm]
+   [simulflow.secrets :refer [secret]]
+   [simulflow.transport :as transport]
+   [simulflow.utils.core :as u]))
 
 (defn make-local-flow
   "This example showcases a voice AI agent for the local computer.  Audio is
@@ -208,7 +208,7 @@ See [examples](./examples/src/voice_fn_examples/) for more usages.
 
 ### Flows
 
-The core building block of voice-fn pipelines:
+The core building block of simulflow pipelines:
 
 -   Composed of processes connected by channels
 -   Processes can be:
@@ -279,8 +279,8 @@ Read core.async.flow docs for more information about flow precesses.
 ## Acknowledgements
 
 Voice-fn takes heavy inspiration from [pipecat](https://github.com/pipecat-ai/pipecat). Differences:
-- voice-fn uses a graph instead of a bidirectional queue for frame transport
-- voice-fn has a data centric implementation. The processors in voice-fn are
+- simulflow uses a graph instead of a bidirectional queue for frame transport
+- simulflow has a data centric implementation. The processors in simulflow are
   pure functions in the `core.async.flow` transform syntax
 
 ## License

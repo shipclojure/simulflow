@@ -1,4 +1,4 @@
-(ns voice-fn.utils.request
+(ns simulflow.utils.request
   "Taken from https://github.com/wkok/openai-clojure/blob/main/src/wkok/openai_clojure/sse.clj."
   {:no-doc true}
   (:require
@@ -6,7 +6,7 @@
    [clojure.string :as string]
    [hato.client :as http]
    [hato.middleware :as hm]
-   [voice-fn.utils.core :as u])
+   [simulflow.utils.core :as u])
   (:import
    (java.io InputStream)))
 
@@ -136,7 +136,7 @@
    hm/wrap-method])
 
 (comment
-  (require '[voice-fn.secrets :refer [secret]])
+  (require '[simulflow.secrets :refer [secret]])
 
   (http/request {:url "https://api.openai.com/v1/chat/completions"
                  :headers {"Authorization" (str "Bearer " (secret [:openai :new-api-sk]))

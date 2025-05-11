@@ -1,8 +1,8 @@
-(ns voice-fn.transport.serializers
+(ns simulflow.transport.serializers
   (:require
-   [voice-fn.frame :as frame]
-   [voice-fn.transport.protocols :as p]
-   [voice-fn.utils.core :as u]))
+   [simulflow.frame :as frame]
+   [simulflow.transport.protocols :as p]
+   [simulflow.utils.core :as u]))
 
 ;; Example Twilio serializer
 (defn make-twilio-serializer [stream-sid]

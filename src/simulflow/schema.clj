@@ -1,4 +1,4 @@
-(ns voice-fn.schema
+(ns simulflow.schema
   (:require
    [clojure.core.async.impl.protocols :as async-protocols]
    [malli.core :as m]

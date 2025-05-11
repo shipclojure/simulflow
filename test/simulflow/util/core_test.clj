@@ -1,7 +1,7 @@
-(ns voice-fn.util.core-test
+(ns simulflow.util.core-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [voice-fn.utils.core :refer [ends-with-sentence?]]))
+   [simulflow.utils.core :refer [ends-with-sentence?]]))
 
 (deftest ends-with-sentence?-test
   (testing "Basic sentence endings"

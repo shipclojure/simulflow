@@ -1,4 +1,4 @@
-(ns voice-fn.utils.core
+(ns simulflow.utils.core
   (:require
    [clojure.core.async :as a]
    [clojure.string :as str]

@@ -1,17 +1,17 @@
-(ns voice-fn-examples.local
+(ns simulflow-examples.local
   {:clj-reload/no-unload true}
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
-   [taoensso.telemere :as t]
-   [voice-fn.processors.deepgram :as deepgram]
-   [voice-fn.processors.elevenlabs :as xi]
-   [voice-fn.processors.llm-context-aggregator :as context]
-   [voice-fn.processors.openai :as openai]
-   [voice-fn.processors.silence-monitor :refer [silence-monitor]]
-   [voice-fn.secrets :refer [secret]]
-   [voice-fn.transport :as transport]
-   [voice-fn.utils.core :as u]))
+   [simulflow.processors.deepgram :as deepgram]
+   [simulflow.processors.elevenlabs :as xi]
+   [simulflow.processors.llm-context-aggregator :as context]
+   [simulflow.processors.openai :as openai]
+   [simulflow.processors.silence-monitor :refer [silence-monitor]]
+   [simulflow.secrets :refer [secret]]
+   [simulflow.transport :as transport]
+   [simulflow.utils.core :as u]
+   [taoensso.telemere :as t]))
 
 (t/set-min-level! :debug)
 

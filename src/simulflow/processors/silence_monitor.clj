@@ -1,8 +1,8 @@
-(ns voice-fn.processors.silence-monitor
+(ns simulflow.processors.silence-monitor
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
-   [voice-fn.frame :as frame]))
+   [simulflow.frame :as frame]))
 
 (defn speech-start?
   [frame]

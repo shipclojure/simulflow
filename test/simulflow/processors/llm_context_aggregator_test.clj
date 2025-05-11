@@ -1,10 +1,10 @@
-(ns voice-fn.processors.llm-context-aggregator-test
+(ns simulflow.processors.llm-context-aggregator-test
   (:require
    [clojure.core.async :as a]
    [midje.sweet :refer [fact facts]]
-   [voice-fn.frame :as frame]
-   [voice-fn.mock-data :as mock]
-   [voice-fn.processors.llm-context-aggregator :as sut]))
+   [simulflow.frame :as frame]
+   [simulflow.mock-data :as mock]
+   [simulflow.processors.llm-context-aggregator :as sut]))
 
 (facts "about concat-context"
   (fact "concatenates new message when role differs"

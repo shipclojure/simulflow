@@ -1,13 +1,13 @@
-(ns voice-fn.processors.elevenlabs
+(ns simulflow.processors.elevenlabs
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [hato.websocket :as ws]
-   [taoensso.telemere :as t]
-   [voice-fn.frame :as frame]
-   [voice-fn.schema :as schema]
-   [voice-fn.secrets :as secrets]
-   [voice-fn.utils.core :as u])
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
+   [simulflow.secrets :as secrets]
+   [simulflow.utils.core :as u]
+   [taoensso.telemere :as t])
   (:import
    (java.nio HeapCharBuffer)))
 

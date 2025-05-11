@@ -1,4 +1,4 @@
-(ns voice-fn-examples.twilio-websocket
+(ns simulflow-examples.twilio-websocket
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
@@ -15,15 +15,15 @@
    [ring.adapter.jetty :as jetty]
    [ring.util.response :as r]
    [ring.websocket :as ws]
-   [taoensso.telemere :as t]
-   [voice-fn.processors.deepgram :as asr]
-   [voice-fn.processors.elevenlabs :as tts]
-   [voice-fn.processors.llm-context-aggregator :as context]
-   [voice-fn.processors.openai :as llm]
-   [voice-fn.scenario-manager :as sm]
-   [voice-fn.secrets :refer [secret]]
-   [voice-fn.transport :as transport]
-   [voice-fn.utils.core :as u]))
+   [simulflow.processors.deepgram :as asr]
+   [simulflow.processors.elevenlabs :as tts]
+   [simulflow.processors.llm-context-aggregator :as context]
+   [simulflow.processors.openai :as llm]
+   [simulflow.scenario-manager :as sm]
+   [simulflow.secrets :refer [secret]]
+   [simulflow.transport :as transport]
+   [simulflow.utils.core :as u]
+   [taoensso.telemere :as t]))
 
 (t/set-min-level! :debug)
 
@@ -163,7 +163,7 @@
   tool definition.
 
   A tool needs a description and a :handler. The LLM will issue a tol call
-  request and voice-fn will call that function with the specified arguments,
+  request and simulflow will call that function with the specified arguments,
   putting the result in the chat history for the llm to see."
   [in out]
   {:flow (flow/create-flow

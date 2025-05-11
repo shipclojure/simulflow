@@ -3,10 +3,10 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.shipclojure</groupId>
   <packaging>jar</packaging>
-  <artifactId>voice-fn</artifactId>
-  <name>shipclojure/voice-fn</name>
-  <description>A Clojure framework for building real-time voice-enabled AI applications. voice-fn handles the orchestration of speech recognition, audio processing, and AI service integration with the elegance of functional programming.</description>
-  <url>https://github.com/shipclojure/voice-fn</url>
+  <artifactId>simulflow</artifactId>
+  <name>shipclojure/simulflow</name>
+  <description>A Clojure framework for building real-time voice-enabled AI applications. simulflow handles the orchestration of speech recognition, audio processing, and AI service integration with the elegance of functional programming.</description>
+  <url>https://github.com/shipclojure/simulflow</url>
   <licenses>
     <license>
       <name>Eclipse Public License</name>
@@ -19,9 +19,9 @@
     </developer>
   </developers>
   <scm>
-    <url>https://github.com/shipclojure/voice-fn</url>
-    <connection>scm:git:git://github.com/shipclojure/voice-fn.git</connection>
-    <developerConnection>scm:git:ssh://git@github.com/shipclojure/voice-fn.git</developerConnection>
+    <url>https://github.com/shipclojure/simulflow</url>
+    <connection>scm:git:git://github.com/shipclojure/simulflow.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/shipclojure/simulflow.git</developerConnection>
     <tag>v0.1.0-alfa</tag>
   </scm>
   <version>0.1.0</version>

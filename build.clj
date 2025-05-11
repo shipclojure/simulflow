@@ -1,10 +1,11 @@
 (ns build
   (:refer-clojure :exclude [test])
-  (:require [clojure.tools.deps :as t]
-            [clojure.tools.build.api :as b]
-            [deps-deploy.deps-deploy :as dd]))
+  (:require
+   [clojure.tools.build.api :as b]
+   [clojure.tools.deps :as t]
+   [deps-deploy.deps-deploy :as dd]))
 
-(def lib 'com.shipclojure/voice-fn)
+(def lib 'com.shipclojure/simulflow)
 (def version "0.1.3-alpha")
 #_ ; alternatively, use MAJOR.MINOR.COMMITS:
 (def version (format "1.0.%s" (b/git-count-revs nil)))
@@ -15,10 +16,10 @@
   (let [basis    (b/create-basis {:aliases [:test]})
         combined (t/combine-aliases basis [:test])
         cmds     (b/java-command
-                  {:basis basis
-                   :java-opts (:jvm-opts combined)
-                   :main      'clojure.main
-                   :main-args ["-m" "kaocha.runner"]})
+                   {:basis basis
+                    :java-opts (:jvm-opts combined)
+                    :main      'clojure.main
+                    :main-args ["-m" "kaocha.runner"]})
         {:keys [exit]} (b/process cmds)]
     (when-not (zero? exit) (println "Warning: Tests failed but continuing with build")))
   opts)

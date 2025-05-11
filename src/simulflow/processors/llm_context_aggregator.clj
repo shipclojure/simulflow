@@ -1,11 +1,11 @@
-(ns voice-fn.processors.llm-context-aggregator
+(ns simulflow.processors.llm-context-aggregator
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [clojure.string :as str]
-   [taoensso.telemere :as t]
-   [voice-fn.frame :as frame]
-   [voice-fn.utils.core :as u]))
+   [simulflow.frame :as frame]
+   [simulflow.utils.core :as u]
+   [taoensso.telemere :as t]))
 
 (defn concat-context-messages
   "Concat to context a new message. If the last message from the context is from
@@ -189,7 +189,7 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
                                           (:run-llm? opts) (assoc :out [(frame/llm-context nc)]))])
 
       ;; Scenario update frames come when a scenario manager moves the LLM to a
-      ;; new node. See voice-fn.scenario-manager for details
+      ;; new node. See simulflow.scenario-manager for details
       (frame/scenario-context-update? frame)
       ,(let [scenario (:frame/data frame)
              _ (when debug?

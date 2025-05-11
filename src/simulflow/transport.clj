@@ -1,17 +1,17 @@
-(ns voice-fn.transport
+(ns simulflow.transport
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
+   [simulflow.transport.protocols :as tp]
+   [simulflow.transport.serializers :refer [make-twilio-serializer]]
+   [simulflow.utils.audio :as au]
+   [simulflow.utils.core :as u]
    [taoensso.telemere :as t]
    [uncomplicate.clojure-sound.core :refer [open! read! start! stop! write!]]
    [uncomplicate.clojure-sound.sampled :refer [audio-format flush! line line-info]]
-   [uncomplicate.commons.core :refer [close!]]
-   [voice-fn.frame :as frame]
-   [voice-fn.schema :as schema]
-   [voice-fn.transport.protocols :as tp]
-   [voice-fn.transport.serializers :refer [make-twilio-serializer]]
-   [voice-fn.utils.audio :as au]
-   [voice-fn.utils.core :as u])
+   [uncomplicate.commons.core :refer [close!]])
   (:import
    (java.util Arrays)
    (javax.sound.sampled AudioFormat AudioSystem DataLine$Info)))

@@ -1,10 +1,10 @@
-(ns voice-fn.schema-test
+(ns simulflow.schema-test
   (:require
    [malli.core :as m]
    [malli.error :as me]
    [midje.sweet :refer [fact facts]]
-   [voice-fn.mock-data :as mock]
-   [voice-fn.schema :as sut]))
+   [simulflow.mock-data :as mock]
+   [simulflow.schema :as sut]))
 
 ;; LLM Messages
 

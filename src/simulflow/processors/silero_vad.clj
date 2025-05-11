@@ -1,4 +1,4 @@
-(ns voice-fn.processors.silero-vad
+(ns simulflow.processors.silero-vad
   (:require
    [clojure.java.data :as j]
    [clojure.java.io :as io])

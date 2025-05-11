@@ -1,10 +1,10 @@
-(ns voice-fn-examples.scenario-example
+(ns simulflow-examples.scenario-example
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
-   [taoensso.telemere :as t]
-   [voice-fn-examples.local :as local]
-   [voice-fn.scenario-manager :as sm]))
+   [simulflow-examples.local :as local]
+   [simulflow.scenario-manager :as sm]
+   [taoensso.telemere :as t]))
 
 (def scenario-config
   {:initial-node :start

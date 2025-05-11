@@ -1,1 +1,1 @@
-{:config-paths ["../resources/clj-kondo.exports/com.shipclojure/voice-fn"]}
+{:config-paths ["../resources/clj-kondo.exports/com.shipclojure/simulflow"]}

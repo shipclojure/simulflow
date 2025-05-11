@@ -1,16 +1,16 @@
-(ns voice-fn.processors.groq
+(ns simulflow.processors.groq
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [hato.client :as http]
    [malli.core :as m]
    [malli.transform :as mt]
-   [taoensso.telemere :as t]
-   [voice-fn.frame :as frame]
-   [voice-fn.schema :as schema]
-   [voice-fn.secrets :refer [secret]]
-   [voice-fn.utils.core :as u]
-   [voice-fn.utils.request :as request]))
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
+   [simulflow.secrets :refer [secret]]
+   [simulflow.utils.core :as u]
+   [simulflow.utils.request :as request]
+   [taoensso.telemere :as t]))
 
 (def groq-api-url "https://api.groq.com/openai/v1")
 (def groq-completions-url (str groq-api-url "/chat/completions"))

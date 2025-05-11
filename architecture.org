@@ -7,7 +7,7 @@
 
 *** Help me think of a good architecture for a project similar to pipecat but written in the clojure ecosystem.
 
-A Clojure framework for building real-time voice-enabled AI applications. voice-fn handles the orchestration of speech recognition, audio processing, and AI service integration with the elegance of functional programming.
+A Clojure framework for building real-time voice-enabled AI applications. simulflow handles the orchestration of speech recognition, audio processing, and AI service integration with the elegance of functional programming.
 
 ## Features
 
@@ -27,7 +27,7 @@ My problems:
 
   I welcome any ideas you have. Here is some of my ideas in Clojure so far (I am not very happy with them since I tried to port the OOP model to protocols and records and doesn't hold so well since you need maker functions to simulate async work done in a constructor):
 
-  (ns voice-fn.processors.protocols)
+  (ns simulflow.processors.protocols)
 
 (defprotocol FrameProcessor
   "A frame processor is one of the pieces from the pipeline. Examples:
@@ -40,13 +40,13 @@ My problems:
   (stop! [this] "Stop the processor. Optionally push a stop frame further in the pipeline."))
 
 
-  (ns voice-fn.processors.deepgram
+  (ns simulflow.processors.deepgram
   (:require
    [hato.websocket :as ws]
    [taoensso.telemere :as t]
-   [voice-fn.frames :as frames]
-   [voice-fn.processors.protocols :refer [FrameProcessor ProcessorLifecycle stop!]]
-   [voice-fn.utils.core :as u])
+   [simulflow.frames :as frames]
+   [simulflow.processors.protocols :refer [FrameProcessor ProcessorLifecycle stop!]]
+   [simulflow.utils.core :as u])
   (:import
    (java.nio HeapCharBuffer)))
 
@@ -419,7 +419,7 @@ Would you like to explore how this might work with a concrete example?
 Let's implement your original example (microphone → transcription → logging) using this pattern:
 
 #+begin_src clojure
-(ns voice-fn.core
+(ns simulflow.core
   (:require [clojure.core.async :as a :refer [chan mult tap go-loop >! <!]]))
 
 ;; Frame constructors (pure functions)
@@ -524,7 +524,7 @@ Key points about this design:
 Here's a suggested namespace organization that follows Clojure's best practices for separation of concerns:
 
 #+begin_src clojure
-voice-fn
+simulflow
 ├── src
 │   └── voice_fn
 │       ├── core.clj           ;; Main API namespace
@@ -546,7 +546,7 @@ Here's how the code might be organized across these namespaces:
 #+begin_src clojure
 
 ;; src/voice_fn/frames.clj
-(ns voice-fn.frames)
+(ns simulflow.frames)
 
 (defn audio-frame [raw-data]
   {:type :audio/raw-input
@@ -559,7 +559,7 @@ Here's how the code might be organized across these namespaces:
    :ts (System/currentTimeMillis)})
 
 ;; src/voice_fn/pipeline.clj
-(ns voice-fn.pipeline
+(ns simulflow.pipeline
   (:require [clojure.core.async :as a]))
 
 (defn create-pipeline [processors-config]
@@ -571,9 +571,9 @@ Here's how the code might be organized across these namespaces:
     processor-type))
 
 ;; src/voice_fn/processors/audio.clj
-(ns voice-fn.processors.audio
-  (:require [voice-fn.pipeline :refer [process-frame]]
-            [voice-fn.frames :as frames]))
+(ns simulflow.processors.audio
+  (:require [simulflow.pipeline :refer [process-frame]]
+            [simulflow.frames :as frames]))
 
 (defmethod process-frame :transport/local-audio
   [_ state config frame]
@@ -581,10 +581,10 @@ Here's how the code might be organized across these namespaces:
   )
 
 ;; src/voice_fn/processors/transcription.clj
-(ns voice-fn.processors.transcription
-  (:require [voice-fn.pipeline :refer [process-frame]]
-            [voice-fn.frames :as frames]
-            [voice-fn.utils.websocket :as ws]))
+(ns simulflow.processors.transcription
+  (:require [simulflow.pipeline :refer [process-frame]]
+            [simulflow.frames :as frames]
+            [simulflow.utils.websocket :as ws]))
 
 (defmethod process-frame :transcription/deepgram
   [_ state config frame]
@@ -592,11 +592,11 @@ Here's how the code might be organized across these namespaces:
   )
 
 ;; src/voice_fn/core.clj
-(ns voice-fn.core
-  (:require [voice-fn.pipeline :as pipeline]
-            [voice-fn.processors.audio]    ;; Load multimethod implementations
-            [voice-fn.processors.transcription]
-            [voice-fn.processors.logging]))
+(ns simulflow.core
+  (:require [simulflow.pipeline :as pipeline]
+            [simulflow.processors.audio]    ;; Load multimethod implementations
+            [simulflow.processors.transcription]
+            [simulflow.processors.logging]))
 
 (def default-pipeline-config
   [{:type :transport/local-audio
@@ -635,7 +635,7 @@ Here's an implementation of audio capture using the Java Sound API, wrapped in a
 #+begin_src clojure
 
 ;; src/voice_fn/processors/audio/capture.clj
-(ns voice-fn.processors.audio.capture
+(ns simulflow.processors.audio.capture
   (:require [clojure.core.async :as a])
   (:import [javax.sound.sampled
             AudioSystem
@@ -729,18 +729,18 @@ And here's how to integrate it with your processor:
 
 #+begin_src clojure
 ;; src/voice_fn/processors/audio.clj
-(ns voice-fn.processors.audio
-  (:require [voice-fn.pipeline :refer [process-frame]]
-            [voice-fn.frames :as
+(ns simulflow.processors.audio
+  (:require [simulflow.pipeline :refer [process-frame]]
+            [simulflow.frames :as
 
 *** I've implemented my first demo of this and it works quite well. Here's how it is structurd:
 
-(ns voice-fn.core
+(ns simulflow.core
   (:require
    [taoensso.telemere :as t]
-   [voice-fn.pipeline :as pipeline]
-   [voice-fn.secrets :refer [secret]]
-   [voice-fn.transport.local.audio]))
+   [simulflow.pipeline :as pipeline]
+   [simulflow.secrets :refer [secret]]
+   [simulflow.transport.local.audio]))
 
 (def pipeline
   {:pipeline/config {:audio-in/sample-rate 16000
@@ -785,15 +785,15 @@ And here's how to integrate it with your processor:
   ,)
 
 
-  (ns voice-fn.transport.local.audio
+  (ns simulflow.transport.local.audio
   (:require
    [clojure.core.async :as a]
    [clojure.java.io :as io]
    [taoensso.telemere :as t]
    [uncomplicate.clojure-sound.core :refer [open! read! start!]]
    [uncomplicate.clojure-sound.sampled :refer [audio-format line line-info]]
-   [voice-fn.frames :as frames]
-   [voice-fn.pipeline :refer [close-processor! process-frame]])
+   [simulflow.frames :as frames]
+   [simulflow.pipeline :refer [close-processor! process-frame]])
   (:import
    (java.util Arrays)
    (javax.sound.sampled AudioFormat AudioSystem DataLine$Info TargetDataLine)))
@@ -1020,11 +1020,11 @@ For handling WebSocket/HTTP endpoints in your Clojure pipeline, I'd suggest usin
 
 #+begin_src clojure
 ;; src/voice_fn/transport/websocket.clj
-(ns voice-fn.transport.websocket
+(ns simulflow.transport.websocket
   (:require
     [org.httpkit.server :as http]
     [compojure.core :refer [GET defroutes]]
-    [voice-fn.pipeline :refer [process-frame]]
+    [simulflow.pipeline :refer [process-frame]]
     [clojure.core.async :as a]))
 
 (defn websocket-handler [pipeline req]
@@ -1086,11 +1086,11 @@ For telephony, you might have something similar:
 
 #+begin_src clojure
 ;; src/voice_fn/transport/telephony.clj
-(ns voice-fn.transport.telephony
+(ns simulflow.transport.telephony
   (:require
     [ring.adapter.jetty :as jetty]
     [compojure.core :refer [POST defroutes]]
-    [voice-fn.pipeline :refer [process-frame]]))
+    [simulflow.pipeline :refer [process-frame]]))
 
 (defn twilio-webhook-handler [pipeline req]
   ;; Handle incoming Twilio webhook
@@ -1122,7 +1122,7 @@ Here's how we can restructure the WebSocket transport using reitit:
 
 #+begin_src clojure
 ;; src/voice_fn/transport/websocket.clj
-(ns voice-fn.transport.websocket
+(ns simulflow.transport.websocket
   (:require
    [org.httpkit.server :as http]
    [reitit.ring :as ring]
@@ -1130,7 +1130,7 @@ Here's how we can restructure the WebSocket transport using reitit:
    [reitit.swagger :as swagger]
    [reitit.swagger-ui :as swagger-ui]
    [muuntaja.core :as m]
-   [voice-fn.pipeline :refer [process-frame]]
+   [simulflow.pipeline :refer [process-frame]]
    [clojure.core.async :as a]))
 
 (defn websocket-handler [pipeline]
@@ -1222,11 +1222,11 @@ Absolutely! You make a great point. This would better follow the principle of se
 #+begin_src clojure
 
 ;; src/voice_fn/server.clj
-(ns voice-fn.server
+(ns simulflow.server
   (:require
    [org.httpkit.server :as http]
    [reitit.ring :as ring]
-   [voice-fn.pipeline :as pipeline]))
+   [simulflow.pipeline :as pipeline]))
 
 (defn websocket-handler [pipeline-atom]
   (fn [req]
@@ -1286,16 +1286,16 @@ That's an excellent pattern! It separates the transport mechanism from the proto
 #+begin_src clojure
 
 ;; src/voice_fn/transport/websocket/protocols.clj
-(ns voice-fn.transport.websocket.protocols)
+(ns simulflow.transport.websocket.protocols)
 
 (defprotocol FrameSerializer
   (serialize-frame [this frame])
   (deserialize-frame [this raw-data]))
 
 ;; src/voice_fn/transport/websocket/serializers.clj
-(ns voice-fn.transport.websocket.serializers
-  (:require [voice-fn.transport.websocket.protocols :as p]
-            [voice-fn.frames :as frames]))
+(ns simulflow.transport.websocket.serializers
+  (:require [simulflow.transport.websocket.protocols :as p]
+            [simulflow.frames :as frames]))
 
 ;; Example Twilio serializer
 (defrecord TwilioSerializer [stream-sid]
@@ -1318,8 +1318,8 @@ That's an excellent pattern! It separates the transport mechanism from the proto
         ))))
 
 ;; src/voice_fn/transport/websocket/transport.clj
-(ns voice-fn.transport.websocket.transport
-  (:require [voice-fn.pipeline :as pipeline]
+(ns simulflow.transport.websocket.transport
+  (:require [simulflow.pipeline :as pipeline]
             [clojure.core.async :as a]))
 
 (defmethod pipeline/process-frame :transport/websocket

@@ -1,11 +1,11 @@
-(ns voice-fn-examples.local-w-groq
+(ns simulflow-examples.local-w-groq
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
-   [taoensso.telemere :as t]
-   [voice-fn-examples.local :as local]
-   [voice-fn.processors.groq :as groq]
-   [voice-fn.secrets :refer [secret]]))
+   [simulflow-examples.local :as local]
+   [simulflow.processors.groq :as groq]
+   [simulflow.secrets :refer [secret]]
+   [taoensso.telemere :as t]))
 
 (comment
 

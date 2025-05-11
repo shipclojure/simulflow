@@ -36,6 +36,6 @@ We can use the config-change frame to do this. And every processor takes what it
 ### Removed
 - `pipeline.clj` - Removed in favor of `core.async.flow`
 
-[0.1.3-alpha]: https://github.com/ovistoica/voice-fn/compare/0.1.2...HEAD
-[Unreleased]: https://github.com/ovistoica/voice-fn/compare/0.1.3-alpha...HEAD
-[0.1.1]: https://github.com/ovistoica/voice-fn/compare/0.1.0...0.1.1
+[0.1.3-alpha]: https://github.com/ovistoica/simulflow/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/ovistoica/simulflow/compare/0.1.3-alpha...HEAD
+[0.1.1]: https://github.com/ovistoica/simulflow/compare/0.1.0...0.1.1
