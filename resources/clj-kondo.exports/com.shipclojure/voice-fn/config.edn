@@ -1,2 +1,0 @@
-{:lint-as {uncomplicate.commons.core/with-release clojure.core/let}
- :hooks {:analyze-call {simulflow.frame/defframe hooks.defframe/defframe}}}

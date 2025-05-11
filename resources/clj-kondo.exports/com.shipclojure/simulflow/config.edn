@@ -1,0 +1,3 @@
+{:lint-as {uncomplicate.commons.core/with-release clojure.core/let
+           simulflow.async/vthread-loop clojure.core/loop}
+ :hooks {:analyze-call {simulflow.frame/defframe hooks.defframe/defframe}}}
