@@ -6,8 +6,6 @@
    [malli.error :as me]
    [simulflow.schema :as schema]))
 
-(defrecord Frame [type data ts])
-
 (def check-frame-schema?
   "Whether the schema of frames should be checked on schema creation. Use
   alias :dev to make this true. Default false"
@@ -16,18 +14,20 @@
     (catch Exception e
       false)))
 
+(defn frame?
+  "Returns true if x is a frame"
+  [x]
+  (and (map? x) (= (:frame/tag x) ::frame)))
+
 (defn frame? [frame]
-  (instance? Frame frame))
+  (= (:type (meta frame)) ::frame))
 
 (defn create-frame
   [type data]
   (let [ts (System/currentTimeMillis)]
-    (map->Frame {:type type
-                 :frame/type type
-                 :data data
-                 :frame/data data
-                 :ts ts
-                 :frame/ts ts})))
+    (with-meta {:frame/type type
+                :frame/data data
+                :frame/ts ts} {:type ::frame})))
 
 (defn system-frame?
   "Returns true if the frame is a system frame that should be processed immediately"
@@ -75,7 +75,7 @@
        (def ~pred-name
          (fn [frame#]
            (and (frame? frame#)
-                (nil? (m/explain ~frame-schema-name frame#))))))))
+                (m/validate ~frame-schema-name frame#)))))))
 
 ;;
 ;; System Frames
