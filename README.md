@@ -1,5 +1,7 @@
 # simulflow - Real-time Data-Driven AI Pipeline Framework
 
+<img src="./resources/logo.png" />
+
 ```
 “Daydreaming is the first awakening of what we call simulflow. It is
 an essential tool of rational thought. With it you can clear the mind for
