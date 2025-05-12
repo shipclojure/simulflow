@@ -127,7 +127,7 @@
               (do
                 (if-let [tool-call (first (:tool_calls d))]
                   (do
-                    (t/log! ["SENDING TOOL CALL" tool-call])
+                    (t/log! ["Sending tool call" tool-call])
                     (a/>!! out-c (frame/llm-tool-call-chunk tool-call)))
                   (when-let [c (:content d)]
                     (a/>!! out-c (frame/llm-text-chunk c))))
