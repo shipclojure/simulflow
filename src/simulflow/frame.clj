@@ -8,6 +8,14 @@
 
 (defrecord Frame [type data ts])
 
+(def check-frame-schema?
+  "Whether the schema of frames should be checked on schema creation. Use
+  alias :dev to make this true. Default false"
+  (try
+    (Boolean/parseBoolean (System/getProperty "simulflow.frame.schema-checking" "false"))
+    (catch Exception e
+      false)))
+
 (defn frame? [frame]
   (instance? Frame frame))
 
@@ -56,10 +64,11 @@
          (fn
            [data#]
            (let [frame# (create-frame ~type data#)]
-             (when-let [err# (me/humanize (m/explain ~frame-schema frame#))]
-               (throw (ex-info "Invalid frame data"
-                               {:error err#
-                                :frame frame#})))
+             (when check-frame-schema?
+               (when-let [err# (me/humanize (m/explain ~frame-schema frame#))]
+                 (throw (ex-info "Invalid frame data"
+                                 {:error err#
+                                  :frame frame#}))))
              frame#)))
 
        ;; Define the predicate function

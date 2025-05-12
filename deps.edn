@@ -33,6 +33,9 @@
   :run {:main-opts ["-m" "simulflow.transport.local.audio"]
         :exec-fn simulflow.transport.local.audio/main}
   :dev {:extra-paths ["dev"]
+        ;; Check schema for each frame instantiation (not recommended in prod
+        ;; since many schemas are created)
+        :jvm-opts ["-Dsimulflow.frame.schema-checking=true"]
         :extra-deps {djblue/portal {:mvn/version "0.58.5"}
                      criterium/criterium {:mvn/version "0.4.6"}
                      clj-kondo/clj-kondo {:mvn/version "2024.11.14"}}}
