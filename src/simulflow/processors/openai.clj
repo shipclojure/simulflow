@@ -25,8 +25,8 @@
       [;; GPT-4 Models
        "gpt-4"
        "gpt-4-32k"
-       "gpt-4-1106-preview"    ;; GPT-4 Turbo
-       "gpt-4-vision-preview"  ;; GPT-4 Vision
+       "gpt-4-1106-preview"   ;; GPT-4 Turbo
+       "gpt-4-vision-preview" ;; GPT-4 Vision
        ;; GPT-3.5 Models
        "gpt-3.5-turbo"
        "gpt-3.5-turbo-16k"
@@ -135,43 +135,36 @@
 
 (def openai-llm-process
   (flow/process
-    (flow/map->step {:describe (fn [] {:ins {:in "Channel for incoming context aggregations"}
-                                       :outs {:out "Channel where streaming responses will go"}
-                                       :params {:llm/model "Openai model used"
-                                                :openai/api-key "OpenAI Api key"
-                                                :llm/temperature "Optional temperature parameter for the llm inference"
-                                                :llm/max-tokens "Optional max tokens to generate"
-                                                :llm/presence-penalty "Optional (-2.0 to 2.0)"
-                                                :llm/top-p "Optional nucleus sampling threshold"
-                                                :llm/seed "Optional seed used for deterministic sampling"
-                                                :llm/max-completion-tokens "Optional Max tokens in completion"
-                                                :llm/extra "Optional extra model parameters"}
-                                       :workload :io})
+    (fn
+      ([] {:ins {:in "Channel for incoming context aggregations"}
+           :outs {:out "Channel where streaming responses will go"}
+           :params (schema/->flow-describe-parameters OpenAILLMConfigSchema)
+           :workload :io})
+      ([params]
+       (let [state (m/decode OpenAILLMConfigSchema params mt/default-value-transformer)
+             llm-write (a/chan 100)
+             llm-read (a/chan 1024)]
+         (vthread-loop []
+           (if-let [frame (a/<!! llm-write)]
+             (do
+               (t/log! :info ["AI REQUEST" (:frame/data frame)])
+               (assert (or (frame/llm-context? frame)
+                           (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
+               (flow-do-completion! state llm-read (:frame/data frame))
+               (recur))
+             (t/log! {:level :info :id :llm} "Closing llm loop")))
 
-                     :transition (fn [{::flow/keys [in-ports out-ports]} transition]
-                                   (when (= transition ::flow/stop)
-                                     (doseq [port (concat (vals in-ports) (vals out-ports))]
-                                       (a/close! port))))
-                     :init (fn [params]
-                             (let [state (m/decode OpenAILLMConfigSchema params mt/default-value-transformer)
-                                   llm-write (a/chan 100)
-                                   llm-read (a/chan 1024)]
-                               (vthread-loop []
-                                 (if-let [frame (a/<!! llm-write)]
-                                   (do
-                                     (t/log! :info ["AI REQUEST" (:frame/data frame)])
-                                     (assert (or (frame/llm-context? frame)
-                                                 (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
-                                     (flow-do-completion! state llm-read (:frame/data frame))
-                                     (recur))
-                                   (t/log! {:level :info :id :llm} "Closing llm loop")))
+         {::flow/in-ports {:llm-read llm-read}
+          ::flow/out-ports {:llm-write llm-write}}))
 
-                               {::flow/in-ports {:llm-read llm-read}
-                                ::flow/out-ports {:llm-write llm-write}}))
+      ([{::flow/keys [in-ports out-ports]} transition]
+       (when (= transition ::flow/stop)
+         (doseq [port (concat (vals in-ports) (vals out-ports))]
+           (a/close! port))))
 
-                     :transform (fn [state in msg]
-                                  (if (= in :llm-read)
-                                    [state {:out [msg]}]
-                                    (cond
-                                      (frame/llm-context? msg)
-                                      [state {:llm-write [msg]}])))})))
+      ([state in msg]
+       (if (= in :llm-read)
+         [state {:out [msg]}]
+         (cond
+           (frame/llm-context? msg)
+           [state {:llm-write [msg]}]))))))

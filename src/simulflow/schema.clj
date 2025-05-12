@@ -5,6 +5,40 @@
    [malli.error :as me]
    [malli.util :as mu]))
 
+(defn parse-schema
+  [s]
+  (cond
+    (keyword? s) {:type s
+                  :data {}
+                  :children []}
+    :else
+    (let [[type & [maybe-arg :as args]] s
+          [data childs] (if (or (vector? maybe-arg)
+                                (and (sequential? maybe-arg)
+                                     (sequential? (first maybe-arg)))
+                                (nil? maybe-arg))
+                          [{} args]
+                          [maybe-arg (rest args)])]
+      {:type type
+       :data data
+       :children (if (= 1 (count childs)) (first childs) (vec childs))})))
+
+(defn ->flow-describe-parameters
+  "Take a malli schema and transform to core.async.flow processor :describe key format"
+  [s]
+  (let [{:keys [children type]} (parse-schema s)]
+    (assert (= type :map) "Can only transform :map schemas to :describe parameter format ")
+    (reduce
+      (fn [acc child]
+        (let [{:keys [type data children]} (parse-schema child)
+              key-name type
+              optional? (:optional data false)
+              {:keys [type data]} (parse-schema children)
+              description (:description data)]
+          (assoc acc key-name (apply str (remove nil? ["Type: " type (when optional? "; Optional ")  (when description (str "; Description: " description))])))))
+      {}
+      children)))
+
 (defn flex-enum
   "Creates a flexible enum that accepts both keywords and their string versions.
    Input: coll of keywords or string
