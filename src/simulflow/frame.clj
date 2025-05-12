@@ -2,7 +2,6 @@
   "Defines the core frame concept and frame creation functions for the simulflow pipeline.
    A frame represents a discrete unit of data or control flow in the pipeline."
   (:require
-   [malli.clj-kondo :as mc]
    [malli.core :as m]
    [malli.error :as me]
    [simulflow.schema :as schema]))
@@ -44,7 +43,7 @@
   (let [frame-schema [:map
                       [:frame/type [:= type]]
                       [:frame/data schema]
-                      [:frame/ts :any]]
+                      [:frame/ts :int]]
         frame-schema-name (symbol (str name "-schema"))
         pred-name (symbol (str name "?"))]
     `(do
@@ -67,11 +66,7 @@
        (def ~pred-name
          (fn [frame#]
            (and (frame? frame#)
-                (nil? (m/explain ~frame-schema-name frame#)))))
-
-       ;; Add clj-kondo type hints
-       (m/=> ~name [:=> [:cat ~schema] ~frame-schema-name])
-       (m/=> ~pred-name [:=> [:cat any?] :boolean]))))
+                (nil? (m/explain ~frame-schema-name frame#))))))))
 
 ;;
 ;; System Frames
@@ -318,9 +313,3 @@
 (defframe text-input
   "Text input frame for LLM processing"
   {:type :frame.text/input})
-
-(comment
-
-  (mc/emit!)
-
-  ,)
