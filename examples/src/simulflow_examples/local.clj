@@ -4,11 +4,11 @@
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [simulflow.async :refer [vthread-loop]]
+   [simulflow.processors.activity-monitor :refer [activity-monitor]]
    [simulflow.processors.deepgram :as deepgram]
    [simulflow.processors.elevenlabs :as xi]
    [simulflow.processors.llm-context-aggregator :as context]
    [simulflow.processors.openai :as openai]
-   [simulflow.processors.silence-monitor :refer [silence-monitor]]
    [simulflow.secrets :refer [secret]]
    [simulflow.transport :as transport]
    [simulflow.utils.core :as u]
@@ -126,7 +126,7 @@
                                           ([_] nil)
                                           ([_ _] nil)
                                           ([_ _ v] (prn v))))}
-         :silence-monitor {:proc silence-monitor}}
+         :activity-monitor {:proc activity-monitor}}
         extra-procs)
       :conns (concat
                [[[:transport-in :out] [:transcriptor :in]]
@@ -145,10 +145,10 @@
                 [[:tts :out] [:audio-splitter :in]]
                 [[:audio-splitter :out] [:transport-out :in]]
                 [[:transport-out :out] [:prn-sink :in]]
-                [[:transport-out :out] [:silence-monitor :in]]
-                [[:transcriptor :out] [:silence-monitor :in]]
-                [[:silence-monitor :out] [:context-aggregator :in]]
-                [[:silence-monitor :out] [:tts :in]]]
+                [[:transport-out :out] [:activity-monitor :in]]
+                [[:transcriptor :out] [:activity-monitor :in]]
+                [[:activity-monitor :out] [:context-aggregator :in]]
+                [[:activity-monitor :out] [:tts :in]]]
                extra-conns)})))
 
 (comment
