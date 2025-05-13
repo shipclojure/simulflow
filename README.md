@@ -26,6 +26,32 @@ Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simul
 > While Simulflow has been used in live, production applications - it's still under *active* development.
 > Expect breaking changes to support new usecases
 
+## Installation
+
+### Clojure CLI/deps.edn
+
+```clojure
+;; Add to your deps.edn
+{:deps {com.shipclojure/simulflow {:mvn/version "0.1.4-alpha"}}}
+```
+
+### Leiningen/Boot
+
+```clojure
+;; Add to your project.clj
+[com.shipclojure/simulflow "0.1.4-alpha"]
+```
+
+### Maven
+
+```xml
+<dependency>
+  <groupId>com.shipclojure</groupId>
+  <artifactId>simulflow</artifactId>
+  <version>0.1.4-alpha</version>
+</dependency>
+```
+
 ## Video presentation:
 [![Watch the video](https://img.youtube.com/vi/HwoGMhIx5w0/0.jpg)](https://youtu.be/HwoGMhIx5w0?t=345)
 
