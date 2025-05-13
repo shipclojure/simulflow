@@ -15,55 +15,6 @@
 (def groq-api-url "https://api.groq.com/openai/v1")
 (def groq-completions-url (str groq-api-url "/chat/completions"))
 
-(defn stream-groq-chat-completion
-  [{:keys [api-key messages tools model]}]
-  (:body (request/sse-request {:request {:url groq-completions-url
-                                         :headers {"Authorization" (str "Bearer " api-key)
-                                                   "Content-Type" "application/json"}
-
-                                         :method :post
-                                         :body (u/json-str (cond-> {:messages messages
-                                                                    :stream true
-                                                                    :model model}
-                                                             (pos? (count tools)) (assoc :tools tools)))}
-                               :params {:stream/close? true}})))
-
-(defn normal-chat-completion
-  [{:keys [api-key messages tools model]}]
-  (http/request {:url groq-completions-url
-                 :headers {"Authorization" (str "Bearer " api-key)
-                           "Content-Type" "application/json"}
-
-                 :throw-on-error? false
-                 :method :post
-                 :body (u/json-str (cond-> {:messages messages
-                                            :stream true
-                                            :model model}
-                                     (pos? (count tools)) (assoc :tools tools)))}))
-
-(comment
-
-  (map u/token-content (a/<!! (a/into [] (stream-groq-chat-completion
-                                           {:model "llama-3.3-70b-versatile"
-                                            :api-key (secret [:groq :api-key])
-                                            :messages [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}
-                                                       {:role "user" :content "Salutare ma auzi?"}]}))))
-
-  ,)
-
-(comment
-
-  (->> (http/get (str groq-api-url "/models")
-                 {:headers {"Authorization" (str "Bearer " (secret [:groq :api-key]))
-                            "Content-Type" "application/json"}})
-       :body
-       u/parse-if-json
-       :data
-       (map :id))
-  ,)
-
-(def delta (comp :delta first :choices))
-
 (def GroqLLMConfigSchema
   [:map
    {:closed true

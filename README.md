@@ -222,6 +222,12 @@ See [examples](./examples/src/voice_fn_examples/) for more usages.
 -   **OpenAI**
     -   Models: `gpt-4o-mini`(fastest, cheapest),  `gpt-4`, `gpt-3.5-turbo` and more
     -   Features: Function calling, streaming responses
+-   **Google**
+    -   Models: `gemini-2.0-flash`(fastest, cheapest),  `gemini-2.5-flash`,  and more
+    -   Features: Function calling, streaming responses, thinking
+-   **Groq**
+    -   Models: `llama-3.2-3b-preview` `llama-3.1-8b-instant` `llama-3.3-70b-versatile` etc
+    -   Features: Function calling, streaming responses, thinking
 
 
 ## Key Concepts
