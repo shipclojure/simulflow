@@ -122,7 +122,6 @@
                (assert (or (frame/llm-context? frame)
                            (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
                (let [context (:frame/data frame)
-                     _ (a/>!! llm-read (frame/llm-full-response-start true))
                      stream-ch (request/stream-chat-completion {:model model
                                                                 :api-key api-key
                                                                 :messages (:messages context)
@@ -145,4 +144,5 @@
          [state {:out [msg]}]
          (cond
            (frame/llm-context? msg)
-           [state {:llm-write [msg]}]))))))
+           [state {:llm-write [msg]
+                   :out [(frame/llm-full-response-start true)]}]))))))
