@@ -1,14 +1,16 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
-## [0.1.3-alpha]
+## Unreleased
 ### Added
-- Scenario Manager for handling complex conversation flows
-- Silence detection with automatic inactivity prompts
+- Functionality to describe a process parameters with malli schema only
+- [Google llm](./src/simulflow/processors/google.clj) support
+- [Scenario Manager](./src/simulflow/scenario_manager.clj) for handling complex conversation flows
+- [Activity Monitor](./src/simulflow/processors/activity_monitor.clj) to ping user or end call when no activity is detected for specific period
 - Bot speaking events tracking
-- End call prompts when no activity is detected
 
-## [0.1.2] - 2024-01-30
+
+## [0.1.2] - 2025-01-30
 ### Added
 - Support for tool use. See [llm-context-aggregator.clj](./src/voice_fn/processors/llm_context_aggregator.clj)
 - Twilio transport in support. See `twilio-transport-in` [transport.clj](./src/voice_fn/transport.clj)
