@@ -3,6 +3,7 @@
    [clojure.core.async.impl.protocols :as async-protocols]
    [malli.core :as m]
    [malli.error :as me]
+   [malli.transform :as mt]
    [malli.util :as mu]))
 
 (defn parse-schema
@@ -30,14 +31,18 @@
     (assert (= type :map) "Can only transform :map schemas to :describe parameter format ")
     (reduce
       (fn [acc child]
-        (let [{:keys [type data children]} (parse-schema child)
-              key-name type
-              optional? (:optional data false)
+        (let [{key-name :type
+               {:keys [description optional]} :data
+               children :children} (parse-schema child)
               {:keys [type data]} (parse-schema children)
-              description (:description data)]
-          (assoc acc key-name (apply str (remove nil? ["Type: " type (when optional? "; Optional ")  (when description (str "; Description: " description))])))))
+              description (or description (:description data))]
+          (assoc acc key-name (apply str (remove nil? ["Type: " type (when optional "; Optional ")  (when description (str "; Description: " description))])))))
       {}
       children)))
+
+(defn parse-with-defaults
+  [s m]
+  (m/decode s m mt/default-value-transformer))
 
 (defn flex-enum
   "Creates a flexible enum that accepts both keywords and their string versions.
