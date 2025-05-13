@@ -8,6 +8,7 @@
    [simulflow.frame :as frame]
    [simulflow.schema :as schema]
    [simulflow.utils.core :as u]
+   [simulflow.utils.openai :as uai]
    [simulflow.utils.request :as request]
    [taoensso.telemere :as t]))
 
@@ -103,36 +104,6 @@
 
   ,)
 
-(def delta (comp :delta first :choices))
-
-(defn flow-do-completion!
-  "Handle completion requests for OpenAI LLM models"
-  [state out-c context]
-  (let [{:llm/keys [model] :openai/keys [api-key]} state]
-    ;; Start request only when the last message in the context is by the user
-
-    (a/>!! out-c (frame/llm-full-response-start true))
-    (let [stream-ch (try (request/stream-chat-completion (merge {:model model
-                                                                 :api-key api-key
-                                                                 :messages (:messages context)
-                                                                 :tools (mapv u/->tool-fn (:tools context))}))
-                         (catch Exception e
-                           (t/log! :error e)))]
-
-      (vthread-loop []
-        (when-let [chunk (a/<!! stream-ch)]
-          (let [d (delta chunk)]
-            (if (= chunk :done)
-              (a/>!! out-c (frame/llm-full-response-end true))
-              (do
-                (if-let [tool-call (first (:tool_calls d))]
-                  (do
-                    (t/log! ["Sending tool call" tool-call])
-                    (a/>!! out-c (frame/llm-tool-call-chunk tool-call)))
-                  (when-let [c (:content d)]
-                    (a/>!! out-c (frame/llm-text-chunk c))))
-                (recur)))))))))
-
 (def openai-llm-process
   (flow/process
     (fn
@@ -141,7 +112,7 @@
            :params (schema/->flow-describe-parameters OpenAILLMConfigSchema)
            :workload :io})
       ([params]
-       (let [state (m/decode OpenAILLMConfigSchema params mt/default-value-transformer)
+       (let [{:llm/keys [model] :openai/keys [api-key]} (m/decode OpenAILLMConfigSchema params mt/default-value-transformer)
              llm-write (a/chan 100)
              llm-read (a/chan 1024)]
          (vthread-loop []
@@ -150,7 +121,14 @@
                (t/log! :info ["AI REQUEST" (:frame/data frame)])
                (assert (or (frame/llm-context? frame)
                            (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
-               (flow-do-completion! state llm-read (:frame/data frame))
+               (let [context (:frame/data frame)
+                     _ (a/>!! llm-read (frame/llm-full-response-start true))
+                     stream-ch (request/stream-chat-completion {:model model
+                                                                :api-key api-key
+                                                                :messages (:messages context)
+                                                                :tools (mapv u/->tool-fn (:tools context))})]
+                 (uai/handle-completion-request! stream-ch llm-read))
+
                (recur))
              (t/log! {:level :info :id :llm} "Closing llm loop")))
 
