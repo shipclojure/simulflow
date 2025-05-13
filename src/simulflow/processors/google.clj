@@ -16,6 +16,7 @@
    [taoensso.telemere :as t]))
 
 (def google-generative-api-url "https://generativelanguage.googleapis.com/v1beta/openai")
+(def google-completions-url (str google-generative-api-url "/chat/completions"))
 
 (comment
   ;; Get list of valid models
@@ -43,16 +44,29 @@
      "gemma-3-12b-it" "gemini-2.0-flash" "gemini-2.5-flash-preview-04-17" "gemini-2.0-flash-001" "gemini-1.5-flash-001" "gemma-3-1b-it" "gemini-2.5-pro-preview-05-06"
      "imagen-3.0-generate-002" "gemini-2.0-flash-exp"]))
 
-(def GoogleLLMConfigSchema
-  [:map
-   {:description "Google LLM configuration"}
-   [:llm/model model-schema]
-   [:google/api-key {:optional true} [:string
-                                      {:description "Google API key"
-                                       :secret true
-                                       :error/message "Invalid Google"}]]])
+(def GoogleLLMConfigSchema  [:map
+                             {:description "Google LLM configuration"}
+                             [:llm/model {:default :gemini-2.0-flash} model-schema]
+                             [:google/api-key  [:string
+                                                {:description "Google API key"
+                                                 :secret true
+                                                 :error/message "Invalid Google"}]]])
 
-(defn google-llm-process
+(comment
+
+  (:body (uai/normal-chat-completion {:api-key (secret [:google :api-key])
+                                      :model :gemini-2.0-flash
+                                      :messages [{:role "system"
+                                                  :content "You are a voice agent operating via phone. Be
+                       concise in your answers. The input you receive comes from a
+                       speech-to-text (transcription) system that isn't always
+                       efficient and may send unclear text. Ask for
+                       clarification when you're unsure what the person said."}
+                                                 {:role "user" :content "Do you hear me?"}]
+                                      :completions-url google-completions-url}))
+  ,)
+
+(defn google-llm-process-fn
   ([]
    {:ins {:in "Channel for incoming context aggregations"}
     :outs {:out "Channel where streaming responses will go"}
@@ -73,10 +87,11 @@
          (assert (or (frame/llm-context? frame)
                      (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
          (let [context (:frame/data frame)
-               stream-ch (request/stream-chat-completion {:model model
-                                                          :api-key api-key
-                                                          :messages (:messages context)
-                                                          :tools (mapv u/->tool-fn (:tools context))})]
+               stream-ch (uai/stream-chat-completion {:model model
+                                                      :api-key api-key
+                                                      :messages (:messages context)
+                                                      :tools (mapv u/->tool-fn (:tools context))
+                                                      :completions-url google-completions-url})]
            (uai/handle-completion-request! stream-ch llm-read))
 
          (recur)))
@@ -93,3 +108,5 @@
        (frame/llm-context? msg)
        [state {:llm-write [msg]
                :out [(frame/llm-full-response-start true)]}]))))
+
+(def google-llm-process (flow/process google-llm-process-fn))
