@@ -3,6 +3,7 @@
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
+   [simulflow.async :refer [vthread-loop]]
    [simulflow.processors.deepgram :as deepgram]
    [simulflow.processors.elevenlabs :as xi]
    [simulflow.processors.llm-context-aggregator :as context]
@@ -161,13 +162,12 @@
     (reset! flow-started? true)
     ;; Resume local ai -> you can now speak with the AI
     (flow/resume local-ai)
-    (a/thread
-      (loop []
-        (when @flow-started?
-          (when-let [[msg c] (a/alts!! [report-chan error-chan])]
-            (when (map? msg)
-              (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
-            (recur))))))
+    (vthread-loop []
+      (when @flow-started?
+        (when-let [[msg c] (a/alts!! [report-chan error-chan])]
+          (when (map? msg)
+            (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
+          (recur)))))
 
   ;; Stop the conversation
   (do
