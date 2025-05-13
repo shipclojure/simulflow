@@ -116,20 +116,18 @@
              llm-write (a/chan 100)
              llm-read (a/chan 1024)]
          (vthread-loop []
-           (if-let [frame (a/<!! llm-write)]
-             (do
-               (t/log! :info ["AI REQUEST" (:frame/data frame)])
-               (assert (or (frame/llm-context? frame)
-                           (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
-               (let [context (:frame/data frame)
-                     stream-ch (request/stream-chat-completion {:model model
-                                                                :api-key api-key
-                                                                :messages (:messages context)
-                                                                :tools (mapv u/->tool-fn (:tools context))})]
-                 (uai/handle-completion-request! stream-ch llm-read))
+           (when-let [frame (a/<!! llm-write)]
+             (t/log! :info ["AI REQUEST" (:frame/data frame)])
+             (assert (or (frame/llm-context? frame)
+                         (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
+             (let [context (:frame/data frame)
+                   stream-ch (request/stream-chat-completion {:model model
+                                                              :api-key api-key
+                                                              :messages (:messages context)
+                                                              :tools (mapv u/->tool-fn (:tools context))})]
+               (uai/handle-completion-request! stream-ch llm-read))
 
-               (recur))
-             (t/log! {:level :info :id :llm} "Closing llm loop")))
+             (recur)))
 
          {::flow/in-ports {:llm-read llm-read}
           ::flow/out-ports {:llm-write llm-write}}))
