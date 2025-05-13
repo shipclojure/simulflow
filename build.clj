@@ -33,7 +33,9 @@
          :target "target"
          :src-dirs ["src"]))
 
-(defn ci "Run the CI pipeline of tests (and build the JAR)." [opts]
+(defn ci
+  "Run the CI pipeline of tests (and build the JAR)."
+  [opts]
   (test opts)
   (b/delete {:path "target"})
   (let [opts (jar-opts opts)]
@@ -45,12 +47,15 @@
     (b/jar opts))
   opts)
 
-(defn install "Install the JAR locally." [opts]
+(defn install
+  "Install the JAR locally."
+  [opts]
   (let [opts (jar-opts opts)]
     (b/install opts))
   opts)
 
-(defn deploy "Deploy the JAR to Clojars." [opts]
+(defn deploy "Deploy the JAR to Clojars."
+  [opts]
   (let [{:keys [jar-file] :as opts} (jar-opts opts)]
     (dd/deploy {:installer :remote :artifact (b/resolve-path jar-file)
                 :pom-file (b/pom-path (select-keys opts [:lib :class-dir]))}))

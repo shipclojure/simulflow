@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file. This change
 
 ## Unreleased
 ### Added
+- Change frame format from records to maps with specific meta for easier debugging
 - Functionality to describe a process parameters with malli schema only
 - [Google llm](./src/simulflow/processors/google.clj) support. Example usage: [gemini.clj](./examples/src/simulflow_examples/gemini.clj)
 - [Scenario Manager](./src/simulflow/scenario_manager.clj) for handling complex conversation flows
