@@ -136,40 +136,6 @@
    hm/wrap-nested-params
    hm/wrap-method])
 
-(def openai-completions-url "https://api.openai.com/v1/chat/completions")
-
-(defn stream-chat-completion
-  [{:keys [api-key messages tools model response-format completions-url]
-    :or {model "gpt-4o-mini"
-         completions-url openai-completions-url}}]
-  (:body (sse-request {:request {:url completions-url
-                                 :headers {"Authorization" (str "Bearer " api-key)
-                                           "Content-Type" "application/json"}
-
-                                 :method :post
-                                 :body (u/json-str (cond-> {:messages messages
-                                                            :stream true
-                                                            :response_format response-format
-                                                            :model model}
-                                                     (pos? (count tools)) (assoc :tools tools)))}
-                       :params {:stream/close? true}})))
-
-(defn normal-chat-completion
-  [{:keys [api-key messages tools model response-format stream completions-url]
-    :or {model "gpt-4o-mini"
-         stream false}}]
-  (http/request {:url openai-completions-url
-                 :headers {"Authorization" (str "Bearer " api-key)
-                           "Content-Type" "application/json"}
-
-                 :throw-on-error? false
-                 :method :post
-                 :body (u/json-str (cond-> {:messages messages
-                                            :stream stream
-                                            :response_format response-format
-                                            :model model}
-                                     (pos? (count tools)) (assoc :tools tools)))}))
-
 (comment
   (require '[simulflow.secrets :refer [secret]])
 

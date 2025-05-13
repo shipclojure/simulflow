@@ -9,10 +9,7 @@
    [simulflow.schema :as schema]
    [simulflow.utils.core :as u]
    [simulflow.utils.openai :as uai]
-   [simulflow.utils.request :as request]
    [taoensso.telemere :as t]))
-
-(def openai-completions-url "https://api.openai.com/v1/chat/completions")
 
 (def OpenAILLMConfigSchema
   [:map
@@ -26,8 +23,8 @@
       [;; GPT-4 Models
        "gpt-4"
        "gpt-4-32k"
-       "gpt-4-1106-preview"   ;; GPT-4 Turbo
-       "gpt-4-vision-preview" ;; GPT-4 Vision
+       "gpt-4-1106-preview"    ;; GPT-4 Turbo
+       "gpt-4-vision-preview"  ;; GPT-4 Vision
        ;; GPT-3.5 Models
        "gpt-3.5-turbo"
        "gpt-3.5-turbo-16k"
@@ -121,10 +118,10 @@
              (assert (or (frame/llm-context? frame)
                          (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
              (let [context (:frame/data frame)
-                   stream-ch (request/stream-chat-completion {:model model
-                                                              :api-key api-key
-                                                              :messages (:messages context)
-                                                              :tools (mapv u/->tool-fn (:tools context))})]
+                   stream-ch (uai/stream-chat-completion {:model model
+                                                          :api-key api-key
+                                                          :messages (:messages context)
+                                                          :tools (mapv u/->tool-fn (:tools context))})]
                (uai/handle-completion-request! stream-ch llm-read))
 
              (recur)))
