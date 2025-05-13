@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file. This change
 ## Unreleased
 ### Added
 - Functionality to describe a process parameters with malli schema only
-- [Google llm](./src/simulflow/processors/google.clj) support
+- [Google llm](./src/simulflow/processors/google.clj) support. Example usage: [gemini.clj](./examples/src/simulflow_examples/gemini.clj)
 - [Scenario Manager](./src/simulflow/scenario_manager.clj) for handling complex conversation flows
 - [Activity Monitor](./src/simulflow/processors/activity_monitor.clj) to ping user or end call when no activity is detected for specific period
 - Bot speaking events tracking
