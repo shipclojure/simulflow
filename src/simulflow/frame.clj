@@ -11,19 +11,52 @@
   alias :dev to make this true. Default false"
   (try
     (Boolean/parseBoolean (System/getProperty "simulflow.frame.schema-checking" "false"))
-    (catch Exception e
+    (catch Exception _e
       false)))
 
 (defn frame? [frame]
   (and (= (:type (meta frame)) ::frame)
        (map? frame)))
 
+(defn normalize-timestamp
+  "Convert a timestamp to milliseconds since epoch.
+   Accepts integers (milliseconds) and java.util.Date objects."
+  [timestamp]
+  (cond
+    (int? timestamp) timestamp
+    (instance? java.util.Date timestamp) (.getTime timestamp)
+    :else (throw (ex-info "Invalid timestamp type" {:timestamp timestamp :type (type timestamp)}))))
+
+(defn timestamp->date
+  "Convert a timestamp to a java.util.Date.
+   Accepts integers (milliseconds) and java.util.Date objects."
+  [timestamp]
+  (cond
+    (int? timestamp) (java.util.Date. timestamp)
+    (instance? java.util.Date timestamp) timestamp
+    :else (throw (ex-info "Invalid timestamp type" {:timestamp timestamp :type (type timestamp)}))))
+
 (defn create-frame
-  [type data]
-  (let [ts (System/currentTimeMillis)]
-    (with-meta {:frame/type type
-                :frame/data data
-                :frame/ts ts} {:type ::frame})))
+  "Create a frame with the given type and data.
+
+  Args:
+   - type: The frame type keyword
+   - data: The frame data
+   - opts: Optional map with:
+     - :timestamp - Explicit timestamp (defaults to current time)
+                   Can be an integer (milliseconds) or java.util.Date (#inst)
+
+   Examples:
+   (create-frame :test/frame \"data\")
+   (create-frame :test/frame \"data\" {:timestamp 1696492800000})
+   (create-frame :test/frame \"data\" {:timestamp #inst \"2024-10-05T05:00:00.000Z\"})"
+  ([type data]
+   (create-frame type data {}))
+  ([type data {:keys [timestamp] :or {timestamp (System/currentTimeMillis)}}]
+   (let [normalized-ts (normalize-timestamp timestamp)]
+     (with-meta {:frame/type type
+                 :frame/data data
+                 :frame/ts normalized-ts} {:type ::frame}))))
 
 (defn system-frame?
   "Returns true if the frame is a system frame that should be processed immediately"
@@ -42,12 +75,16 @@
    Usage: (defframe audio-input
                     \"Doc string\"
                     {:type :frame.audio/input-raw
-                     :schema [:map [:data AudioData]])}"
+                     :schema [:map [:data AudioData]]})
+
+   The generated function supports both:
+   (frame-name data) - Uses current timestamp
+   (frame-name data {:timestamp ts}) - Uses explicit timestamp"
   [name docstring {:keys [type schema] :or {schema :any}}]
   (let [frame-schema [:map
                       [:frame/type [:= type]]
                       [:frame/data schema]
-                      [:frame/ts :int]]
+                      [:frame/ts schema/Timestamp]]
         frame-schema-name (symbol (str name "-schema"))
         pred-name (symbol (str name "?"))]
     `(do
@@ -58,14 +95,16 @@
        (def ~name
          ~docstring
          (fn
-           [data#]
-           (let [frame# (create-frame ~type data#)]
-             (when check-frame-schema?
-               (when-let [err# (me/humanize (m/explain ~frame-schema frame#))]
-                 (throw (ex-info "Invalid frame data"
-                                 {:error err#
-                                  :frame frame#}))))
-             frame#)))
+           ([data#]
+            (~name data# {}))
+           ([data# opts#]
+            (let [frame# (create-frame ~type data# opts#)]
+              (when check-frame-schema?
+                (when-let [err# (me/humanize (m/explain ~frame-schema frame#))]
+                  (throw (ex-info "Invalid frame data"
+                                  {:error err#
+                                   :frame frame#}))))
+              frame#))))
 
        ;; Define the predicate function
        (def ~pred-name
