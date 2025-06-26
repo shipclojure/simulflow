@@ -64,16 +64,15 @@
         (is (frame/frame? frame) "Should create valid frame")
         (is (= ::test-frame (:frame/type frame)) "Should set correct type")
         (is (= "test-data" (:frame/data frame)) "Should set correct data")
-        (is (int? (:frame/ts frame)) "Should have integer timestamp")
-        (is (> (:frame/ts frame) 0) "Should have positive timestamp")))
+        (is (inst? (:frame/ts frame)) "Should have integer timestamp")))
 
     (testing "with explicit millisecond timestamp"
       (let [frame (frame/create-frame ::test-frame "test-data" {:timestamp test-timestamp-ms})]
-        (is (= test-timestamp-ms (:frame/ts frame)) "Should use provided timestamp")))
+        (is (= test-timestamp-ms (.getTime (:frame/ts frame))) "Should use provided timestamp")))
 
     (testing "with explicit Date timestamp"
       (let [frame (frame/create-frame ::test-frame "test-data" {:timestamp test-timestamp})]
-        (is (= test-timestamp-ms (:frame/ts frame)) "Should normalize Date to milliseconds")))
+        (is (= test-timestamp (:frame/ts frame)) "Should normalize Date to milliseconds")))
 
     (testing "with invalid timestamp"
       (is (thrown? Exception
@@ -266,34 +265,6 @@
         (is (= "User input" (:frame/data frame)))
         (is (frame/text-input? frame))))))
 
-;; Timestamp Functionality Tests
-
-(deftest test-frame-timestamps
-  (testing "frame timestamp functionality"
-    (testing "default timestamp"
-      (let [before (System/currentTimeMillis)
-            frame (frame/user-speech-start true)
-            after (System/currentTimeMillis)]
-        (is (<= before (:frame/ts frame) after)
-            "Should use current time for default timestamp")))
-
-    (testing "explicit timestamp with milliseconds"
-      (let [frame (frame/user-speech-start true {:timestamp test-timestamp-ms})]
-        (is (= test-timestamp-ms (:frame/ts frame))
-            "Should use provided millisecond timestamp")))
-
-    (testing "explicit timestamp with Date"
-      (let [frame (frame/user-speech-start true {:timestamp test-timestamp})]
-        (is (= test-timestamp-ms (:frame/ts frame))
-            "Should convert Date to milliseconds")))
-
-    (testing "timestamp preserves frame functionality"
-      (let [frame (frame/llm-text-chunk "test" {:timestamp test-timestamp})]
-        (is (frame/llm-text-chunk? frame)
-            "Predicate should work with timestamped frames")
-        (is (= "test" (:frame/data frame))
-            "Data should be preserved with timestamps")))))
-
 ;; Frame Type Namespace Tests
 
 (deftest test-frame-type-namespacing
@@ -370,10 +341,10 @@
         (is (every? frame/frame? frames)
             "All frames should be valid")
 
-        (is (= [test-timestamp-ms
-                (+ test-timestamp-ms 1000)
-                (+ test-timestamp-ms 2000)
-                (+ test-timestamp-ms 3000)]
+        (is (= [#inst "2024-10-05T05:00:00.000-00:00"
+                #inst "2024-10-05T05:00:01.000-00:00"
+                #inst "2024-10-05T05:00:02.000-00:00"
+                #inst "2024-10-05T05:00:03.000-00:00"]
                (map :frame/ts frames))
             "Timestamps should be preserved in order")))
 

@@ -53,10 +53,9 @@
   ([type data]
    (create-frame type data {}))
   ([type data {:keys [timestamp] :or {timestamp (java.util.Date.)}}]
-   (let [normalized-ts (normalize-timestamp timestamp)]
-     (with-meta {:frame/type type
-                 :frame/data data
-                 :frame/ts normalized-ts} {:type ::frame}))))
+   (with-meta {:frame/type type
+               :frame/data data
+               :frame/ts (timestamp->date timestamp)} {:type ::frame})))
 
 (defn system-frame?
   "Returns true if the frame is a system frame that should be processed immediately"
