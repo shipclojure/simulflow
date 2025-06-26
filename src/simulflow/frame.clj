@@ -14,13 +14,9 @@
     (catch Exception e
       false)))
 
-(defn frame?
-  "Returns true if x is a frame"
-  [x]
-  (and (map? x) (= (:frame/tag x) ::frame)))
-
 (defn frame? [frame]
-  (= (:type (meta frame)) ::frame))
+  (and (= (:type (meta frame)) ::frame)
+       (map? frame)))
 
 (defn create-frame
   [type data]

@@ -1,11 +1,11 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.12.0"}
         org.uncomplicate/clojure-sound {:mvn/version "0.3.0"}
-        com.taoensso/telemere {:mvn/version "1.0.0-RC1"}
-        metosin/malli {:mvn/version "0.17.0"}
+        com.taoensso/telemere {:mvn/version "1.0.1"}
+        metosin/malli {:mvn/version "0.19.1"}
         org.clojure/core.async {:mvn/version "1.9.808-alpha1"}
-        metosin/jsonista {:mvn/version "0.3.8"}
-        hato/hato {:mvn/version "1.0.0"}}
+        metosin/jsonista {:mvn/version "0.3.13"}
+        hato/hato {:mvn/version "1.1.0-SNAPSHOT"}}
 
  :mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"}
              "clojars" {:url "https://repo.clojars.org/"}}
@@ -35,7 +35,7 @@
         :jvm-opts ["-Dsimulflow.frame.schema-checking=true"]
         :extra-deps {djblue/portal {:mvn/version "0.58.5"}
                      criterium/criterium {:mvn/version "0.4.6"}
-                     clj-kondo/clj-kondo {:mvn/version "2024.11.14"}}}
+                     clj-kondo/clj-kondo {:mvn/version "2025.06.05"}}}
   :cider-clj {:extra-deps {cider/cider-nrepl {:mvn/version "0.52.0"}}
               :main-opts ["-m" "nrepl.cmdline"
                           "--middleware" "[cider.nrepl/cider-middleware]"
@@ -47,11 +47,11 @@
                       lambdaisland/kaocha           {:mvn/version "1.0.732"}
                       lambdaisland/kaocha-junit-xml {:mvn/version "0.0.76"}}}
   :with-examples {:extra-deps {org.clojure/data.xml {:mvn/version "0.0.8"}
-                               ring/ring-jetty-adapter {:mvn/version "1.13.0"}
-                               ring/ring-core {:mvn/version "1.13.0"}
-                               metosin/reitit {:mvn/version "0.7.2"}}
+                               ring/ring-jetty-adapter {:mvn/version "1.14.2"}
+                               ring/ring-core {:mvn/version "1.14.2"}
+                               metosin/reitit {:mvn/version "0.9.1"}}
                   :extra-paths ["./examples/src"]}
-  :clj-kondo {:replace-deps {clj-kondo/clj-kondo {:mvn/version "RELEASE"}}
+  :clj-kondo {:replace-deps {clj-kondo/clj-kondo {:mvn/version "2025.06.05"}}
               :main-opts ["-m" "clj-kondo.main"]}
   :storm {:classpath-overrides {org.clojure/clojure nil}
           :extra-deps {com.github.flow-storm/clojure {:mvn/version "1.12.0-3"}

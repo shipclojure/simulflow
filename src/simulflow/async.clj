@@ -1,6 +1,5 @@
 (ns simulflow.async
   (:require
-   [clojure.core.async :as a]
    [clojure.core.async.flow :as flow])
   (:import
    (java.util.concurrent Executors)))
