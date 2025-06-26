@@ -30,15 +30,15 @@
   (let [{:keys [children type]} (parse-schema s)]
     (assert (= type :map) "Can only transform :map schemas to :describe parameter format ")
     (reduce
-      (fn [acc child]
-        (let [{key-name :type
-               {:keys [description optional]} :data
-               children :children} (parse-schema child)
-              {:keys [type data]} (parse-schema children)
-              description (or description (:description data))]
-          (assoc acc key-name (apply str (remove nil? ["Type: " type (when optional "; Optional ")  (when description (str "; Description: " description))])))))
-      {}
-      children)))
+     (fn [acc child]
+       (let [{key-name :type
+              {:keys [description optional]} :data
+              children :children} (parse-schema child)
+             {:keys [type data]} (parse-schema children)
+             description (or description (:description data))]
+         (assoc acc key-name (apply str (remove nil? ["Type: " type (when optional "; Optional ") (when description (str "; Description: " description))])))))
+     {}
+     children)))
 
 (defn parse-with-defaults
   [s m]
@@ -60,6 +60,12 @@
 
 (def ByteArray [:fn #(instance? (Class/forName "[B") %)])
 
+(def Timestamp
+  "Schema for frame timestamps - supports milliseconds and java.util.Date"
+  [:or
+   :int ; milliseconds since epoch
+   [:fn #(instance? java.util.Date %)]])
+
 (defn regex?
   [input]
   (instance? java.util.regex.Pattern input))
@@ -73,18 +79,18 @@
   [:enum
    {:description "Audio sample rate in Hz"
     :error/message "Invalid sample rate"}
-   8000                                 ; Low quality telephony
-   11025                                ; Quarter of CD quality
-   12000                                ; Some voice recording
-   16000                                ; Common for speech recognition
-   22050                                ; Half CD quality
-   24000                                ; Some digital audio
-   32000                                ; Digital broadcasting
-   44100                                ; CD quality
-   48000                                ; Professional audio/DAT
-   88200                                ; High-res audio (2× 44.1)
-   96000                                ; High-res audio/video
-   176400                               ; Highest-res audio (4× 44.1)
+   8000 ; Low quality telephony
+   11025 ; Quarter of CD quality
+   12000 ; Some voice recording
+   16000 ; Common for speech recognition
+   22050 ; Half CD quality
+   24000 ; Some digital audio
+   32000 ; Digital broadcasting
+   44100 ; CD quality
+   48000 ; Professional audio/DAT
+   88200 ; High-res audio (2× 44.1)
+   96000 ; High-res audio/video
+   176400 ; Highest-res audio (4× 44.1)
    192000])
 
 (def AudioEncoding
@@ -100,7 +106,7 @@
    {:default 1
     :description "Type of audio (mono/stereo)"
     :error/message "Invalid audio channels"}
-   1   ;; mono
+   1 ;; mono
    2]) ;; stereo
 
 (def SampleSizeBits
@@ -111,263 +117,263 @@
 
 (def Language
   (flex-enum
-    {:description "Language codes including regional variants"}
-    [;; Afrikaans
-     "af" "af-ZA"
+   {:description "Language codes including regional variants"}
+   [;; Afrikaans
+    "af" "af-ZA"
 
      ;; Amharic
-     "am" "am-ET"
+    "am" "am-ET"
 
      ;; Arabic
-     "ar" "ar-AE" "ar-BH" "ar-DZ" "ar-EG" "ar-IQ" "ar-JO" "ar-KW"
-     "ar-LB" "ar-LY" "ar-MA" "ar-OM" "ar-QA" "ar-SA" "ar-SY" "ar-TN" "ar-YE"
+    "ar" "ar-AE" "ar-BH" "ar-DZ" "ar-EG" "ar-IQ" "ar-JO" "ar-KW"
+    "ar-LB" "ar-LY" "ar-MA" "ar-OM" "ar-QA" "ar-SA" "ar-SY" "ar-TN" "ar-YE"
 
      ;; Assamese
-     "as" "as-IN"
+    "as" "as-IN"
 
      ;; Azerbaijani
-     "az" "az-AZ"
+    "az" "az-AZ"
 
      ;; Bulgarian
-     "bg" "bg-BG"
+    "bg" "bg-BG"
 
      ;; Bengali
-     "bn" "bn-BD" "bn-IN"
+    "bn" "bn-BD" "bn-IN"
 
      ;; Bosnian
-     "bs" "bs-BA"
+    "bs" "bs-BA"
 
      ;; Catalan
-     "ca" "ca-ES"
+    "ca" "ca-ES"
 
      ;; Czech
-     "cs" "cs-CZ"
+    "cs" "cs-CZ"
 
      ;; Welsh
-     "cy" "cy-GB"
+    "cy" "cy-GB"
 
      ;; Danish
-     "da" "da-DK"
+    "da" "da-DK"
 
      ;; German
-     "de" "de-AT" "de-CH" "de-DE"
+    "de" "de-AT" "de-CH" "de-DE"
 
      ;; Greek
-     "el" "el-GR"
+    "el" "el-GR"
 
      ;; English
-     "en" "en-AU" "en-CA" "en-GB" "en-HK" "en-IE" "en-IN" "en-KE"
-     "en-NG" "en-NZ" "en-PH" "en-SG" "en-TZ" "en-US" "en-ZA"
+    "en" "en-AU" "en-CA" "en-GB" "en-HK" "en-IE" "en-IN" "en-KE"
+    "en-NG" "en-NZ" "en-PH" "en-SG" "en-TZ" "en-US" "en-ZA"
 
      ;; Spanish
-     "es" "es-AR" "es-BO" "es-CL" "es-CO" "es-CR" "es-CU" "es-DO"
-     "es-EC" "es-ES" "es-GQ" "es-GT" "es-HN" "es-MX" "es-NI" "es-PA"
-     "es-PE" "es-PR" "es-PY" "es-SV" "es-US" "es-UY" "es-VE"
+    "es" "es-AR" "es-BO" "es-CL" "es-CO" "es-CR" "es-CU" "es-DO"
+    "es-EC" "es-ES" "es-GQ" "es-GT" "es-HN" "es-MX" "es-NI" "es-PA"
+    "es-PE" "es-PR" "es-PY" "es-SV" "es-US" "es-UY" "es-VE"
 
      ;; Estonian
-     "et" "et-EE"
+    "et" "et-EE"
 
      ;; Basque
-     "eu" "eu-ES"
+    "eu" "eu-ES"
 
      ;; Persian
-     "fa" "fa-IR"
+    "fa" "fa-IR"
 
      ;; Finnish
-     "fi" "fi-FI"
+    "fi" "fi-FI"
 
      ;; Filipino
-     "fil" "fil-PH"
+    "fil" "fil-PH"
 
      ;; French
-     "fr" "fr-BE" "fr-CA" "fr-CH" "fr-FR"
+    "fr" "fr-BE" "fr-CA" "fr-CH" "fr-FR"
 
      ;; Irish
-     "ga" "ga-IE"
+    "ga" "ga-IE"
 
      ;; Galician
-     "gl" "gl-ES"
+    "gl" "gl-ES"
 
      ;; Gujarati
-     "gu" "gu-IN"
+    "gu" "gu-IN"
 
      ;; Hebrew
-     "he" "he-IL"
+    "he" "he-IL"
 
      ;; Hindi
-     "hi" "hi-IN"
+    "hi" "hi-IN"
 
      ;; Croatian
-     "hr" "hr-HR"
+    "hr" "hr-HR"
 
      ;; Hungarian
-     "hu" "hu-HU"
+    "hu" "hu-HU"
 
      ;; Armenian
-     "hy" "hy-AM"
+    "hy" "hy-AM"
 
      ;; Indonesian
-     "id" "id-ID"
+    "id" "id-ID"
 
      ;; Icelandic
-     "is" "is-IS"
+    "is" "is-IS"
 
      ;; Italian
-     "it" "it-IT"
+    "it" "it-IT"
 
      ;; Inuktitut
-     "iu-Cans" "iu-Cans-CA" "iu-Latn" "iu-Latn-CA"
+    "iu-Cans" "iu-Cans-CA" "iu-Latn" "iu-Latn-CA"
 
      ;; Japanese
-     "ja" "ja-JP"
+    "ja" "ja-JP"
 
      ; Javanese
-     "jv" "jv-ID"
+    "jv" "jv-ID"
 
      ;; Georgian
-     "ka" "ka-GE"
+    "ka" "ka-GE"
 
      ;; Kazakh
-     "kk" "kk-KZ"
+    "kk" "kk-KZ"
 
      ;; Khmer
-     "km" "km-KH"
+    "km" "km-KH"
 
      ;; Kannada
-     "kn" "kn-IN"
+    "kn" "kn-IN"
 
      ;; Korean
-     "ko" "ko-KR"
+    "ko" "ko-KR"
 
      ;; Lao
-     "lo" "lo-LA"
+    "lo" "lo-LA"
 
      ;; Lithuanian
-     "lt" "lt-LT"
+    "lt" "lt-LT"
 
      ;; Latvian
-     "lv" "lv-LV"
+    "lv" "lv-LV"
 
      ;; Macedonian
-     "mk" "mk-MK"
+    "mk" "mk-MK"
 
      ;; Malayalam
-     "ml" "ml-IN"
+    "ml" "ml-IN"
 
      ;; Mongolian
-     "mn" "mn-MN"
+    "mn" "mn-MN"
 
      ;; Marathi
-     "mr" "mr-IN"
+    "mr" "mr-IN"
 
      ;; Malay
-     "ms" "ms-MY"
+    "ms" "ms-MY"
 
      ;; Maltese
-     "mt" "mt-MT"
+    "mt" "mt-MT"
 
      ;; Burmese
-     "my" "my-MM"
+    "my" "my-MM"
 
      ;; Norwegian
-     "nb" "nb-NO" "no"
+    "nb" "nb-NO" "no"
 
      ;; Nepali
-     "ne" "ne-NP"
+    "ne" "ne-NP"
 
      ;; Dutch
-     "nl" "nl-BE" "nl-NL"
+    "nl" "nl-BE" "nl-NL"
 
      ;; Odia
-     "or" "or-IN"
+    "or" "or-IN"
 
      ;; Punjabi
-     "pa" "pa-IN"
+    "pa" "pa-IN"
 
      ;; Polish
-     "pl" "pl-PL"
+    "pl" "pl-PL"
 
      ;; Pashto
-     "ps" "ps-AF"
+    "ps" "ps-AF"
 
      ;; Portuguese
-     "pt" "pt-BR" "pt-PT"
+    "pt" "pt-BR" "pt-PT"
 
      ;; Romanian
-     "ro" "ro-RO"
+    "ro" "ro-RO"
 
      ;; Russian
-     "ru" "ru-RU"
+    "ru" "ru-RU"
 
      ;; Sinhala
-     "si" "si-LK"
+    "si" "si-LK"
 
      ;; Slovak
-     "sk" "sk-SK"
+    "sk" "sk-SK"
 
      ;; Slovenian
-     "sl" "sl-SI"
+    "sl" "sl-SI"
 
      ;; Somali
-     "so" "so-SO"
+    "so" "so-SO"
 
      ;; Albanian
-     "sq" "sq-AL"
+    "sq" "sq-AL"
 
      ;; Serbian
-     "sr" "sr-RS" "sr-Latn" "sr-Latn-RS"
+    "sr" "sr-RS" "sr-Latn" "sr-Latn-RS"
 
      ;; Sundanese
-     "su" "su-ID"
+    "su" "su-ID"
 
      ;; Swedish
-     "sv" "sv-SE"
+    "sv" "sv-SE"
 
      ;; Swahili
-     "sw" "sw-KE" "sw-TZ"
+    "sw" "sw-KE" "sw-TZ"
 
      ;; Tagalog
-     "tl"
+    "tl"
 
      ;; Tamil
-     "ta" "ta-IN" "ta-LK" "ta-MY" "ta-SG"
+    "ta" "ta-IN" "ta-LK" "ta-MY" "ta-SG"
 
      ;; Telugu
-     "te" "te-IN"
+    "te" "te-IN"
 
      ;; Thai
-     "th" "th-TH"
+    "th" "th-TH"
 
      ;; Turkish
-     "tr" "tr-TR"
+    "tr" "tr-TR"
 
      ;; Ukrainian
-     "uk" "uk-UA"
+    "uk" "uk-UA"
 
      ;; Urdu
-     "ur" "ur-IN" "ur-PK"
+    "ur" "ur-IN" "ur-PK"
 
      ;; Uzbek
-     "uz" "uz-UZ"
+    "uz" "uz-UZ"
 
      ;; Vietnamese
-     "vi" "vi-VN"
+    "vi" "vi-VN"
 
      ;; Wu Chinese
-     "wuu" "wuu-CN"
+    "wuu" "wuu-CN"
 
      ;; Yue Chinese
-     "yue" "yue-CN"
+    "yue" "yue-CN"
 
      ;; Chinese
-     "zh" "zh-CN" "zh-CN-guangxi" "zh-CN-henan" "zh-CN-liaoning"
-     "zh-CN-shaanxi" "zh-CN-shandong" "zh-CN-sichuan" "zh-HK" "zh-TW"
+    "zh" "zh-CN" "zh-CN-guangxi" "zh-CN-henan" "zh-CN-liaoning"
+    "zh-CN-shaanxi" "zh-CN-shandong" "zh-CN-sichuan" "zh-HK" "zh-TW"
 
      ;; Xhosa
-     "xh"
+    "xh"
 
      ;; Zulu
-     "zu" "zu-ZA"]))
+    "zu" "zu-ZA"]))
 
 ;;; LLM Chat messages
 (def LLMMessageContentType
@@ -541,12 +547,12 @@
 
 (def LLMFunctionToolDefinitionWithHandling
   (mu/merge
-    LLMFunctionToolDefinition
-    [:map {:closed true}
-     [:function
-      [:map
-       [:handler [:=> [:cat :map] :any]]
-       [:transition-cb {:optional true} [:=> :cat :nil]]]]]))
+   LLMFunctionToolDefinition
+   [:map {:closed true}
+    [:function
+     [:map
+      [:handler [:=> [:cat :map] :any]]
+      [:transition-cb {:optional true} [:=> :cat :nil]]]]]))
 
 (def TransitionTo
   [:or
