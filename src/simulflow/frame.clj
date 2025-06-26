@@ -52,7 +52,7 @@
    (create-frame :test/frame \"data\" {:timestamp #inst \"2024-10-05T05:00:00.000Z\"})"
   ([type data]
    (create-frame type data {}))
-  ([type data {:keys [timestamp] :or {timestamp (System/currentTimeMillis)}}]
+  ([type data {:keys [timestamp] :or {timestamp (java.util.Date.)}}]
    (let [normalized-ts (normalize-timestamp timestamp)]
      (with-meta {:frame/type type
                  :frame/data data
