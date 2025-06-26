@@ -43,8 +43,7 @@
   :test {:extra-paths ["test"]
          :extra-deps {org.clojure/tools.namespace {:mvn/version "1.4.4"}
                       org.clojure/test.check {:mvn/version "1.1.1"}
-                      midje/midje {:mvn/version "1.10.10"}
-                      lambdaisland/kaocha           {:mvn/version "1.0.732"}
+                      lambdaisland/kaocha {:mvn/version "1.0.732"}
                       lambdaisland/kaocha-junit-xml {:mvn/version "0.0.76"}}}
   :with-examples {:extra-deps {org.clojure/data.xml {:mvn/version "0.0.8"}
                                ring/ring-jetty-adapter {:mvn/version "1.14.2"}
