@@ -2,6 +2,23 @@
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## Unreleased
+### Added
+- Explicit timestamp support for frames with `java.util.Date` (#inst reader macro) and millisecond integers
+- Frame creation functions now support optional `opts` parameter for timestamp control
+- Utility functions `normalize-timestamp` and `timestamp->date` for timestamp conversion
+- Comprehensive test suite for `simulflow.frame` namespace using `clojure.test` (2150+ assertions)
+
+### Changed
+- **BREAKING**: Frame types now use proper `simulflow.frame` namespace (e.g., `:simulflow.frame/user-speech-start`)
+- Frame system is now completely pure when timestamps are specified explicitly
+- Updated clj-kondo hook for `defframe` to support multi-arity functions with timestamp options
+- Fixed schema typos in `user-speech-stop` and `bot-speech-stop` frame definitions
+
+### Improved
+- Better developer experience with static analysis support for frame functions
+- Enhanced frame validation and error messages
+- More idiomatic Clojure code with proper namespaced keywords
+
 - Updated dependencies to latest
 
 ## [0.1.4-alpha] - 2025-04-13

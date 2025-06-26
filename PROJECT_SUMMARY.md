@@ -21,16 +21,16 @@ Simulflow is built around three core concepts:
 Frames are the fundamental unit of data flow, implemented as maps with type information and optional schemas:
 
 ```clojure
-{:frame/type :audio/raw-input
+{:frame/type :simulflow.frame/audio-input-raw
  :data byte-array
  :timestamp 1234567890}
 ```
 
 Key frame types include:
-- `:audio/input-raw`, `:audio/output-raw` - Raw audio data
-- `:transcription`, `:transcription-interim` - Speech-to-text results
-- `:llm/text-chunk`, `:llm/tool-call-chunk` - LLM response chunks
-- `:system/start`, `:system/stop` - Control signals
+- `:simulflow.frame/audio-input-raw`, `:simulflow.frame/audio-output-raw` - Raw audio data
+- `:simulflow.frame/transcription-result`, `:simulflow.frame/transcription-interim` - Speech-to-text results
+- `:simulflow.frame/llm-text-chunk`, `:simulflow.frame/llm-tool-call-chunk` - LLM response chunks
+- `:simulflow.frame/system-start`, `:simulflow.frame/system-stop` - Control signals
 
 ### Flow-Based Processing
 
