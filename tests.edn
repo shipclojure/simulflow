@@ -1,0 +1,6 @@
+#kaocha/v1
+{:plugins [:noyoda.plugin/swap-actual-and-expected]
+ :tests [{:id :unit
+          :source-paths ["src"]
+          :test-paths ["test"]
+          :ns-patterns ["-test$"]}]}

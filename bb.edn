@@ -4,4 +4,5 @@
  {current/deps {:local/root "."}}
 
  :tasks
- {test (shell "clojure -M:test -m kaocha.runner :unit")}}
+ {test {:doc "Run all tests"
+        :task (shell "bin/kaocha")}}}
