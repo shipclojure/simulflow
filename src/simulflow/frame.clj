@@ -183,7 +183,8 @@
 (defframe transcription
   "Transcription result. NOTE: This doesn't mean it is a full transcription, but
   a transcription chunk that the transcriptor has full confidence in."
-  {:type ::transcription-result})
+  {:type ::transcription-result
+   :schema :string})
 
 (defframe transcription-interim
   "Interim transcription result"
