@@ -52,6 +52,11 @@ Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simul
 </dependency>
 ```
 
+## Requirements
+
+- **Java 21+** - Required for virtual threads (Project Loom) support
+- **Clojure 1.12+** - For core.async.flow and other modern Clojure features
+
 ## Video presentation:
 [![Watch the video](https://img.youtube.com/vi/HwoGMhIx5w0/0.jpg)](https://youtu.be/HwoGMhIx5w0?t=345)
 

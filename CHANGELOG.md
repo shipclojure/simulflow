@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file. This change
 - More idiomatic Clojure code with proper namespaced keywords
 - **Activity Monitor**: Refactored core logic into pure `transform` function, making it fully testable and following data-centric functional patterns
 - Activity monitor now uses separate pure functions (`speaking?`, `transform`) that can be easily unit tested without async complexity
+- **ElevenLabs TTS**: Extracted transform logic into pure `tts-transform` function, improving testability and separation of concerns from WebSocket lifecycle management
+- **ElevenLabs TTS**: Migrated from classic threads (`flow/futurize`) to virtual threads (`vthread-loop`) for better performance and resource efficiency
 
 - Updated dependencies to latest
 
