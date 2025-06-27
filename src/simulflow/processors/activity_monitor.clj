@@ -66,18 +66,26 @@
       [(assoc state ::bot-speaking? false) {:timer-process-in [msg]}]
 
       :else [state])
-    (cond
-      (and (= in :timer-process-out)
-           (< (inc (::ping-count state)) (::max-pings state))
-           (not (speaking? state)))
-      [(update-in state [::ping-count] inc) {:out [(frame/speak-frame (rand-nth (vec (::ping-phrases state))) {:timestamp (:now state)})]}]
+    (let [ping-count (::ping-count state 0)
+          max-pings (::max-pings state 0)
+          ping-phrases-raw (::ping-phrases state #{"Are you still there?"})
+          ping-phrases (if (seq ping-phrases-raw) ping-phrases-raw #{"Are you still there?"})
+          end-phrase (::end-phrase state "Goodbye!")
+          now (:now state)]
+      (cond
+        (and (= in :timer-process-out)
+             (::timeout? msg)
+             (< (inc ping-count) max-pings)
+             (not (speaking? state)))
+        [(update-in state [::ping-count] (fnil inc 0)) {:out [(frame/speak-frame (rand-nth (vec ping-phrases)) {:timestamp now})]}]
 
-      (and (= in :timer-process-out)
-           (= (inc (::ping-count state)) (::max-pings state))
-           (not (speaking? state)))
-      [(assoc state ::ping-count 0) {:out [(frame/speak-frame (::end-phrase state) {:timestamp (:now state)})]}]
+        (and (= in :timer-process-out)
+             (::timeout? msg)
+             (= (inc ping-count) max-pings)
+             (not (speaking? state)))
+        [(assoc state ::ping-count 0) {:out [(frame/speak-frame end-phrase {:timestamp now})]}]
 
-      :else [state])))
+        :else [state]))))
 
 (def activity-monitor
   (flow/process
