@@ -1,15 +1,14 @@
 (ns simulflow.processors.elevenlabs
-  (:require
-   [clojure.core.async :as a]
-   [clojure.core.async.flow :as flow]
-   [hato.websocket :as ws]
-   [simulflow.frame :as frame]
-   [simulflow.schema :as schema]
-   [simulflow.secrets :as secrets]
-   [simulflow.utils.core :as u]
-   [taoensso.telemere :as t])
-  (:import
-   (java.nio HeapCharBuffer)))
+  (:require [clojure.core.async :as a]
+            [clojure.core.async.flow :as flow]
+            [hato.websocket :as ws]
+            [simulflow.async :refer [vthread-loop]]
+            [simulflow.frame :as frame]
+            [simulflow.schema :as schema]
+            [simulflow.secrets :as secrets]
+            [simulflow.utils.core :as u]
+            [taoensso.telemere :as t])
+  (:import (java.nio HeapCharBuffer)))
 
 (def ^:private xi-tts-websocket-url "wss://api.elevenlabs.io/v1/text-to-speech/%s/stream-input")
 
@@ -86,7 +85,6 @@
       {:default "eleven_flash_v2_5"
        :description "ElevenLabs model identifier"}
       ["eleven_multilingual_v2" "eleven_turbo_v2_5" "eleven_turbo_v2" "eleven_monolingual_v1" "eleven_multilingual_v1" "eleven_multilingual_sts_v2" "eleven_flash_v2" "eleven_flash_v2_5" "eleven_english_sts_v2"])]
-
    [:elevenlabs/voice-id
     [:string
      {:min 20 ;; ElevenLabs voice IDs are fixed length
@@ -109,6 +107,24 @@
      {:default true
       :description "Whether to enable speaker beoost enhancement"}]]])
 
+(defn tts-transform [{::keys [accumulator] :as state} in-name msg]
+  (if (= in-name ::ws-read)
+    ;; xi sends one json response in multiple events so it needs
+    ;; to be concattenated until the final json can be parsed
+    (let [attempt (u/parse-if-json (str accumulator msg))]
+      (if (map? attempt)
+        [(assoc state ::accumulator "")
+         (when-let [audio (:audio attempt)]
+           {:out [(frame/audio-output-raw (u/decode-base64 audio) {:timestamp (:now state)})
+                  (frame/xi-audio-out attempt {:timestamp (:now state)})]})]
+
+        ;; continue concatenating
+        [(assoc state ::accumulator attempt)]))
+    (cond
+      (frame/speak-frame? msg)
+      [state {::ws-write [(text-message (:frame/data msg))]}]
+      :else [state])))
+
 (def elevenlabs-tts-process
   (flow/process
     (flow/map->step
@@ -130,11 +146,11 @@
                (let [url (make-elevenlabs-ws-url args)
                      ws-read (a/chan 100)
                      ws-write (a/chan 100)
+                     configuration-msg (begin-stream-message args)
                      alive? (atom true)
                      conf {:on-open (fn [ws]
-                                      (let [configuration (begin-stream-message args)]
-                                        (t/log! :debug ["Elevenlabs websocket connection open. Sending configuration message" configuration])
-                                        (ws/send! ws configuration)))
+                                      (t/log! :debug ["Elevenlabs websocket connection open. Sending configuration message" configuration-msg])
+                                      (ws/send! ws configuration-msg))
                            :on-message (fn [_ws ^HeapCharBuffer data _last?]
                                          (a/put! ws-read (str data)))
                            :on-error (fn [_ e]
@@ -143,31 +159,23 @@
                                        (reset! alive? false)
                                        (t/log! :debug ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))}
                      _ (t/log! {:level :debug :id :elevenlabs} "Connecting to transcription websocket")
-                     ws-conn @(ws/websocket
-                                url
-                                conf)
-
-                     write-to-ws #(loop []
-                                    (when @alive?
-                                      (when-let [msg (a/<!! ws-write)]
-                                        (cond
-                                          (and (frame/speak-frame? msg) @alive?)
-                                          (do
-                                            (ws/send! ws-conn (text-message (:frame/data msg)))
-                                            (recur))))))
-                     keep-alive #(loop []
-                                   (when @alive?
-                                     (a/<!! (a/timeout 3000))
-                                     (t/log! {:level :trace :id :elevenlabs} "Sending keep-alive message")
-                                     (ws/send! ws-conn keep-alive-message)
-                                     (recur)))]
-                 ((flow/futurize write-to-ws :exec :io))
-                 ((flow/futurize keep-alive :exec :io))
-
+                     ws-conn @(ws/websocket url conf)]
+                 (vthread-loop []
+                   (when @alive?
+                     (when-let [msg (a/<!! ws-write)]
+                       (when @alive?
+                         (ws/send! ws-conn msg))
+                       (recur))))
+                 (vthread-loop []
+                   (when @alive?
+                     (a/<!! (a/timeout 3000))
+                     (t/log! {:level :trace :id :elevenlabs} "Sending keep-alive message")
+                     (ws/send! ws-conn keep-alive-message)
+                     (recur)))
                  {:websocket/conn ws-conn
                   :websocket/alive? alive?
-                  ::flow/in-ports {:ws-read ws-read}
-                  ::flow/out-ports {:ws-write ws-write}}))
+                  ::flow/in-ports {::ws-read ws-read}
+                  ::flow/out-ports {::ws-write ws-write}}))
        :transition (fn [{:websocket/keys [conn]
                          ::flow/keys [in-ports out-ports]
                          :as state} transition]
@@ -181,22 +189,4 @@
                          (a/close! port)))
                      state)
 
-       :transform (fn [{:audio/keys [acc] :as state} in-name msg]
-                    (if (= in-name :ws-read)
-                      ;; xi sends one json response in multiple events so it needs
-                      ;; to be concattenated until the final json can be parsed
-                      (let [attempt (u/parse-if-json (str acc msg))]
-                        (if (map? attempt)
-                          [(assoc state :audio/acc "")
-                           (when-let [audio (:audio attempt)]
-                             {:out [(frame/audio-output-raw (u/decode-base64 audio))
-                                    (frame/xi-audio-out attempt)]})]
-
-                          ;; continue concatenating
-                          [(assoc state :audio/acc attempt)]))
-                      (cond
-                        (frame/speak-frame? msg)
-                        (do
-                          (t/log! {:id :elevenlabs :level :debug} ["SPEAK" (:frame/data msg)])
-                          [state {:ws-write [msg]}])
-                        :else [state])))})))
+       :transform tts-transform})))
