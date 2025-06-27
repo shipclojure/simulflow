@@ -52,10 +52,10 @@
    (create-frame :test/frame \"data\" {:timestamp #inst \"2024-10-05T05:00:00.000Z\"})"
   ([type data]
    (create-frame type data {}))
-  ([type data {:keys [timestamp] :or {timestamp (java.util.Date.)}}]
+  ([type data {:keys [timestamp]}]
    (with-meta {:frame/type type
                :frame/data data
-               :frame/ts (timestamp->date timestamp)} {:type ::frame})))
+               :frame/ts (timestamp->date (or timestamp (java.util.Date.)))} {:type ::frame})))
 
 (defn system-frame?
   "Returns true if the frame is a system frame that should be processed immediately"
