@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file. This change
 - Frame creation functions now support optional `opts` parameter for timestamp control
 - Utility functions `normalize-timestamp` and `timestamp->date` for timestamp conversion
 - Comprehensive test suite for `simulflow.frame` namespace using `clojure.test` (2150+ assertions)
+- Comprehensive test suite for `simulflow.processors.activity-monitor` with pure function testing
 
 ### Changed
 - **BREAKING**: Frame types now use proper `simulflow.frame` namespace (e.g., `:simulflow.frame/user-speech-start`)
@@ -18,6 +19,8 @@ All notable changes to this project will be documented in this file. This change
 - Better developer experience with static analysis support for frame functions
 - Enhanced frame validation and error messages
 - More idiomatic Clojure code with proper namespaced keywords
+- **Activity Monitor**: Refactored core logic into pure `transform` function, making it fully testable and following data-centric functional patterns
+- Activity monitor now uses separate pure functions (`speaking?`, `transform`) that can be easily unit tested without async complexity
 
 - Updated dependencies to latest
 
