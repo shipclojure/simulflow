@@ -8,12 +8,15 @@ All notable changes to this project will be documented in this file. This change
 - Utility functions `normalize-timestamp` and `timestamp->date` for timestamp conversion
 - Comprehensive test suite for `simulflow.frame` namespace using `clojure.test` (2150+ assertions)
 - Comprehensive test suite for `simulflow.processors.activity-monitor` with pure function testing
+- **Microphone Transport**: Added pure functions `process-mic-buffer` and `mic-resource-config` for better testability and REPL-driven development
+- **Transport Testing**: Comprehensive test suite for microphone transport (149 assertions) covering pure functions, multi-arity functions, property-based testing, performance, and edge cases
 
 ### Changed
 - **BREAKING**: Frame types now use proper `simulflow.frame` namespace (e.g., `:simulflow.frame/user-speech-start`)
 - Frame system is now completely pure when timestamps are specified explicitly
 - Updated clj-kondo hook for `defframe` to support multi-arity functions with timestamp options
 - Fixed schema typos in `user-speech-stop` and `bot-speech-stop` frame definitions
+- **Microphone Transport**: Refactored `microphone-transport-in` to use multi-arity function pattern (`mic-transport-in-fn`) for better flow integration
 
 ### Improved
 - Better developer experience with static analysis support for frame functions
@@ -23,6 +26,11 @@ All notable changes to this project will be documented in this file. This change
 - Activity monitor now uses separate pure functions (`speaking?`, `transform`) that can be easily unit tested without async complexity
 - **ElevenLabs TTS**: Extracted transform logic into pure `tts-transform` function, improving testability and separation of concerns from WebSocket lifecycle management
 - **ElevenLabs TTS**: Migrated from classic threads (`flow/futurize`) to virtual threads (`vthread-loop`) for better performance and resource efficiency
+- **Microphone Transport**: Enhanced error handling with structured logging and non-blocking channel operations using `offer!` instead of blocking `>!!`
+- **Microphone Transport**: Migrated to virtual threads (`vthread-loop`) for better concurrency performance and resource utilization
+- **Microphone Transport**: Improved timestamp accuracy by capturing timestamps at audio capture time rather than processing time
+- **Microphone Transport**: Added graceful frame dropping when channel is full to prevent system backpressure in real-time audio scenarios
+- **Transport Architecture**: Extracted pure functions for audio buffer processing and resource configuration, improving testability and following data-centric design principles
 
 - Updated dependencies to latest
 
