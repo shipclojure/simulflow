@@ -12,7 +12,6 @@
    [simulflow.secrets :refer [secret]]
    [simulflow.utils.core :as u]
    [simulflow.utils.openai :as uai]
-   [simulflow.utils.request :as request]
    [taoensso.telemere :as t]))
 
 (def google-generative-api-url "https://generativelanguage.googleapis.com/v1beta/openai")
