@@ -9,10 +9,8 @@
             [simulflow.utils.audio :as au]
             [simulflow.utils.core :as u]
             [taoensso.telemere :as t]
-            [uncomplicate.clojure-sound.core
-             :refer [open! read! start! stop! write!]]
-            [uncomplicate.clojure-sound.sampled
-             :refer [audio-format flush! line line-info]]
+            [uncomplicate.clojure-sound.core :as sound]
+            [uncomplicate.clojure-sound.sampled :as sampled]
             [uncomplicate.commons.core :refer [close!]])
   (:import (java.util Arrays)
            (javax.sound.sampled AudioFormat AudioSystem DataLine$Info)))
@@ -78,13 +76,13 @@
   "Opens the microphone with specified format. Returns the TargetDataLine."
   [line-type ^AudioFormat format]
   (assert (#{:target :source} line-type) "Invalid line type")
-  (let [info (line-info line-type format)
-        line (line info)]
+  (let [info (sampled/line-info line-type format)
+        line (sampled/line info)]
     (when-not (line-supported? info)
       (throw (ex-info "Audio line not supported"
                       {:format format})))
-    (open! line format)
-    (start! line)
+    (sound/open! line format)
+    (sound/start! line)
     line))
 
 (defn- frame-buffer-size
@@ -106,7 +104,7 @@
     :or {signed :signed endian :little-endian}}]
   (let [calculated-buffer-size (or buffer-size (frame-buffer-size sample-rate))]
     {:buffer-size calculated-buffer-size
-     :audio-format (audio-format sample-rate sample-size-bits channels signed endian)
+     :audio-format (sampled/audio-format sample-rate sample-size-bits channels signed endian)
      :channel-size 1024}))
 
 ;; =============================================================================
@@ -309,12 +307,12 @@
         close #(do
                  (reset! running? false)
                  (a/close! mic-in-ch)
-                 (stop! line)
+                 (sound/stop! line)
                  (close! line))]
     (vthread-loop []
       (when @running?
         (try
-          (let [bytes-read (read! line buffer 0 buffer-size)]
+          (let [bytes-read (sound/read! line buffer 0 buffer-size)]
             (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
               (a/>!! mic-in-ch processed-data)))
           (catch Exception e
@@ -366,8 +364,8 @@
                     :transition (fn [{::flow/keys [in-ports out-ports] :as state} transition]
                                   (when (= transition ::flow/stop)
                                     (when-let [line (::speaker-line state)]
-                                      (stop! line)
-                                      (flush! line)
+                                      (sound/stop! line)
+                                      (sampled/flush! line)
                                       (close! line))
                                     (doseq [port (concat (vals in-ports) (vals out-ports))]
                                       (a/close! port))))
@@ -385,7 +383,7 @@
                                   speaking? (atom false)
                                   last-audio-time (atom 0)
 
-                                  line (open-line! :source (audio-format sample-rate sample-size-bits channels))
+                                  line (open-line! :source (sampled/audio-format sample-rate sample-size-bits channels))
                                   audio-write-c (a/chan 1024)
                                   events-chan (a/chan 1024)
 
@@ -402,7 +400,7 @@
                                                                 (frame/bot-speech-start true)))
 
                                                        (a/<!! (a/timeout (- @next-send-time now)))
-                                                       (write! (:frame/data msg) line 0)
+                                                       (sound/write! (:frame/data msg) line 0)
                                                        (reset! next-send-time (+ now sending-interval)))
                                                      (recur)))
                                   ;; Monitor for end of speech
