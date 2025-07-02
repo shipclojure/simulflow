@@ -13,7 +13,7 @@ The project takes heavy inspiration from [pipecat](https://github.com/pipecat-ai
 Simulflow is built around three core concepts:
 
 1. **Frames** - Typed data structures representing discrete units of information flowing through the pipeline
-2. **Processors** - Pure functions that transform frames following `core.async.flow` patterns  
+2. **Processors** - Pure functions that transform frames following `core.async.flow` patterns
 3. **Flows** - Composable pipelines defined as data structures with processors connected by channels
 
 ### Frame System
@@ -52,7 +52,7 @@ Processors are connected in graphs using `core.async.flow`, allowing for:
 ### Processors
 
 - `src/simulflow/processors/deepgram.clj` - Deepgram speech-to-text integration
-- `src/simulflow/processors/elevenlabs.clj` - ElevenLabs text-to-speech integration  
+- `src/simulflow/processors/elevenlabs.clj` - ElevenLabs text-to-speech integration
 - `src/simulflow/processors/openai.clj` - OpenAI LLM integration
 - `src/simulflow/processors/google.clj` - Google Gemini LLM integration
 - `src/simulflow/processors/groq.clj` - Groq LLM integration
@@ -95,13 +95,13 @@ Processors are connected in graphs using `core.async.flow`, allowing for:
 - Deepgram (nova-2, nova-2-general, nova-2-meeting models)
 - Real-time transcription with punctuation and smart formatting
 
-**Text-to-Speech (TTS):**  
+**Text-to-Speech (TTS):**
 - ElevenLabs (eleven_multilingual_v2, eleven_turbo_v2, eleven_flash_v2)
 - Streaming audio generation with voice customization
 
 **Large Language Models (LLM):**
 - OpenAI (gpt-4o-mini, gpt-4, gpt-3.5-turbo)
-- Google Gemini (gemini-2.0-flash, gemini-2.5-flash)  
+- Google Gemini (gemini-2.0-flash, gemini-2.5-flash)
 - Groq (llama-3.2-3b-preview, llama-3.1-8b-instant, llama-3.3-70b-versatile)
 - Function calling and streaming responses supported
 
@@ -136,12 +136,38 @@ Processors are connected in graphs using `core.async.flow`, allowing for:
 
 ### Transport System
 
-The transport layer supports multiple modalities:
+The transport layer supports multiple modalities with robust error handling:
 
-- **Local** - Microphone and speakers using Java Sound API
+- **Local** - Microphone and speakers using Java Sound API with virtual threads
 - **Telephony** - Twilio WebSocket integration with custom serializers
 - **WebSocket** - Generic WebSocket transport with pluggable serializers
 - **Async** - Core.async channels for programmatic I/O
+
+#### Virtual Thread Integration
+
+Transport layers use virtual threads for better concurrency:
+
+```clojure
+(vthread-loop []
+  (when @running?
+    (try
+      (let [bytes-read (read! line buffer 0 buffer-size)]
+        (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+          ;; Non-blocking channel operations prevent backpressure
+          (when-not (a/offer! mic-in-ch processed-data)
+            (t/log! :warn "Channel full, dropping frame"))))
+      (catch Exception e
+        (t/log! {:level :error :id :microphone-transport :error e} "Audio read error")
+        ;; Thread.sleep is safe in virtual threads
+        (Thread/sleep 100)))
+    (recur)))
+```
+
+#### Key Benefits:
+- **Non-blocking Channel Operations**: Uses `offer!` instead of blocking `>!!` to prevent system backpressure
+- **Graceful Degradation**: Drops frames when system can't keep up rather than blocking
+- **Accurate Timestamps**: Captures timestamps at data capture time, not processing time
+- **Robust Error Handling**: Structured logging with automatic retry and backoff
 
 ### Configuration as Data
 
@@ -204,7 +230,7 @@ All frames and configurations use Malli schemas for validation:
 
 ### Async Patterns
 
-Heavy use of `core.async` for concurrent processing:
+Heavy use of `core.async` for concurrent processing with virtual threads:
 
 ```clojure
 (vthread-loop []
@@ -212,6 +238,49 @@ Heavy use of `core.async` for concurrent processing:
     (when-let [result (process-frame frame)]
       (>! output-chan result))
     (recur)))
+```
+
+### Pure Function Extraction Pattern
+
+Complex processors are refactored to separate pure data transformation from side effects:
+
+```clojure
+;; Pure function for data processing
+(defn process-mic-buffer [buffer bytes-read]
+  (when (pos? bytes-read)
+    {:audio-data (Arrays/copyOfRange buffer 0 bytes-read)
+     :timestamp (java.util.Date.)}))
+
+;; Pure function for configuration
+(defn mic-resource-config [{:keys [sample-rate channels buffer-size]}]
+  {:buffer-size (or buffer-size (frame-buffer-size sample-rate))
+   :audio-format (audio-format sample-rate channels)
+   :channel-size 1024})
+
+;; Used in processor with side effects
+(vthread-loop []
+  (when @running?
+    (try
+      (let [bytes-read (read! line buffer 0 buffer-size)]
+        (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+          (when-not (a/offer! mic-in-ch processed-data)
+            (t/log! :warn "Channel full, dropping frame"))))
+      (catch Exception e
+        (t/log! :error "Audio read error" {:error e})
+        (Thread/sleep 100)))
+    (recur)))
+```
+
+### Multi-arity Function Pattern
+
+Processors use multi-arity functions for better flow integration:
+
+```clojure
+(defn processor-fn
+  ([] {:outs {:out "Description"} :params {...}})  ; 0-arity: describe
+  ([config] {...})                                  ; 1-arity: init
+  ([state transition] {...})                        ; 2-arity: transition
+  ([state input-port data] [state {...}]))          ; 3-arity: transform
 ```
 
 ## Development Workflow
@@ -222,13 +291,60 @@ Heavy use of `core.async` for concurrent processing:
 2. Load example flows in `(comment ...)` blocks
 3. Use `flow/start`, `flow/resume`, `flow/stop` for lifecycle management
 4. Hot-reload processor implementations
+5. **Test pure functions interactively** - Extracted pure functions enable instant testing
+
+#### Interactive Testing Examples:
+
+```clojure
+;; Test configuration with different sample rates
+(mic-resource-config {:sample-rate 44100 :channels 2})
+;; => {:buffer-size 882, :audio-format #<AudioFormat>, :channel-size 1024}
+
+;; Test buffer processing with various inputs
+(process-mic-buffer (byte-array [1 2 3 4 5]) 3)
+;; => {:audio-data [1 2 3], :timestamp #inst "2025-07-02T..."}
+
+(process-mic-buffer (byte-array [1 2 3]) 0)
+;; => nil
+
+;; Test multi-arity processor functions
+(mic-transport-in-fn)  ; 0-arity: get description
+(mic-transport-in-fn {} :in {:audio-data (byte-array [1 2]) :timestamp (Date.)})  ; 3-arity: transform
+```
+
+This approach enables rapid iteration and verification of component behavior without complex setup.
 
 ### Testing Strategy
 
-- Unit tests for individual processors
-- Integration tests for complete flows
-- Mock data for AI service testing
-- Schema validation testing
+- **Pure Function Testing** - Extracted pure functions are easily testable in isolation and REPL
+- **Multi-arity Function Testing** - Test individual processor arities (describe, init, transform)
+- **Property-based Testing** - Validate behavior across parameter ranges using `doseq`
+- **Integration Tests** - Complete flow testing with mock data
+- **Performance Testing** - Large buffer handling and memory isolation validation
+- **Edge Case Testing** - Boundary conditions and error scenario validation
+- **Schema Validation Testing** - Frame and configuration validation
+
+Example pure function testing:
+
+```clojure
+(deftest test-process-mic-buffer
+  (testing "processes valid audio data"
+    (let [buffer (byte-array [1 2 3 4 5])
+          result (process-mic-buffer buffer 3)]
+      (is (= [1 2 3] (vec (:audio-data result))))
+      (is (instance? Date (:timestamp result)))))
+
+  (testing "returns nil for zero bytes"
+    (is (nil? (process-mic-buffer (byte-array [1 2 3]) 0)))))
+
+;; Property-based testing across parameter ranges
+(testing "mic-resource-config invariants"
+  (doseq [sample-rate [8000 16000 44100 48000]
+          channels [1 2]]
+    (let [config (mic-resource-config {:sample-rate sample-rate :channels channels})]
+      (is (pos? (:buffer-size config)))
+      (is (= 1024 (:channel-size config))))))
+```
 
 ### Configuration Management
 
