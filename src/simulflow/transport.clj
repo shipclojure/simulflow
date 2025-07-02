@@ -102,10 +102,11 @@
 
 (defn mic-resource-config
   "Calculate audio resource configuration."
-  [{:keys [sample-rate sample-size-bits channels buffer-size]}]
+  [{:keys [sample-rate sample-size-bits channels buffer-size signed endian]
+    :or {signed :signed endian :little-endian}}]
   (let [calculated-buffer-size (or buffer-size (frame-buffer-size sample-rate))]
     {:buffer-size calculated-buffer-size
-     :audio-format (audio-format sample-rate sample-size-bits channels)
+     :audio-format (audio-format sample-rate sample-size-bits channels signed endian)
      :channel-size 1024}))
 
 ;; =============================================================================
@@ -277,56 +278,76 @@
 
                     :transform realtime-out-transform})))
 
+(defn mic-transport-in-describe
+  []
+  {:outs {:out "Channel on which audio frames are put"}
+   :params {:audio-in/sample-rate "Sample rate for audio input. Default 16000"
+            :audio-in/channels "Channels for audio input. Default 1"
+            :audio-in/sample-size-bits "Sample size in bits. Default 16"
+            :audio-in/buffer-size "Size of the buffer mic capture buffer"
+            :audio-in/signed "If audio in is signed or not. Can be :signed :unsigned true(signed) false (unsigned) "
+            :audio-in/endian "Suggests endianess of the audio format. Can be :big-endian, :big, true (big-endian), :little-endian :little false (little endian)"}})
+
+(defn mic-transport-in-init!
+  [{:audio-in/keys [sample-rate sample-size-bits channels buffer-size signed endian]
+    :or {sample-rate 16000
+         channels 1
+         sample-size-bits 16
+         signed :signed
+         endian :little-endian}}]
+  (let [{:keys [buffer-size audio-format channel-size]}
+        (mic-resource-config {:sample-rate sample-rate
+                              :sample-size-bits sample-size-bits
+                              :channels channels
+                              :buffer-size buffer-size
+                              :signed signed
+                              :endian? endian})
+        line (open-line! :target audio-format)
+        mic-in-ch (a/chan channel-size)
+        buffer (byte-array buffer-size)
+        running? (atom true)
+        close #(do
+                 (reset! running? false)
+                 (a/close! mic-in-ch)
+                 (stop! line)
+                 (close! line))]
+    (vthread-loop []
+      (when @running?
+        (try
+          (let [bytes-read (read! line buffer 0 buffer-size)]
+            (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+              (a/>!! mic-in-ch processed-data)))
+          (catch Exception e
+            (t/log! {:level :error :id :microphone-transport :error e}
+                    "Error reading audio data")
+            ;; Brief pause before retrying to prevent tight error loop
+            (Thread/sleep 100)))
+        (recur)))
+    {::flow/in-ports {::mic-in mic-in-ch}
+     :audio-in/sample-size-bits sample-size-bits
+     :audio-in/sample-rate sample-rate
+     :audio-in/channels channels
+     ::close close}))
+
+(defn mic-transport-in-transition
+  [state transition]
+  (when (and (= transition ::flow/stop)
+             (fn? (::close state)))
+    (t/log! :info "Closing transport in")
+    ((::close state))))
+
+(defn mic-transport-in-transform
+  [state _ {:keys [audio-data timestamp]}]
+  [state {:out [(frame/audio-input-raw audio-data {:timestamp timestamp})]}])
+
 (defn mic-transport-in-fn
   "Records microphone and sends raw-audio-input frames down the pipeline."
-  ([] {:outs {:out "Channel on which audio frames are put"}
-       :params {:audio-in/sample-rate "Sample rate for audio input. Default 16000"
-                :audio-in/channels "Channels for audio input. Default 1"
-                :audio-in/sample-size-bits "Sample size in bits. Default 16"
-                :audio-in/buffer-size "Size of the buffer mic capture buffer"}})
-  ([{:audio-in/keys [sample-rate sample-size-bits channels buffer-size]
-     :or {sample-rate 16000
-          channels 1
-          sample-size-bits 16}}]
-   (let [{:keys [buffer-size audio-format channel-size]}
-         (mic-resource-config {:sample-rate sample-rate
-                               :sample-size-bits sample-size-bits
-                               :channels channels
-                               :buffer-size buffer-size})
-         line (open-line! :target audio-format)
-         mic-in-ch (a/chan channel-size)
-         buffer (byte-array buffer-size)
-         running? (atom true)
-         close #(do
-                  (reset! running? false)
-                  (a/close! mic-in-ch)
-                  (stop! line)
-                  (close! line))]
-     (vthread-loop []
-       (when @running?
-         (try
-           (let [bytes-read (read! line buffer 0 buffer-size)]
-             (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
-               (a/>!! mic-in-ch processed-data)))
-           (catch Exception e
-             (t/log! {:level :error :id :microphone-transport :error e}
-                     "Error reading audio data")
-             ;; Brief pause before retrying to prevent tight error loop
-             (Thread/sleep 100)))
-         (recur)))
-     {::flow/in-ports {::mic-in mic-in-ch}
-      :audio-in/sample-size-bits sample-size-bits
-      :audio-in/sample-rate sample-rate
-      :audio-in/channels channels
-      ::close close}))
+  ([] (mic-transport-in-describe))
+  ([params] (mic-transport-in-init! params))
   ([state transition]
-   (when (and (= transition ::flow/stop)
-              (fn? (::close state)))
-     (t/log! :info "Closing transport in")
-     ((::close state))))
-
-  ([state _ {:keys [audio-data timestamp]}]
-   [state {:out [(frame/audio-input-raw audio-data {:timestamp timestamp})]}]))
+   (mic-transport-in-transition state transition))
+  ([state in msg]
+   (mic-transport-in-transform state in msg)))
 
 (def microphone-transport-in (flow/process mic-transport-in-fn))
 
