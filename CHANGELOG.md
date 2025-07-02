@@ -9,7 +9,8 @@ All notable changes to this project will be documented in this file. This change
 - Comprehensive test suite for `simulflow.frame` namespace using `clojure.test` (2150+ assertions)
 - Comprehensive test suite for `simulflow.processors.activity-monitor` with pure function testing
 - **Microphone Transport**: Added pure functions `process-mic-buffer` and `mic-resource-config` for better testability and REPL-driven development
-- **Transport Testing**: Comprehensive test suite for microphone transport (149 assertions) covering pure functions, multi-arity functions, property-based testing, performance, and edge cases
+- **Audio Splitter**: Added pure functions `split-audio-into-chunks` and `audio-splitter-config` for better testability and data-centric design
+- **Transport Testing**: Comprehensive test suite for transport layer (477 assertions) covering microphone transport (149 assertions) and audio splitter (328 assertions) with pure functions, multi-arity functions, property-based testing, performance, and edge cases
 
 ### Changed
 - **BREAKING**: Frame types now use proper `simulflow.frame` namespace (e.g., `:simulflow.frame/user-speech-start`)
@@ -17,6 +18,7 @@ All notable changes to this project will be documented in this file. This change
 - Updated clj-kondo hook for `defframe` to support multi-arity functions with timestamp options
 - Fixed schema typos in `user-speech-stop` and `bot-speech-stop` frame definitions
 - **Microphone Transport**: Refactored `microphone-transport-in` to use multi-arity function pattern (`mic-transport-in-fn`) for better flow integration
+- **Audio Splitter**: Refactored `audio-splitter` to use multi-arity function pattern (`audio-splitter-fn`) for better flow integration and consistency with other transport processors
 
 ### Improved
 - Better developer experience with static analysis support for frame functions
@@ -30,7 +32,10 @@ All notable changes to this project will be documented in this file. This change
 - **Microphone Transport**: Migrated to virtual threads (`vthread-loop`) for better concurrency performance and resource utilization
 - **Microphone Transport**: Improved timestamp accuracy by capturing timestamps at audio capture time rather than processing time
 - **Microphone Transport**: Added graceful frame dropping when channel is full to prevent system backpressure in real-time audio scenarios
-- **Transport Architecture**: Extracted pure functions for audio buffer processing and resource configuration, improving testability and following data-centric design principles
+- **Audio Splitter**: Extracted pure functions for audio byte array splitting and chunk size calculation, improving testability and following data-centric design principles
+- **Audio Splitter**: Enhanced with comprehensive edge case handling (nil audio, zero chunk size, exact division) and data integrity verification
+- **Transport Architecture**: Extracted pure functions for audio buffer processing, resource configuration, and audio splitting, improving testability and following data-centric design principles
+- **REPL Experience**: Pure function extraction enables instant interactive testing and verification of core audio processing logic without complex setup
 
 - Updated dependencies to latest
 

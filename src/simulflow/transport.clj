@@ -111,46 +111,66 @@
 ;; =============================================================================
 ;; Processors
 
+(defn split-audio-into-chunks
+  "Split audio byte array into chunks of specified size.
+   Returns vector of byte arrays, each of chunk-size or smaller for the last chunk."
+  [audio-data chunk-size]
+  (when (and audio-data (pos? chunk-size))
+    (loop [audio audio-data
+           chunks []]
+      (let [audio-size (count audio)
+            chunk-actual-size (min chunk-size audio-size)
+            chunk (byte-array chunk-actual-size)]
+        ;; Copy chunk-size amount of data into next chunk
+        (System/arraycopy audio 0 chunk 0 chunk-actual-size)
+        (if (> audio-size chunk-actual-size)
+          (let [new-audio-size (- audio-size chunk-actual-size)
+                remaining-audio (byte-array new-audio-size)]
+            (System/arraycopy audio chunk-actual-size remaining-audio 0 new-audio-size)
+            (recur remaining-audio (conj chunks chunk)))
+          ;; No more chunks to process, return final result
+          (conj chunks chunk))))))
+
+(defn audio-splitter-config
+  "Calculate and validate audio splitter configuration.
+   Returns map with validated :audio.out/chunk-size."
+  [{:audio.out/keys [chunk-size sample-rate sample-size-bits channels duration-ms] :as config}]
+  (assert (or chunk-size (and sample-rate sample-size-bits channels duration-ms))
+          "Either provide :audio.out/chunk-size or sample-rate, sample-size-bits, channels and chunk duration for the size to be computed")
+  (assoc config :audio.out/chunk-size
+         (or chunk-size
+             (au/audio-chunk-size {:sample-rate sample-rate
+                                   :sample-size-bits sample-size-bits
+                                   :channels channels
+                                   :duration-ms duration-ms}))))
+
+(defn audio-splitter-fn
+  "Audio splitter processor function with multi-arity support."
+  ([] {:ins {:in "Channel for raw audio frames"}
+       :outs {:out "Channel for audio frames split by chunk size"}
+       :params {:audio.out/chunk-size "The chunk size by which to split each audio frame. Specify either this or the other parameters so that chunk size can be computed"
+                :audio.out/sample-rate "Sample rate of the output audio"
+                :audio.out/sample-size-bits "Size in bits for each sample"
+                :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
+                :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
+  ([config]
+   (audio-splitter-config config))
+  ([_ _])
+  ([state _ frame]
+   (cond
+     (frame/audio-output-raw? frame)
+     (let [{:audio.out/keys [chunk-size]} state
+           audio-data (:frame/data frame)
+           chunks (split-audio-into-chunks audio-data chunk-size)
+           output-frames (mapv frame/audio-output-raw chunks)]
+       [state {:out output-frames}])
+
+     :else [state])))
+
 (def audio-splitter
   "Takes in audio-output-raw frames and splits them up into :audio.out/duration-ms
   chunks. Chunks are split to achieve realtime streaming."
-  (flow/process
-   (flow/map->step {:describe (fn [] {:ins {:in "Channel for raw audio frames"}
-                                      :outs {:out "Channel for audio frames split by chunk size"}
-                                      :params {:audio.out/chunk-size "The chunk size by which to split each audio
-     frame. Specify either this or the other parameters so that chunk size can be computed"
-
-                                               :audio.out/sample-rate "Sample rate of the output audio"
-                                               :audio.out/sample-size-bits "Size in bits for each sample"
-                                               :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
-                                               :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
-
-                    :init (fn [{:audio.out/keys [chunk-size sample-rate sample-size-bits channels duration-ms]}]
-                            (assert (or chunk-size (and sample-rate sample-size-bits channels duration-ms))
-                                    "Either provide :audio.out/chunk-size or sample-rate, sample-size-bits, channels and chunk duration for the size to be computed")
-                            {:audio.out/chunk-size (or chunk-size (au/audio-chunk-size {:sample-rate sample-rate
-                                                                                        :sample-size-bits sample-size-bits
-                                                                                        :channels channels
-                                                                                        :duration-ms duration-ms}))})
-                    :transform (fn [{:audio.out/keys [chunk-size] :as state} _ frame]
-                                 (cond
-                                   (frame/audio-output-raw? frame)
-                                   (loop [audio (:frame/data frame)
-                                          chunks []]
-                                     (let [audio-size (count audio)
-                                           chunk-actual-size (min chunk-size audio-size)
-                                           chunk (byte-array chunk-actual-size)]
-                                       ;; Copy chunk-size amount of data into next chunk
-                                       (System/arraycopy audio 0 chunk 0 chunk-actual-size)
-                                       (if (> audio-size chunk-actual-size)
-                                         (let [new-audio-size (- audio-size chunk-actual-size)
-                                               remaining-audio (byte-array new-audio-size)]
-                                           (System/arraycopy audio chunk-actual-size remaining-audio 0 new-audio-size)
-                                           (recur remaining-audio (conj chunks (frame/audio-output-raw chunk))))
-                                         ;; No more chunks to process, return final result
-                                         [state {:out (conj chunks (frame/audio-output-raw chunk))}])))
-
-                                   :else [state]))})))
+  (flow/process audio-splitter-fn))
 
 (def twilio-transport-in
   "Takes in twilio events and transforms them into audio-input-raw and config
@@ -264,9 +284,9 @@
                 :audio-in/sample-size-bits "Sample size in bits. Default 16"
                 :audio-in/buffer-size "Size of the buffer mic capture buffer"}})
   ([{:audio-in/keys [sample-rate sample-size-bits channels buffer-size]
-      :or {sample-rate 16000
-           channels 1
-           sample-size-bits 16}}]
+     :or {sample-rate 16000
+          channels 1
+          sample-size-bits 16}}]
    (let [{:keys [buffer-size audio-format channel-size]}
          (mic-resource-config {:sample-rate sample-rate
                                :sample-size-bits sample-size-bits
@@ -282,18 +302,18 @@
                   (stop! line)
                   (close! line))]
      (vthread-loop []
-       (when @running?
-         (try
-           (let [bytes-read (read! line buffer 0 buffer-size)]
-             (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
-               (when-not (a/offer! mic-in-ch processed-data)
-                 (t/log! :warn "Audio input channel full, dropping frame"))))
-           (catch Exception e
-             (t/log! {:level :error :id :microphone-transport :error e}
-                     "Error reading audio data")
+                   (when @running?
+                     (try
+                       (let [bytes-read (read! line buffer 0 buffer-size)]
+                         (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+                           (when-not (a/offer! mic-in-ch processed-data)
+                             (t/log! :warn "Audio input channel full, dropping frame"))))
+                       (catch Exception e
+                         (t/log! {:level :error :id :microphone-transport :error e}
+                                 "Error reading audio data")
              ;; Brief pause before retrying to prevent tight error loop
-             (Thread/sleep 100)))
-         (recur)))
+                         (Thread/sleep 100)))
+                     (recur)))
      {::flow/in-ports {::mic-in mic-in-ch}
       :audio-in/sample-size-bits sample-size-bits
       :audio-in/sample-rate sample-rate
