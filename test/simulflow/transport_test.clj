@@ -1,7 +1,6 @@
 (ns simulflow.transport-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [clojure.core.async.flow :as flow]
    [simulflow.frame :as frame]
    [simulflow.transport :as sut]
    [simulflow.utils.core :as u])
@@ -49,8 +48,7 @@
 
   (testing "handles empty audio array"
     (let [chunks (sut/split-audio-into-chunks (byte-array 0) 10)]
-      (is (= 1 (count chunks)))
-      (is (= 0 (count (first chunks)))))))
+      (is (nil? chunks)))))
 
 (deftest test-audio-splitter-config-chunk-size
   (testing "uses provided chunk size"
@@ -121,8 +119,8 @@
 
   (testing "2-arity handles transitions"
     (let [state {:audio.out/chunk-size 256}
-          result (sut/audio-splitter-fn state ::flow/stop)]
-      (is (nil? result))))
+          result (sut/audio-splitter-fn state :clojure.core.async.flow/stop)]
+      (is (= state result))))
 
   (testing "3-arity transforms audio frames"
     (let [state {:audio.out/chunk-size 50}

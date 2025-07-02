@@ -115,7 +115,7 @@
   "Split audio byte array into chunks of specified size.
    Returns vector of byte arrays, each of chunk-size or smaller for the last chunk."
   [audio-data chunk-size]
-  (when (and audio-data (pos? chunk-size))
+  (when (and audio-data chunk-size (pos? chunk-size) (pos? (count audio-data)))
     (loop [audio audio-data
            chunks []]
       (let [audio-size (count audio)
@@ -155,16 +155,17 @@
                 :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
   ([config]
    (audio-splitter-config config))
-  ([_ _])
+  ([state _]
+   ;; Transition function must return the state
+   state)
   ([state _ frame]
    (cond
      (frame/audio-output-raw? frame)
      (let [{:audio.out/keys [chunk-size]} state
-           audio-data (:frame/data frame)
-           chunks (split-audio-into-chunks audio-data chunk-size)
-           output-frames (mapv frame/audio-output-raw chunks)]
-       [state {:out output-frames}])
-
+           audio-data (:frame/data frame)]
+       (if-let [chunks (split-audio-into-chunks audio-data chunk-size)]
+         [state {:out (mapv frame/audio-output-raw chunks)}]
+         [state]))
      :else [state])))
 
 (def audio-splitter
@@ -302,18 +303,17 @@
                   (stop! line)
                   (close! line))]
      (vthread-loop []
-                   (when @running?
-                     (try
-                       (let [bytes-read (read! line buffer 0 buffer-size)]
-                         (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
-                           (when-not (a/offer! mic-in-ch processed-data)
-                             (t/log! :warn "Audio input channel full, dropping frame"))))
-                       (catch Exception e
-                         (t/log! {:level :error :id :microphone-transport :error e}
-                                 "Error reading audio data")
+       (when @running?
+         (try
+           (let [bytes-read (read! line buffer 0 buffer-size)]
+             (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+               (a/>!! mic-in-ch processed-data)))
+           (catch Exception e
+             (t/log! {:level :error :id :microphone-transport :error e}
+                     "Error reading audio data")
              ;; Brief pause before retrying to prevent tight error loop
-                         (Thread/sleep 100)))
-                     (recur)))
+             (Thread/sleep 100)))
+         (recur)))
      {::flow/in-ports {::mic-in mic-in-ch}
       :audio-in/sample-size-bits sample-size-bits
       :audio-in/sample-rate sample-rate
