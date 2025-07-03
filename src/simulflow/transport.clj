@@ -25,8 +25,6 @@
    [:transport/audio-chunk-size :int]
    [:transport/out-ch schema/CoreAsyncChannel]])
 
-
-
 (defn twilio-transport-in-transform
   [{:twilio/keys [handle-event] :as state} _ input]
   (let [data (u/parse-if-json input)
@@ -385,17 +383,17 @@
                  (sound/stop! line)
                  (close! line))]
     (vthread-loop []
-      (when @running?
-        (try
-          (let [bytes-read (sound/read! line buffer 0 buffer-size)]
-            (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
-              (a/>!! mic-in-ch processed-data)))
-          (catch Exception e
-            (t/log! {:level :error :id :microphone-transport :error e}
-                    "Error reading audio data")
+                  (when @running?
+                    (try
+                      (let [bytes-read (sound/read! line buffer 0 buffer-size)]
+                        (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+                          (a/>!! mic-in-ch processed-data)))
+                      (catch Exception e
+                        (t/log! {:level :error :id :microphone-transport :error e}
+                                "Error reading audio data")
             ;; Brief pause before retrying to prevent tight error loop
-            (Thread/sleep 100)))
-        (recur)))
+                        (Thread/sleep 100)))
+                    (recur)))
     {::flow/in-ports {::mic-in mic-in-ch}
      :audio-in/sample-size-bits sample-size-bits
      :audio-in/sample-rate sample-rate
@@ -424,7 +422,6 @@
 
 (def microphone-transport-in (flow/process mic-transport-in-fn))
 
-
 (def realtime-speakers-out-processor
   "Processor that streams audio out in real time so we can account for
   interruptions."
@@ -435,3 +432,152 @@
                    (realtime-speakers-out-transition state transition))
                   ([state in msg]
                    (realtime-out-transform state in msg)))))
+
+;; =============================================================================
+;; Realtime Speakers Out V2 - Activity Monitor Pattern
+;; Moves business logic from init! to transform for better testability
+;; =============================================================================
+
+(defn realtime-speakers-out-describe-v2
+  []
+  {:ins {:in "Channel for audio output frames"
+         :sys-in "Channel for system messages"}
+   :outs {:out "Channel for bot speech status frames"}
+   :params {:audio.out/sample-rate "Sample rate of the output audio"
+            :audio.out/sample-size-bits "Size in bits for each sample"
+            :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
+            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
+
+(defn realtime-speakers-out-init-v2!
+  [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
+    :or {sample-rate 16000
+         channels 1
+         sample-size-bits 16}}]
+  (let [;; Configuration  
+        duration (or duration-ms 20)
+        sending-interval (/ duration 2)
+        silence-threshold (* 4 duration)
+
+        ;; Audio line setup
+        line (open-line! :source (sampled/audio-format sample-rate sample-size-bits channels))
+
+        ;; Channels following activity monitor pattern
+        timer-in-ch (a/chan 1024)
+        timer-out-ch (a/chan 1024)
+        audio-write-ch (a/chan 1024)]
+
+    ;; Minimal timer process - just sends timing events (like activity monitor)
+    (vthread-loop []
+                  (let [check-interval 1000] ; Check every second for speech timeout
+                    (a/<!! (a/timeout check-interval))
+                    (a/>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
+                    (recur)))
+
+    ;; Audio writer process - handles only audio I/O side effects
+    (vthread-loop []
+                  (when-let [audio-command (a/<!! audio-write-ch)]
+                    (when (= (:command audio-command) :write-audio)
+                      (let [current-time (u/mono-time)
+                            delay-until (:delay-until audio-command 0)
+                            wait-time (max 0 (- delay-until current-time))]
+                        (when (pos? wait-time)
+                          (a/<!! (a/timeout wait-time)))
+                        (sound/write! (:data audio-command) line 0)))
+                    (recur)))
+
+    ;; Return state with minimal setup
+    {::flow/in-ports {:timer-out timer-out-ch}
+     ::flow/out-ports {:timer-in timer-in-ch
+                       :audio-write audio-write-ch}
+     ;; Business logic state (managed in transform)
+     ::speaking? false
+     ::last-audio-time 0
+     ::next-send-time (u/mono-time)
+     ::duration-ms duration
+     ::sending-interval sending-interval
+     ::silence-threshold silence-threshold
+     ::audio-line line}))
+
+(defn realtime-speakers-out-transition-v2
+  [{::flow/keys [in-ports out-ports] :as state} transition]
+  (when (= transition ::flow/stop)
+    (when-let [line (::audio-line state)]
+      (sound/stop! line)
+      (sampled/flush! line)
+      (close! line))
+    (doseq [port (concat (vals in-ports) (vals out-ports))]
+      (a/close! port)))
+  state)
+
+(defn realtime-speakers-out-transform-v2
+  [{:transport/keys [serializer] :as state} input-port frame]
+  (let [current-time (u/mono-time)]
+    (cond
+      ;; Handle incoming audio frames - core business logic moved here
+      (and (= input-port :in)
+           (frame/audio-output-raw? frame))
+      (let [should-emit-start? (not (::speaking? state))
+            updated-state (-> state
+                              (assoc ::speaking? true)
+                              (assoc ::last-audio-time current-time)
+                              (assoc ::next-send-time (+ current-time (::sending-interval state))))
+
+            ;; Generate events based on state transitions
+            events (if should-emit-start?
+                     [(frame/bot-speech-start true)]
+                     [])
+
+            ;; Generate audio write command
+            audio-frame (if serializer
+                          (tp/serialize-frame serializer frame)
+                          frame)
+            audio-command {:command :write-audio
+                           :data (:frame/data audio-frame)
+                           :delay-until (::next-send-time updated-state)}]
+
+        [updated-state {:out events
+                        :audio-write [audio-command]}])
+
+      ;; Handle timer ticks for speech monitoring - moved from background loop
+      (and (= input-port :timer-out)
+           (:timer/tick frame))
+      (let [silence-duration (- (:timer/timestamp frame) (::last-audio-time state))
+            should-emit-stop? (and (::speaking? state)
+                                   (> silence-duration (::silence-threshold state)))
+
+            updated-state (if should-emit-stop?
+                            (assoc state ::speaking? false)
+                            state)
+
+            events (if should-emit-stop?
+                     [(frame/bot-speech-stop true)]
+                     [])]
+
+        [updated-state {:out events}])
+
+      ;; Handle system config changes
+      (and (= input-port :in)
+           (frame/system-config-change? frame))
+      (if-let [new-serializer (:transport/serializer (:frame/data frame))]
+        [(assoc state :transport/serializer new-serializer) {}]
+        [state {}])
+
+      ;; Handle system input passthrough
+      (= input-port :sys-in)
+      [state {:out [frame]}]
+
+      ;; Default case
+      :else [state {}])))
+
+(defn realtime-speakers-out-fn-v2
+  "Refactored realtime speakers out following activity monitor pattern.
+   Moves business logic from init! to transform for better testability."
+  ([] (realtime-speakers-out-describe-v2))
+  ([params] (realtime-speakers-out-init-v2! params))
+  ([state transition] (realtime-speakers-out-transition-v2 state transition))
+  ([state input-port frame] (realtime-speakers-out-transform-v2 state input-port frame)))
+
+(def realtime-speakers-out-processor-v2
+  "V2 processor that moves timing and speech detection logic to transform.
+   Follows activity monitor pattern for better testability and reasoning."
+  (flow/process realtime-speakers-out-fn-v2))
