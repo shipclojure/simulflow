@@ -383,17 +383,17 @@
                  (sound/stop! line)
                  (close! line))]
     (vthread-loop []
-                  (when @running?
-                    (try
-                      (let [bytes-read (sound/read! line buffer 0 buffer-size)]
-                        (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
-                          (a/>!! mic-in-ch processed-data)))
-                      (catch Exception e
-                        (t/log! {:level :error :id :microphone-transport :error e}
-                                "Error reading audio data")
+      (when @running?
+        (try
+          (let [bytes-read (sound/read! line buffer 0 buffer-size)]
+            (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+              (a/>!! mic-in-ch processed-data)))
+          (catch Exception e
+            (t/log! {:level :error :id :microphone-transport :error e}
+                    "Error reading audio data")
             ;; Brief pause before retrying to prevent tight error loop
-                        (Thread/sleep 100)))
-                    (recur)))
+            (Thread/sleep 100)))
+        (recur)))
     {::flow/in-ports {::mic-in mic-in-ch}
      :audio-in/sample-size-bits sample-size-bits
      :audio-in/sample-rate sample-rate
@@ -494,22 +494,22 @@
 
     ;; Minimal timer process - just sends timing events (like activity monitor)
     (vthread-loop []
-                  (let [check-interval 1000] ; Check every second for speech timeout
-                    (a/<!! (a/timeout check-interval))
-                    (a/>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
-                    (recur)))
+      (let [check-interval 1000] ; Check every second for speech timeout
+        (a/<!! (a/timeout check-interval))
+        (a/>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
+        (recur)))
 
     ;; Audio writer process - handles only audio I/O side effects
     (vthread-loop []
-                  (when-let [audio-command (a/<!! audio-write-ch)]
-                    (when (= (:command audio-command) :write-audio)
-                      (let [current-time (u/mono-time)
-                            delay-until (:delay-until audio-command 0)
-                            wait-time (max 0 (- delay-until current-time))]
-                        (when (pos? wait-time)
-                          (a/<!! (a/timeout wait-time)))
-                        (sound/write! (:data audio-command) line 0)))
-                    (recur)))
+      (when-let [audio-command (a/<!! audio-write-ch)]
+        (when (= (:command audio-command) :write-audio)
+          (let [current-time (u/mono-time)
+                delay-until (:delay-until audio-command 0)
+                wait-time (max 0 (- delay-until current-time))]
+            (when (pos? wait-time)
+              (a/<!! (a/timeout wait-time)))
+            (sound/write! (:data audio-command) line 0)))
+        (recur)))
 
     ;; Return state with minimal setup
     {::flow/in-ports {:timer-out timer-out-ch}
@@ -540,7 +540,7 @@
   (let [current-time (u/mono-time)]
     (cond
       ;; Handle incoming audio frames - core business logic moved here
-            ;; Handle incoming audio frames - use pure function for business logic
+      ;; Handle incoming audio frames - use pure function for business logic
       (and (= input-port :in)
            (frame/audio-output-raw? frame))
       (process-audio-frame-v2 state frame serializer current-time)
