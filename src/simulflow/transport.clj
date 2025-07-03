@@ -188,79 +188,6 @@
 
                     :transform async-in-transform})))
 
-(def realtime-speakers-out-describe
-  {:ins {:in "Channel for audio output frames "
-         :sys-in "Channel for system messages"}
-   :outs {:out "Channel for bot speech status frames"}
-   :params {:audio.out/sample-rate "Sample rate of the output audio"
-            :audio.out/sample-size-bits "Size in bits for each sample"
-            :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
-            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
-
-(defn realtime-speakers-out-transition
-  [{::flow/keys [in-ports out-ports] :as state} transition]
-  (when (= transition ::flow/stop)
-    (when-let [line (::speaker-line state)]
-      (sound/stop! line)
-      (sampled/flush! line)
-      (close! line))
-    (doseq [port (concat (vals in-ports) (vals out-ports))]
-      (a/close! port))))
-
-(defn realtime-speakers-out-init!
-  [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
-    :or {sample-rate 16000
-         channels 1
-         sample-size-bits 16}}]
-
-  (let [;; send every 10ms to account for network
-        duration (or duration-ms 20)
-        sending-interval (/ duration 2)
-        next-send-time (atom (u/mono-time))
-
-        ;; Track bot speaking state
-        speaking? (atom false)
-        last-audio-time (atom 0)
-
-        line (open-line! :source (sampled/audio-format sample-rate sample-size-bits channels))
-        audio-write-c (a/chan 1024)
-        events-chan (a/chan 1024)
-
-        realtime-loop #(loop []
-                         (when-let [msg (a/<!! audio-write-c)]
-                           (assert (frame/audio-output-raw? msg) "Only audio-output-raw frames can be played to speakers.")
-                           (let [now (u/mono-time)]
-                             (reset! last-audio-time now)
-
-                             ;; Check if we need to emit bot started speaking
-                             (when (not @speaking?)
-                               (reset! speaking? true)
-                               (a/>!! events-chan
-                                      (frame/bot-speech-start true)))
-
-                             (a/<!! (a/timeout (- @next-send-time now)))
-                             (sound/write! (:frame/data msg) line 0)
-                             (reset! next-send-time (+ now sending-interval)))
-                           (recur)))
-        ;; Monitor for end of speech
-        speech-monitor #(loop []
-                          (a/<!! (a/timeout 1000)) ;; Check every second
-                          (let [now (u/mono-time)
-                                silence-duration (- now @last-audio-time)]
-                            ;; If we've been silent for 2x chunk duration and were speaking
-                            (when (and @speaking?
-                                       (> silence-duration (* 4 duration)))
-                              (reset! speaking? false)
-                              (a/>!! events-chan (frame/bot-speech-stop true)))
-                            (recur)))]
-    ((flow/futurize realtime-loop :exec :io))
-    ((flow/futurize speech-monitor :exec :io))
-    {::flow/out-ports {:audio-write audio-write-c}
-     ::flow/in-ports {:events events-chan}
-     :bot/speaking? speaking?
-     :bot/last-audio-time last-audio-time
-     ::speaker-line line}))
-
 (defn realtime-out-transform
   [{:transport/keys [serializer] :as state} in msg]
   (if (= in :events)
@@ -422,23 +349,12 @@
 
 (def microphone-transport-in (flow/process mic-transport-in-fn))
 
-(def realtime-speakers-out-processor
-  "Processor that streams audio out in real time so we can account for
-  interruptions."
-  (flow/process (fn ([] realtime-speakers-out-describe)
-                  ([params]
-                   (realtime-speakers-out-init! params))
-                  ([state transition]
-                   (realtime-speakers-out-transition state transition))
-                  ([state in msg]
-                   (realtime-out-transform state in msg)))))
-
 ;; =============================================================================
 ;; Realtime Speakers Out V2 - Activity Monitor Pattern
 ;; Moves business logic from init! to transform for better testability
 ;; =============================================================================
 
-(defn process-audio-frame-v2
+(defn process-realtime-out-audio-frame
   "Pure function to process an audio frame and determine state changes.
    Returns [updated-state output-map] for the given state, frame, and current time."
   [state frame serializer current-time]
@@ -464,8 +380,7 @@
     [updated-state {:out events
                     :audio-write [audio-command]}]))
 
-(defn realtime-speakers-out-describe-v2
-  []
+(def realtime-speakers-out-describe
   {:ins {:in "Channel for audio output frames"
          :sys-in "Channel for system messages"}
    :outs {:out "Channel for bot speech status frames"}
@@ -474,7 +389,7 @@
             :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
             :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
 
-(defn realtime-speakers-out-init-v2!
+(defn realtime-speakers-out-init!
   [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
     :or {sample-rate 16000
          channels 1
@@ -524,7 +439,7 @@
      ::silence-threshold silence-threshold
      ::audio-line line}))
 
-(defn realtime-speakers-out-transition-v2
+(defn realtime-speakers-out-transition
   [{::flow/keys [in-ports out-ports] :as state} transition]
   (when (= transition ::flow/stop)
     (when-let [line (::audio-line state)]
@@ -535,7 +450,7 @@
       (a/close! port)))
   state)
 
-(defn realtime-speakers-out-transform-v2
+(defn realtime-speakers-out-transform
   [{:transport/keys [serializer] :as state} input-port frame]
   (let [current-time (u/mono-time)]
     (cond
@@ -543,7 +458,7 @@
       ;; Handle incoming audio frames - use pure function for business logic
       (and (= input-port :in)
            (frame/audio-output-raw? frame))
-      (process-audio-frame-v2 state frame serializer current-time)
+      (process-realtime-out-audio-frame state frame serializer current-time)
 
       ;; Handle timer ticks for speech monitoring - moved from background loop
       (and (= input-port :timer-out)
@@ -576,15 +491,15 @@
       ;; Default case
       :else [state {}])))
 
-(defn realtime-speakers-out-fn-v2
+(defn realtime-speakers-out-fn
   "Refactored realtime speakers out following activity monitor pattern.
    Moves business logic from init! to transform for better testability."
-  ([] (realtime-speakers-out-describe-v2))
-  ([params] (realtime-speakers-out-init-v2! params))
-  ([state transition] (realtime-speakers-out-transition-v2 state transition))
-  ([state input-port frame] (realtime-speakers-out-transform-v2 state input-port frame)))
+  ([] realtime-speakers-out-describe)
+  ([params] (realtime-speakers-out-init! params))
+  ([state transition] (realtime-speakers-out-transition state transition))
+  ([state input-port frame] (realtime-speakers-out-transform state input-port frame)))
 
-(def realtime-speakers-out-processor-v2
+(def realtime-speakers-out-processor
   "V2 processor that moves timing and speech detection logic to transform.
    Follows activity monitor pattern for better testability and reasoning."
-  (flow/process realtime-speakers-out-fn-v2))
+  (flow/process realtime-speakers-out-fn))
