@@ -438,6 +438,32 @@
 ;; Moves business logic from init! to transform for better testability
 ;; =============================================================================
 
+(defn process-audio-frame-v2
+  "Pure function to process an audio frame and determine state changes.
+   Returns [updated-state output-map] for the given state, frame, and current time."
+  [state frame serializer current-time]
+  (let [should-emit-start? (not (::speaking? state))
+        updated-state (-> state
+                          (assoc ::speaking? true)
+                          (assoc ::last-audio-time current-time)
+                          (assoc ::next-send-time (+ current-time (::sending-interval state))))
+
+        ;; Generate events based on state transitions
+        events (if should-emit-start?
+                 [(frame/bot-speech-start true)]
+                 [])
+
+        ;; Generate audio write command
+        audio-frame (if serializer
+                      (tp/serialize-frame serializer frame)
+                      frame)
+        audio-command {:command :write-audio
+                       :data (:frame/data audio-frame)
+                       :delay-until (::next-send-time updated-state)}]
+
+    [updated-state {:out events
+                    :audio-write [audio-command]}]))
+
 (defn realtime-speakers-out-describe-v2
   []
   {:ins {:in "Channel for audio output frames"
@@ -453,7 +479,7 @@
     :or {sample-rate 16000
          channels 1
          sample-size-bits 16}}]
-  (let [;; Configuration  
+  (let [;; Configuration
         duration (or duration-ms 20)
         sending-interval (/ duration 2)
         silence-threshold (* 4 duration)
@@ -514,29 +540,10 @@
   (let [current-time (u/mono-time)]
     (cond
       ;; Handle incoming audio frames - core business logic moved here
+            ;; Handle incoming audio frames - use pure function for business logic
       (and (= input-port :in)
            (frame/audio-output-raw? frame))
-      (let [should-emit-start? (not (::speaking? state))
-            updated-state (-> state
-                              (assoc ::speaking? true)
-                              (assoc ::last-audio-time current-time)
-                              (assoc ::next-send-time (+ current-time (::sending-interval state))))
-
-            ;; Generate events based on state transitions
-            events (if should-emit-start?
-                     [(frame/bot-speech-start true)]
-                     [])
-
-            ;; Generate audio write command
-            audio-frame (if serializer
-                          (tp/serialize-frame serializer frame)
-                          frame)
-            audio-command {:command :write-audio
-                           :data (:frame/data audio-frame)
-                           :delay-until (::next-send-time updated-state)}]
-
-        [updated-state {:out events
-                        :audio-write [audio-command]}])
+      (process-audio-frame-v2 state frame serializer current-time)
 
       ;; Handle timer ticks for speech monitoring - moved from background loop
       (and (= input-port :timer-out)
