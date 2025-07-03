@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## Unreleased
+
+## [0.1.5-alpha] - 2025-07-03
+
 ### Added
 - Explicit timestamp support for frames with `java.util.Date` (#inst reader macro) and millisecond integers
 - Frame creation functions now support optional `opts` parameter for timestamp control
@@ -9,8 +12,7 @@ All notable changes to this project will be documented in this file. This change
 - Comprehensive test suite for `simulflow.frame` namespace using `clojure.test` (2150+ assertions)
 - Comprehensive test suite for `simulflow.processors.activity-monitor` with pure function testing
 - **Microphone Transport**: Added pure functions `process-mic-buffer` and `mic-resource-config` for better testability and REPL-driven development
-- **Audio Splitter**: Added pure functions `split-audio-into-chunks` and `audio-splitter-config` for better testability and data-centric design
-- **Transport Testing**: Comprehensive test suite for transport layer (590 assertions) covering microphone transport, audio splitter, and realtime speakers with pure functions, multi-arity functions, property-based testing, performance, and edge cases
+- **Transport Testing**: Comprehensive test suite for transport layer covering microphone transport, audio splitter, and realtime speakers
 - **Realtime Speakers Out**: Added comprehensive test coverage including realistic LLM → audio splitter → speakers pipeline integration test simulating end-to-end audio processing flow
 - **Realtime Speakers Out**: Added extensive unit tests for describe, init, transition, transform, timer handling, system config, serializer integration, and timing accuracy validation
 
@@ -27,9 +29,9 @@ All notable changes to this project will be documented in this file. This change
 - Enhanced frame validation and error messages
 - More idiomatic Clojure code with proper namespaced keywords
 - **Activity Monitor**: Refactored core logic into pure `transform` function, making it fully testable and following data-centric functional patterns
-- Activity monitor now uses separate pure functions (`speaking?`, `transform`) that can be easily unit tested without async complexity
-- **ElevenLabs TTS**: Extracted transform logic into pure `tts-transform` function, improving testability and separation of concerns from WebSocket lifecycle management
+- **ElevenLabs TTS**: Extracted transform logic into pure `elevenlabs-tts-transform` function, improving testability and separation of concerns from WebSocket lifecycle management
 - **ElevenLabs TTS**: Migrated from classic threads (`flow/futurize`) to virtual threads (`vthread-loop`) for better performance and resource efficiency
+- **ElevenLabs TTS**: Extracted WebSocket configuration logic into pure `create-websocket-config` function
 - **Microphone Transport**: Enhanced error handling with structured logging and non-blocking channel operations using `offer!` instead of blocking `>!!`
 - **Microphone Transport**: Migrated to virtual threads (`vthread-loop`) for better concurrency performance and resource utilization
 - **Microphone Transport**: Improved timestamp accuracy by capturing timestamps at audio capture time rather than processing time
@@ -41,11 +43,13 @@ All notable changes to this project will be documented in this file. This change
 - **Realtime Speakers Out**: Enhanced with timer-based speech detection in transform function, replacing background monitoring loops with explicit timer tick event handling
 - **Realtime Speakers Out**: Improved state management with explicit data structures and pure function transformations for speech start/stop detection and audio timing calculations
 - **Test Quality**: Added realistic integration testing simulating LLM audio generation → audio splitting → realtime speakers with proper timing validation and data integrity verification
-- **Bot Speech Events**: Clarified that `bot-speech-stop` events come from timer tick processing when silence exceeds threshold, demonstrating Activity Monitor Pattern in action
 
-- Updated dependencies to latest
 
 ## [0.1.4-alpha] - 2025-04-13
+
+### Changed
+- Updated dependencies to latest
+
 ### Removed
 - Unused dependencies: onnx-runtime + java.data
 

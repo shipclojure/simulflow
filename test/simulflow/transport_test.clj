@@ -1,5 +1,6 @@
 (ns simulflow.transport-test
   (:require
+   [clojure.core.async.flow :as flow]
    [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
    [simulflow.transport :as sut]

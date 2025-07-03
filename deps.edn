@@ -12,12 +12,12 @@
 
  :pom {:group-id "com.shipclojure"
        :artifact-id "simulflow"
-       :version "0.1.3-alpha"
+       :version "0.1.5-alpha"
        :name "simulflow"
        :description "A Clojure framework for building real-time voice-enabled AI applications"
        :url "https://github.com/shipclojure/simulflow"
        :scm {:url "https://github.com/shipclojure/simulflow"
-             :tag "v0.1.4-alpha"
+             :tag "v0.1.5-alpha"
              :connection "scm:git:git://github.com/shipclojure/simulflow.git"
              :dev-connection "scm:git:ssh://git@github.com/shipclojure/simulflow.git"}
        :licenses [{:name "Eclipse Public License"
