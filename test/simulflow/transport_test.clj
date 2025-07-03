@@ -1,5 +1,6 @@
 (ns simulflow.transport-test
   (:require
+   [clojure.core.async.flow :as flow]
    [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
    [simulflow.transport :as sut]
@@ -309,19 +310,45 @@
   ;; =============================================================================
   ;; Multi-arity Function Tests
 
-  (testing "mic-transport-in-fn describe (0-arity)"
-    (let [description (sut/mic-transport-in-fn)]
+    ;; =============================================================================
+  ;; Individual Function Tests (New Architecture)
+
+  (testing "mic-transport-in-describe function"
+    (let [description (sut/mic-transport-in-describe)]
       (is (contains? (:outs description) :out))
       (is (contains? (:params description) :audio-in/sample-rate))
       (is (contains? (:params description) :audio-in/channels))
       (is (contains? (:params description) :audio-in/sample-size-bits))
       (is (contains? (:params description) :audio-in/buffer-size))))
 
-  (testing "mic-transport-in-fn transform (3-arity)"
+  (testing "mic-transport-in-init! function"
+    (let [params {:audio-in/sample-rate 16000
+                  :audio-in/channels 1
+                  :audio-in/sample-size-bits 16}
+          state (sut/mic-transport-in-init! params)]
+      (is (contains? state ::sut/close))
+      (is (contains? state :audio-in/sample-rate))
+      (is (contains? state :audio-in/channels))
+      (is (contains? state :audio-in/sample-size-bits))
+      (is (fn? (::sut/close state)))
+      ;; Clean up resources
+      ((::sut/close state))))
+
+  (testing "mic-transport-in-transition function"
+    (let [close-fn (atom false)
+          state {::sut/close #(reset! close-fn true)}
+          result (sut/mic-transport-in-transition state ::flow/stop)]
+      (is @close-fn "Close function should be called on stop transition")
+      ;; Test other transitions don't call close
+      (reset! close-fn false)
+      (sut/mic-transport-in-transition state ::flow/start)
+      (is (not @close-fn) "Close function should not be called on start transition")))
+
+  (testing "mic-transport-in-transform function"
     (let [test-audio-data (byte-array [1 2 3 4])
           test-timestamp (Date.)
           input-data {:audio-data test-audio-data :timestamp test-timestamp}
-          [new-state output] (sut/mic-transport-in-fn {} :in input-data)]
+          [new-state output] (sut/mic-transport-in-transform {} :in input-data)]
 
       (is (= {} new-state)) ; State unchanged
       (is (contains? output :out))
@@ -332,14 +359,32 @@
         (is (= test-audio-data (:frame/data frame)))
         (is (= test-timestamp (:frame/ts frame))))))
 
-  (testing "mic-transport-in-fn transform preserves frame metadata"
+  (testing "mic-transport-in-transform preserves frame metadata"
     (let [test-timestamp (Date.)
           input-data {:audio-data (byte-array [5 6 7 8]) :timestamp test-timestamp}
-          [_ output] (sut/mic-transport-in-fn {} :in input-data)
+          [_ output] (sut/mic-transport-in-transform {} :in input-data)
           frame (first (:out output))]
 
       (is (= :simulflow.frame/audio-input-raw (:frame/type frame)))
       (is (= test-timestamp (:frame/ts frame)))))
+
+  ;; =============================================================================
+  ;; Multi-arity Function Tests (For Compatibility)
+
+  (testing "mic-transport-in-fn describe (0-arity) delegates correctly"
+    (let [description (sut/mic-transport-in-fn)]
+      (is (= description (sut/mic-transport-in-describe))
+          "0-arity should delegate to describe function")))
+
+  (testing "mic-transport-in-fn transform (3-arity) delegates correctly"
+    (let [test-audio-data (byte-array [1 2 3 4])
+          test-timestamp (Date.)
+          input-data {:audio-data test-audio-data :timestamp test-timestamp}
+          multi-arity-result (sut/mic-transport-in-fn {} :in input-data)
+          individual-result (sut/mic-transport-in-transform {} :in input-data)]
+
+      (is (= multi-arity-result individual-result)
+          "3-arity should delegate to transform function")))
 
   ;; =============================================================================
   ;; Property-Based Tests
