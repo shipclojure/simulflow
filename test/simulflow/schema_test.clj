@@ -93,3 +93,120 @@
       (is (= {:function {:parameters ["Required parameters are not defined"]}}
              (me/humanize (m/explain sut/LLMFunctionToolDefinition invalid-required))))
       (is (m/validate sut/LLMFunctionToolDefinition stocks-function)))))
+
+(deftest parse-with-defaults-test
+  (testing "applies defaults for valid input with all required fields"
+    (let [schema [:map
+                  [:required-field :string]
+                  [:optional-field {:optional true} :string]
+                  [:default-field {:default "default-value"} :string]]
+          params {:required-field "value"}
+          result (sut/parse-with-defaults schema params)]
+      (is (= {:required-field "value" :default-field "default-value"} result))))
+
+  (testing "throws when required fields are missing"
+    (let [schema [:map
+                  [:api-key :string]
+                  [:optional-field {:optional true} :string]
+                  [:default-field {:default "default-value"} :string]]
+          params {:optional-field "optional"}]
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Missing required parameters"
+           (sut/parse-with-defaults schema params)))))
+
+  (testing "includes helpful error data when required fields missing"
+    (let [schema [:map
+                  [:api-key :string]
+                  [:another-required :int]]
+          params {}]
+      (try
+        (sut/parse-with-defaults schema params)
+        (is false "Should have thrown")
+        (catch clojure.lang.ExceptionInfo e
+          (let [data (ex-data e)]
+            (prn data)
+            (is (= #{:api-key :another-required} (set (:missing-required data))))
+            (is (= #{:api-key :another-required} (set (:required-fields data))))
+            (is (= [] (:provided-keys data))))))))
+
+  (testing "works with complex schemas like OpenAI config"
+    (let [schema [:map
+                  [:openai/api-key :string]
+                  [:llm/model {:default "gpt-4o-mini"} :string]
+                  [:llm/temperature {:default 0.7 :optional true} :double]]
+          params {:openai/api-key "sk-1234567890abcdef"}
+          result (sut/parse-with-defaults schema params)]
+      (is (= "sk-1234567890abcdef" (:openai/api-key result)))
+      (is (= "gpt-4o-mini" (:llm/model result)))
+      (is (= 0.7 (:llm/temperature result)))))
+
+  (testing "handles :and schemas like DeepgramConfig"
+    (let [schema [:and
+                  [:map
+                   [:transcription/api-key :string]
+                   [:transcription/model {:default "nova-2"} :string]]
+                  [:fn (constantly true)]]
+          params {:transcription/api-key "token-123"}
+          result (sut/parse-with-defaults schema params)]
+      (is (= result {:transcription/api-key "token-123" :transcription/model "nova-2"}))))
+
+  (testing "throws when validation fails after applying defaults"
+    (let [schema [:map
+                  [:required-field :string]
+                  [:number-field {:default "not-a-number"} :int]]
+          params {:required-field "value"}]
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (sut/parse-with-defaults schema params)))))
+
+  (testing "preserves provided values over defaults"
+    (let [schema [:map
+                  [:required-field :string]
+                  [:default-field {:default "default"} :string]]
+          params {:required-field "req" :default-field "provided"}
+          result (sut/parse-with-defaults schema params)]
+      (is (= "req" (:required-field result)))
+      (is (= "provided" (:default-field result))))))
+
+(deftest get-required-fields-test
+  (testing "extracts required fields from simple map schema"
+    (let [schema [:map
+                  [:required1 :string]
+                  [:optional1 {:optional true} :string]
+                  [:default1 {:default "value"} :string]
+                  [:required2 :int]]
+          result (sut/get-required-fields schema)]
+      (is (= #{:required1 :required2} result))))
+
+  (testing "handles :and schemas"
+    (let [schema [:and
+                  [:map
+                   [:req-field :string]
+                   [:opt-field {:optional true} :string]]
+                  [:fn (constantly true)]]
+          result (sut/get-required-fields schema)]
+      (is (= #{:req-field} result))))
+
+  (testing "returns empty set for schemas with no required fields"
+    (let [schema [:map
+                  [:optional1 {:optional true} :string]
+                  [:default1 {:default "value"} :string]]
+          result (sut/get-required-fields schema)]
+      (is (= #{} result))))
+
+  (testing "handles schemas that are not maps"
+    (let [schema :string
+          result (sut/get-required-fields schema)]
+      (is (= #{} result)))))
+
+(deftest parse-with-defaults-integration-test
+  (testing "works with realistic processor schemas"
+    ;; Test with ActivityMonitorConfigSchema pattern
+    (let [activity-schema [:map
+                           [::timeout-ms {:default 5000 :optional true} :int]
+                           [::required-param :string]]
+          params {::required-param "test"}
+          result (sut/parse-with-defaults activity-schema params)]
+      (is (= result {::required-param "test", ::timeout-ms 5000})))))

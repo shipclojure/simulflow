@@ -1,6 +1,5 @@
 (ns simulflow.schema
   (:require
-   [clojure.core.async.impl.protocols :as async-protocols]
    [malli.core :as m]
    [malli.error :as me]
    [malli.transform :as mt]
@@ -40,9 +39,62 @@
      {}
      children)))
 
+(defn get-required-fields
+  "Extract required field keys from a Malli schema.
+   A field is required if it doesn't have :optional true or :default."
+  [schema]
+  (letfn [(extract-from-map-schema [s]
+            (when (= :map (m/type s))
+              (->> (m/children s)
+                   (keep (fn [child]
+                           (let [[field-key props _field-schema] child
+                                 has-default? (contains? props :default)
+                                 is-optional? (:optional props)]
+                             (when-not (or has-default? is-optional?)
+                               field-key))))
+                   set)))]
+    (or (extract-from-map-schema schema)
+        ;; Handle :and schemas (like DeepgramConfig)
+        (when (= :and (m/type schema))
+          (->> (m/children schema)
+               (mapcat extract-from-map-schema)
+               set))
+        #{})))
+
 (defn parse-with-defaults
-  [s m]
-  (m/decode s m mt/default-value-transformer))
+  "Parse and validate parameters against schema, applying defaults only after
+   ensuring all required (non-default, non-optional) parameters are present.
+
+   Applies defaults to:
+   - Fields with :default (regardless of :optional status)
+
+   Throws if:
+   - Required parameters are missing (those without :default or :optional true)
+   - Parameters fail validation after defaults are applied
+
+   Returns:
+   - Map with defaults applied for valid input"
+  [schema params]
+  (let [;; First validate that required parameters are present
+        required-fields (get-required-fields schema)
+        missing-required (remove #(contains? params %) required-fields)]
+
+    (when (seq missing-required)
+      (throw (ex-info "Missing required parameters"
+                      {:missing-required missing-required
+                       :required-fields required-fields
+                       :provided-keys (vec (keys params))
+                       :schema schema})))
+
+    ;; Apply defaults including optional fields with defaults
+    (let [transformer (mt/default-value-transformer {::mt/add-optional-keys true})
+          with-defaults (m/decode schema params transformer)]
+      (if (m/validate schema with-defaults)
+        with-defaults
+        (throw (ex-info "Parameters invalid after applying defaults"
+                        {:errors (-> schema (m/explain with-defaults) me/humanize)
+                         :params with-defaults
+                         :schema schema}))))))
 
 (defn flex-enum
   "Creates a flexible enum that accepts both keywords and their string versions.
