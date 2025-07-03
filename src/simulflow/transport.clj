@@ -455,12 +455,10 @@
   (let [current-time (u/mono-time)]
     (cond
       ;; Handle incoming audio frames - core business logic moved here
-      ;; Handle incoming audio frames - use pure function for business logic
       (and (= input-port :in)
            (frame/audio-output-raw? frame))
       (process-realtime-out-audio-frame state frame serializer current-time)
 
-      ;; Handle timer ticks for speech monitoring - moved from background loop
       (and (= input-port :timer-out)
            (:timer/tick frame))
       (let [silence-duration (- (:timer/timestamp frame) (::last-audio-time state))

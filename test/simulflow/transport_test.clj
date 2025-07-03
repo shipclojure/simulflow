@@ -1,9 +1,9 @@
 (ns simulflow.transport-test
   (:require
-   [clojure.core.async.flow :as flow]
    [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
    [simulflow.transport :as sut]
+   [simulflow.transport.protocols :as tp]
    [simulflow.utils.core :as u])
   (:import
    (java.util Date)))
@@ -470,3 +470,504 @@
       (is (pos? (:buffer-size config-low)))
       (is (pos? (:buffer-size config-high)))
       (is (= 1024 (:channel-size config-low) (:channel-size config-high))))))
+
+;; =============================================================================
+;; Realtime Speakers Out Tests
+;; =============================================================================
+
+(deftest process-realtime-out-audio-frame-test
+  (testing "process-realtime-out-audio-frame with first audio frame"
+    (let [state {::sut/speaking? false
+                 ::sut/last-audio-time 0
+                 ::sut/sending-interval 20}
+          frame (frame/audio-output-raw (byte-array [1 2 3]))
+          serializer nil
+          current-time 2000
+          [new-state output] (sut/process-realtime-out-audio-frame state frame serializer current-time)]
+
+      (is (true? (::sut/speaking? new-state)))
+      (is (= current-time (::sut/last-audio-time new-state)))
+      (is (= 1 (count (:out output))))
+      (is (frame/bot-speech-start? (first (:out output))))
+      (is (= 1 (count (:audio-write output)))))))
+
+(deftest realtime-speakers-out-transform-test
+  (testing "transform with audio frame"
+    (let [state {::sut/speaking? false ::sut/sending-interval 25}
+          frame (frame/audio-output-raw (byte-array [1 2 3]))
+          [new-state output] (sut/realtime-speakers-out-transform state :in frame)]
+
+      (is (true? (::sut/speaking? new-state)))
+      (is (= 1 (count (:out output))))
+      (is (= 1 (count (:audio-write output))))))
+
+  (testing "transform with timer tick (stop speaking)"
+    (let [state {::sut/speaking? true
+                 ::sut/last-audio-time 1000
+                 ::sut/silence-threshold 200}
+          timer-frame {:timer/tick true :timer/timestamp 1300}
+          [new-state output] (sut/realtime-speakers-out-transform state :timer-out timer-frame)]
+
+      (is (false? (::sut/speaking? new-state)))
+      (is (= 1 (count (:out output))))
+      (is (frame/bot-speech-stop? (first (:out output)))))))
+
+(deftest test-realistic-llm-audio-pipeline-with-timing
+  (testing "LLM generates large audio frame -> audio splitter -> realtime speakers with simulated realistic timing"
+    (let [;; =============================================================================
+          ;; Step 1: LLM generates a large audio frame (simulating TTS output)
+          ;; =============================================================================
+
+          ;; Simulate 200ms of audio at 16kHz, 16-bit, mono (10 chunks)
+          ;; 200ms = 0.2 seconds * 16000 samples/sec * 2 bytes = 6,400 bytes
+          large-audio-data (byte-array 6400 (byte 42)) ; Fill with test pattern
+          llm-audio-frame (frame/audio-output-raw large-audio-data)
+
+          ;; =============================================================================
+          ;; Step 2: Audio splitter configuration for 20ms chunks
+          ;; =============================================================================
+
+          ;; 20ms chunks at 16kHz, 16-bit, mono = 640 bytes per chunk
+          splitter-config {:audio.out/sample-rate 16000
+                           :audio.out/sample-size-bits 16
+                           :audio.out/channels 1
+                           :audio.out/duration-ms 20}
+          splitter-state (sut/audio-splitter-fn splitter-config)
+
+          ;; Split the large frame into chunks
+          [_ splitter-output] (sut/audio-splitter-fn splitter-state :in llm-audio-frame)
+          audio-chunks (:out splitter-output)
+
+          ;; =============================================================================
+          ;; Step 3: Realtime speakers out processor configuration
+          ;; =============================================================================
+
+          ;; Calculate expected timing values
+          sending-interval 20 ; 20ms between sends
+
+          ;; Initialize speakers state (simulating what init! would create)
+          initial-speakers-state {::sut/speaking? false
+                                  ::sut/last-audio-time 0
+                                  ::sut/sending-interval sending-interval
+                                  ::sut/silence-threshold 200
+                                  :transport/serializer nil}
+
+          ;; =============================================================================
+          ;; Step 4: Process each chunk with realistic timing simulation
+          ;; =============================================================================
+
+          ;; Simulate chunks arriving at 20ms intervals (like from real streaming)
+          pipeline-start-time (u/mono-time)
+          results (atom [])
+
+          ;; Process each chunk with simulated timing delay
+          final-state
+          (reduce (fn [current-state [chunk-index chunk]]
+                    ;; Simulate time passing between chunks (in real scenario,
+                    ;; chunks would arrive from TTS streaming at intervals)
+                    (when (> chunk-index 0)
+                      (Thread/sleep 5)) ; Small delay to simulate processing time
+
+                    (let [;; Process through realtime speakers transform
+                          [new-state output] (sut/realtime-speakers-out-transform
+                                              current-state :in chunk)]
+
+                      ;; Store results for analysis
+                      (swap! results conj {:chunk-index chunk-index
+                                           :state-before current-state
+                                           :state-after new-state
+                                           :output output
+                                           :chunk-size (count (:frame/data chunk))})
+
+                      ;; Update state for next iteration
+                      new-state))
+                  initial-speakers-state
+                  (map-indexed vector audio-chunks))]
+
+      ;; =============================================================================
+      ;; Step 5: Verify Results
+      ;; =============================================================================
+
+      (testing "Audio splitter creates correct number of chunks"
+        ;; 6,400 bytes / 640 bytes per chunk = 10 chunks
+        (is (= 10 (count audio-chunks))
+            "Should create 10 chunks of 20ms each")
+
+        ;; Verify chunk sizes (all should be 640 bytes)
+        (let [chunk-sizes (mapv #(count (:frame/data %)) audio-chunks)]
+          (is (every? #(= 640 %) chunk-sizes)
+              "All chunks should be exactly 640 bytes")))
+
+      (testing "First chunk triggers bot-speech-start event"
+        (let [first-result (first @results)
+              first-output (:output first-result)]
+          (is (false? (::sut/speaking? (:state-before first-result)))
+              "Initially not speaking")
+          (is (true? (::sut/speaking? (:state-after first-result)))
+              "Should be speaking after first chunk")
+          (is (= 1 (count (:out first-output)))
+              "Should emit exactly one event")
+          (is (frame/bot-speech-start? (first (:out first-output)))
+              "Should emit bot-speech-start event")))
+
+      (testing "Subsequent chunks do not trigger additional start events"
+        (let [subsequent-results (rest @results)]
+          (doseq [result subsequent-results]
+            (let [output (:output result)]
+              (is (empty? (:out output))
+                  (str "Chunk " (:chunk-index result) " should not emit events"))))))
+
+      (testing "Audio write commands are generated correctly"
+        (let [audio-writes (mapcat #(get-in % [:output :audio-write]) @results)]
+
+          ;; Verify we have the right number of audio writes
+          (is (= 10 (count audio-writes))
+              "Should have one audio write per chunk")
+
+          ;; Verify each audio write has the correct structure
+          (is (every? #(contains? % :delay-until) audio-writes)
+              "All audio writes should have delay-until timing")
+          (is (every? #(contains? % :data) audio-writes)
+              "All audio writes should have audio data")
+          (is (every? #(= 640 (count (:data %))) audio-writes)
+              "All audio writes should have 640 bytes of data")))
+
+      (testing "Timing behavior with realistic processing"
+        ;; In this test, we're verifying that the timing mechanism works
+        ;; The exact delays depend on when chunks are processed, but
+        ;; the important thing is that each chunk gets a delay-until value
+        (let [audio-writes (mapcat #(get-in % [:output :audio-write]) @results)
+              delay-times (mapv :delay-until audio-writes)]
+
+          ;; All delay times should be reasonable (not in the past, not too far future)
+          (is (every? #(> % pipeline-start-time) delay-times)
+              "All delays should be after pipeline start")
+          (is (every? #(< % (+ pipeline-start-time 1000)) delay-times)
+              "All delays should be within reasonable timeframe")))
+
+      (testing "State management throughout pipeline"
+        ;; Verify that state is being updated correctly
+        (is (every? #(true? (::sut/speaking? (:state-after %))) @results)
+            "All states should show speaking after processing audio")
+
+        ;; Verify last-audio-time is being updated
+        (let [last-audio-times (mapv #(::sut/last-audio-time (:state-after %)) @results)]
+          (is (every? pos? last-audio-times)
+              "All last-audio-time values should be positive")))
+
+      (testing "Audio data integrity through pipeline"
+        ;; Verify that all audio data makes it through
+        (let [audio-writes (mapcat #(get-in % [:output :audio-write]) @results)
+              reconstructed-data (byte-array (apply concat (map :data audio-writes)))]
+
+          ;; The reconstructed data should match the original
+          (is (= (vec large-audio-data) (vec reconstructed-data))
+              "Audio data should be preserved through splitter and speakers pipeline"))))))
+
+;; =============================================================================
+;; Comprehensive Realtime Speakers Out Tests
+;; =============================================================================
+
+(deftest test-realtime-speakers-out-describe
+  (testing "describe function returns correct structure"
+    (let [description sut/realtime-speakers-out-describe]
+      (is (contains? description :ins))
+      (is (contains? description :outs))
+      (is (contains? description :params))
+
+      ;; Verify input channels
+      (is (contains? (:ins description) :in))
+      (is (contains? (:ins description) :sys-in))
+
+      ;; Verify output channels
+      (is (contains? (:outs description) :out))
+
+      ;; Verify required parameters
+      (is (contains? (:params description) :audio.out/sample-rate))
+      (is (contains? (:params description) :audio.out/sample-size-bits))
+      (is (contains? (:params description) :audio.out/channels))
+      (is (contains? (:params description) :audio.out/duration-ms)))))
+
+(deftest test-realtime-speakers-out-init
+  (testing "init! function creates proper state structure"
+    (let [params {:audio.out/duration-ms 20
+                  :audio.out/sample-rate 16000
+                  :audio.out/sample-size-bits 16
+                  :audio.out/channels 1}
+          state (sut/realtime-speakers-out-init! params)]
+
+      ;; Verify flow ports
+      (is (contains? state ::flow/in-ports))
+      (is (contains? state ::flow/out-ports))
+
+      ;; Verify business logic state
+      (is (false? (::sut/speaking? state)))
+      (is (= 0 (::sut/last-audio-time state)))
+      (is (pos? (::sut/next-send-time state)))
+
+      ;; Verify configuration
+      (is (= 20 (::sut/duration-ms state)))
+      (is (= 10 (::sut/sending-interval state))) ; duration / 2
+      (is (= 80 (::sut/silence-threshold state))) ; 4 * duration
+
+      ;; Verify audio line
+      (is (some? (::sut/audio-line state)))
+
+      ;; Clean up resources
+      (sut/realtime-speakers-out-transition state ::flow/stop)))
+
+  (testing "init! with default parameters"
+    (let [state (sut/realtime-speakers-out-init! {})]
+      (is (= 20 (::sut/duration-ms state)))
+      (is (= 10 (::sut/sending-interval state)))
+      (is (= 80 (::sut/silence-threshold state)))
+
+      ;; Clean up resources
+      (sut/realtime-speakers-out-transition state ::flow/stop)))
+
+  (testing "init! with custom parameters"
+    (let [params {:audio.out/duration-ms 50
+                  :audio.out/sample-rate 44100
+                  :audio.out/sample-size-bits 24
+                  :audio.out/channels 2}
+          state (sut/realtime-speakers-out-init! params)]
+
+      (is (= 50 (::sut/duration-ms state)))
+      (is (= 25 (::sut/sending-interval state))) ; 50 / 2
+      (is (= 200 (::sut/silence-threshold state))) ; 4 * 50
+
+      ;; Clean up resources
+      (sut/realtime-speakers-out-transition state ::flow/stop))))
+
+(deftest test-realtime-speakers-out-transition
+  (testing "transition handles stop correctly"
+    (let [initial-state (sut/realtime-speakers-out-init! {})
+          result-state (sut/realtime-speakers-out-transition initial-state ::flow/stop)]
+
+      ;; Should return state (transition doesn't modify state structure)
+      (is (map? result-state))))
+
+  (testing "transition handles other transitions"
+    (let [initial-state (sut/realtime-speakers-out-init! {})
+          start-state (sut/realtime-speakers-out-transition initial-state ::flow/start)
+          resume-state (sut/realtime-speakers-out-transition initial-state ::flow/resume)]
+
+      ;; Should return state unchanged for non-stop transitions
+      (is (= initial-state start-state))
+      (is (= initial-state resume-state))
+
+      ;; Clean up
+      (sut/realtime-speakers-out-transition initial-state ::flow/stop))))
+
+(deftest test-realtime-speakers-out-timer-handling
+  (testing "timer tick when not speaking (no effect)"
+    (let [state {::sut/speaking? false
+                 ::sut/last-audio-time 1000
+                 ::sut/silence-threshold 200}
+          timer-frame {:timer/tick true :timer/timestamp 1500}
+          [new-state output] (sut/realtime-speakers-out-transform state :timer-out timer-frame)]
+
+      (is (false? (::sut/speaking? new-state)))
+      (is (empty? (:out output)))))
+
+  (testing "timer tick when speaking but silence threshold not exceeded"
+    (let [state {::sut/speaking? true
+                 ::sut/last-audio-time 1000
+                 ::sut/silence-threshold 200}
+          timer-frame {:timer/tick true :timer/timestamp 1100} ; Only 100ms silence
+          [new-state output] (sut/realtime-speakers-out-transform state :timer-out timer-frame)]
+
+      (is (true? (::sut/speaking? new-state)))
+      (is (empty? (:out output)))))
+
+  (testing "timer tick when speaking and silence threshold exceeded"
+    (let [state {::sut/speaking? true
+                 ::sut/last-audio-time 1000
+                 ::sut/silence-threshold 200}
+          timer-frame {:timer/tick true :timer/timestamp 1300} ; 300ms silence > 200ms threshold
+          [new-state output] (sut/realtime-speakers-out-transform state :timer-out timer-frame)]
+
+      (is (false? (::sut/speaking? new-state)))
+      (is (= 1 (count (:out output))))
+      (is (frame/bot-speech-stop? (first (:out output)))))))
+
+(deftest test-realtime-speakers-out-system-config-handling
+  (testing "system config change with new serializer"
+    (let [new-serializer {:type :twilio}
+          config-frame (frame/system-config-change {:transport/serializer new-serializer})
+          initial-state {:transport/serializer nil}
+          [new-state output] (sut/realtime-speakers-out-transform initial-state :in config-frame)]
+
+      (is (= new-serializer (:transport/serializer new-state)))
+      (is (empty? output))))
+
+  (testing "system config change without serializer"
+    (let [config-frame (frame/system-config-change {:other/setting "value"})
+          initial-state {:transport/serializer nil}
+          [new-state output] (sut/realtime-speakers-out-transform initial-state :in config-frame)]
+
+      (is (= initial-state new-state))
+      (is (empty? output))))
+
+  (testing "system input passthrough"
+    (let [sys-frame {:frame/type :other}
+          initial-state {}
+          [new-state output] (sut/realtime-speakers-out-transform initial-state :sys-in sys-frame)]
+
+      (is (= initial-state new-state))
+      (is (= [sys-frame] (:out output))))))
+
+(deftest test-realtime-speakers-out-serializer-integration
+  (testing "transform with serializer"
+    (let [mock-serializer (reify tp/FrameSerializer
+                            (serialize-frame [_ frame]
+                              ;; Serializer modifies the frame data
+                              (assoc frame :frame/data [99 99 99])))
+          state {::sut/speaking? false
+                 ::sut/last-audio-time 0
+                 ::sut/sending-interval 20
+                 :transport/serializer mock-serializer}
+          frame (frame/audio-output-raw (byte-array [1 2 3]))]
+      (with-redefs [u/mono-time (constantly 1000)]
+        (let [[_ output] (sut/realtime-speakers-out-transform state :in frame)
+              audio-write (first (:audio-write output))]
+          (is (= :write-audio (:command audio-write)))
+          (is (= [99 99 99] (:data audio-write))))))) ; Should use serialized data
+
+  (testing "transform without serializer"
+    (let [state {::sut/speaking? false
+                 ::sut/last-audio-time 0
+                 ::sut/sending-interval 20
+                 :transport/serializer nil}
+          frame (frame/audio-output-raw (byte-array [1 2 3]))]
+      (with-redefs [u/mono-time (constantly 1000)]
+        (let [[_ output] (sut/realtime-speakers-out-transform state :in frame)
+              audio-write (first (:audio-write output))]
+          (is (= :write-audio (:command audio-write)))
+          (is (= [1 2 3] (vec (:data audio-write)))))))))
+
+(deftest test-realtime-speakers-out-edge-cases
+  (testing "unknown input port"
+    (let [state {}
+          frame {:some :data}
+          [new-state output] (sut/realtime-speakers-out-transform state :unknown-port frame)]
+
+      (is (= state new-state))
+      (is (empty? output))))
+
+  (testing "non-audio frame on input port"
+    (let [state {}
+          non-audio-frame {:frame/type :other}
+          [new-state output] (sut/realtime-speakers-out-transform state :in non-audio-frame)]
+
+      (is (= state new-state))
+      (is (empty? output))))
+
+  (testing "non-timer frame on timer-out port"
+    (let [state {}
+          non-timer-frame {:other :data}
+          [new-state output] (sut/realtime-speakers-out-transform state :timer-out non-timer-frame)]
+
+      (is (= state new-state))
+      (is (empty? output)))))
+
+(deftest test-realtime-speakers-out-multi-arity-functions
+  (testing "0-arity (describe) delegates correctly"
+    (let [multi-arity-result (sut/realtime-speakers-out-fn)
+          direct-result sut/realtime-speakers-out-describe]
+      (is (= multi-arity-result direct-result))))
+
+  (testing "1-arity (init) delegates correctly"
+    (let [params {:audio.out/duration-ms 30}]
+      ;; Just verify both work (cleanup automatically handled by test framework)
+      (is (map? (sut/realtime-speakers-out-fn params)))
+      (is (map? (sut/realtime-speakers-out-init! params)))))
+
+  (testing "2-arity (transition) delegates correctly"
+    (let [state {}
+          transition ::flow/start
+          multi-arity-result (sut/realtime-speakers-out-fn state transition)
+          direct-result (sut/realtime-speakers-out-transition state transition)]
+      (is (= multi-arity-result direct-result))))
+
+  (testing "3-arity (transform) delegates correctly"
+    (let [state {}
+          input-port :in
+          frame {:test :frame}
+          multi-arity-result (sut/realtime-speakers-out-fn state input-port frame)
+          direct-result (sut/realtime-speakers-out-transform state input-port frame)]
+      (is (= multi-arity-result direct-result)))))
+
+(deftest test-realtime-speakers-out-state-transitions
+  (testing "speaking state progression"
+    (let [initial-state {::sut/speaking? false
+                         ::sut/last-audio-time 0
+                         ::sut/sending-interval 20}
+          frame1 (frame/audio-output-raw (byte-array [1 2 3]))
+          frame2 (frame/audio-output-raw (byte-array [4 5 6]))]
+
+      (with-redefs [u/mono-time (let [counter (atom 0)]
+                                  #(swap! counter + 100))] ; Increment by 100ms each call
+        (let [;; Process first frame (should start speaking)
+              [state1 output1] (sut/realtime-speakers-out-transform initial-state :in frame1)
+
+              ;; Process second frame (should continue speaking)
+              [state2 output2] (sut/realtime-speakers-out-transform state1 :in frame2)
+
+              ;; Process timer tick after silence threshold
+              timer-frame {:timer/tick true
+                           :timer/timestamp (+ (::sut/last-audio-time state2) 1000)}
+              [state3 output3] (sut/realtime-speakers-out-transform
+                                (assoc state2 ::sut/silence-threshold 500)
+                                :timer-out timer-frame)]
+
+          ;; Verify state progression
+          (is (false? (::sut/speaking? initial-state)))
+          (is (true? (::sut/speaking? state1)))
+          (is (true? (::sut/speaking? state2)))
+          (is (false? (::sut/speaking? state3)))
+
+          ;; Verify events
+          (is (frame/bot-speech-start? (first (:out output1))))
+          (is (empty? (:out output2)))
+          (is (frame/bot-speech-stop? (first (:out output3)))))))))
+
+(deftest test-realtime-speakers-out-timing-accuracy
+  (testing "delay-until calculations are accurate"
+    (let [current-time 1000
+          sending-interval 25
+          state {::sut/speaking? false
+                 ::sut/last-audio-time 0
+                 ::sut/sending-interval sending-interval}
+          frame (frame/audio-output-raw (byte-array [1 2 3]))]
+
+      (with-redefs [u/mono-time (constantly current-time)]
+        (let [[new-state output] (sut/realtime-speakers-out-transform state :in frame)
+              audio-write (first (:audio-write output))]
+
+          (is (= (+ current-time sending-interval) (:delay-until audio-write)))
+          (is (= current-time (::sut/last-audio-time new-state)))
+          (is (= (+ current-time sending-interval) (::sut/next-send-time new-state)))))))
+
+  (testing "silence threshold calculations"
+    (let [base-time 2000
+          silence-threshold 300
+          state {::sut/speaking? true
+                 ::sut/last-audio-time base-time
+                 ::sut/silence-threshold silence-threshold}
+
+          ;; Timer tick just under threshold
+          timer-frame-under {:timer/tick true :timer/timestamp (+ base-time 250)}
+          [state-under output-under] (sut/realtime-speakers-out-transform state :timer-out timer-frame-under)
+
+          ;; Timer tick over threshold
+          timer-frame-over {:timer/tick true :timer/timestamp (+ base-time 350)}
+          [state-over output-over] (sut/realtime-speakers-out-transform state :timer-out timer-frame-over)]
+
+      ;; Under threshold: still speaking
+      (is (true? (::sut/speaking? state-under)))
+      (is (empty? (:out output-under)))
+
+      ;; Over threshold: stop speaking
+      (is (false? (::sut/speaking? state-over)))
+      (is (frame/bot-speech-stop? (first (:out output-over)))))))
