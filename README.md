@@ -32,14 +32,14 @@ Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simul
 
 ```clojure
 ;; Add to your deps.edn
-{:deps {com.shipclojure/simulflow {:mvn/version "0.1.4-alpha"}}}
+{:deps {com.shipclojure/simulflow {:mvn/version "0.1.5-alpha"}}}
 ```
 
 ### Leiningen/Boot
 
 ```clojure
 ;; Add to your project.clj
-[com.shipclojure/simulflow "0.1.4-alpha"]
+[com.shipclojure/simulflow "0.1.5-alpha"]
 ```
 
 ### Maven
@@ -48,7 +48,7 @@ Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simul
 <dependency>
   <groupId>com.shipclojure</groupId>
   <artifactId>simulflow</artifactId>
-  <version>0.1.4-alpha</version>
+  <version>0.1.5-alpha</version>
 </dependency>
 ```
 
