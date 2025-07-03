@@ -109,7 +109,7 @@
            :params (schema/->flow-describe-parameters OpenAILLMConfigSchema)
            :workload :io})
       ([params]
-       (let [{:llm/keys [model] :openai/keys [api-key]} (m/decode OpenAILLMConfigSchema params mt/default-value-transformer)
+       (let [{:llm/keys [model] :openai/keys [api-key]} (schema/parse-with-defaults OpenAILLMConfigSchema params)
              llm-write (a/chan 100)
              llm-read (a/chan 1024)]
          (vthread-loop []

@@ -107,10 +107,6 @@
      {:default true
       :description "Whether to enable speaker beoost enhancement"}]]])
 
-;; ============================================================================
-;; Pure Functions for JSON Processing
-;; ============================================================================
-
 (defn accumulate-json-response
   "Pure function to accumulate JSON response fragments.
    Returns [new-accumulator parsed-json-or-nil]"
@@ -199,8 +195,9 @@
             :audio.out/sample-rate "Sample rate for the audio generated"}
    :workload :io})
 
-(defn elevenlabs-tts-init! [args]
-  (let [url (make-elevenlabs-ws-url args)
+(defn elevenlabs-tts-init! [params]
+  (let [args (schema/parse-with-defaults ElevenLabsTTSConfig params)
+        url (make-elevenlabs-ws-url args)
         ws-read (a/chan 100)
         ws-write (a/chan 100)
         alive? (atom true)
