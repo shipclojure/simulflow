@@ -9,4 +9,4 @@
   jar {:doc "Build jar with latest version"
        :task (clojure "-T:build jar")}
   deploy {:doc "Deploy the latest release"
-          :task (clojure "-T:build deploy")}}}
+          :task (clojure "-X:deploy")}}}
