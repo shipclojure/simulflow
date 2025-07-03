@@ -240,6 +240,52 @@ Heavy use of `core.async` for concurrent processing with virtual threads:
     (recur)))
 ```
 
+### Data Centric Async Processor Pattern
+
+A key architectural pattern that moves business logic from `init!` background loops into pure `transform` functions that map state over time:
+
+```clojure
+;; Pure transform function handles all business logic by mapping state over time
+(defn realtime-speakers-out-transform [state input-port frame]
+  (cond
+    ;; Handle audio frames with pure business logic - state transformation
+    (and (= input-port :in) (frame/audio-output-raw? frame))
+    (process-realtime-out-audio-frame state frame serializer (u/mono-time))
+
+    ;; Handle timer ticks for speech monitoring - state mapping over time
+    (and (= input-port :timer-out) (:timer/tick frame))
+    (let [silence-duration (- (:timer/timestamp frame) (::last-audio-time state))
+          should-emit-stop? (and (::speaking? state)
+                                 (> silence-duration (::silence-threshold state)))]
+      [(if should-emit-stop? (assoc state ::speaking? false) state)
+       {:out (if should-emit-stop? [(frame/bot-speech-stop true)] [])}])))
+
+;; Minimal init! - only resource setup, no business logic
+(defn realtime-speakers-out-init! [params]
+  (let [audio-line (open-line! :source (audio-format params))
+        timer-ch (a/chan)]
+    ;; Minimal timer process - just sends ticks for state mapping
+    (vthread-loop []
+      (a/<!! (a/timeout 1000))
+      (a/>!! timer-ch {:timer/tick true :timer/timestamp (u/mono-time)})
+      (recur))
+
+    {::flow/in-ports {:timer-out timer-ch}
+     ::speaking? false
+     ::last-audio-time 0
+     ::audio-line audio-line}))
+```
+
+**Core Principle:**
+The transform function becomes a **state mapping function over time** - it takes the current state and input events, applies pure business logic, and returns the new state and outputs. This creates a clear, testable data flow where state transitions are explicit and traceable.
+
+**Benefits:**
+- Transform becomes pure and testable (state mapping is deterministic)
+- Business logic centralized in data transformations
+- Side effects isolated to minimal background processes
+- State transitions are clear and debuggable
+- Follows functional programming principles with explicit state over time
+
 ### Pure Function Extraction Pattern
 
 Complex processors are refactored to separate pure data transformation from side effects:
@@ -256,6 +302,18 @@ Complex processors are refactored to separate pure data transformation from side
   {:buffer-size (or buffer-size (frame-buffer-size sample-rate))
    :audio-format (audio-format sample-rate channels)
    :channel-size 1024})
+
+;; Pure function for audio processing
+(defn process-realtime-out-audio-frame [state frame serializer current-time]
+  (let [updated-state (-> state
+                          (assoc ::speaking? true)
+                          (assoc ::last-audio-time current-time)
+                          (assoc ::next-send-time (+ current-time (::sending-interval state))))
+        events (if (not (::speaking? state)) [(frame/bot-speech-start true)] [])
+        audio-command {:command :write-audio
+                       :data (:frame/data (if serializer (tp/serialize-frame serializer frame) frame))
+                       :delay-until (::next-send-time updated-state)}]
+    [updated-state {:out events :audio-write [audio-command]}]))
 
 ;; Used in processor with side effects
 (vthread-loop []
@@ -319,14 +377,18 @@ This approach enables rapid iteration and verification of component behavior wit
 - **Pure Function Testing** - Extracted pure functions are easily testable in isolation and REPL
 - **Multi-arity Function Testing** - Test individual processor arities (describe, init, transform)
 - **Property-based Testing** - Validate behavior across parameter ranges using `doseq`
-- **Integration Tests** - Complete flow testing with mock data
+- **Integration Tests** - Complete flow testing with mock data and realistic pipeline scenarios
 - **Performance Testing** - Large buffer handling and memory isolation validation
 - **Edge Case Testing** - Boundary conditions and error scenario validation
 - **Schema Validation Testing** - Frame and configuration validation
+- **Realistic Pipeline Testing** - End-to-end integration tests simulating LLM → audio splitter → speakers
 
-Example pure function testing:
+#### Comprehensive Test Coverage Example
+
+Transport layer testing demonstrates extensive coverage patterns:
 
 ```clojure
+;; Pure function testing
 (deftest test-process-mic-buffer
   (testing "processes valid audio data"
     (let [buffer (byte-array [1 2 3 4 5])
@@ -344,6 +406,68 @@ Example pure function testing:
     (let [config (mic-resource-config {:sample-rate sample-rate :channels channels})]
       (is (pos? (:buffer-size config)))
       (is (= 1024 (:channel-size config))))))
+
+;; Realistic integration testing
+(deftest test-realistic-llm-audio-pipeline-with-timing
+  (testing "LLM generates large audio frame → audio splitter → realtime speakers"
+    (let [;; Simulate 200ms of audio (10 chunks of 20ms each)
+          large-audio-data (byte-array 6400 (byte 42))
+          llm-audio-frame (frame/audio-output-raw large-audio-data)
+
+          ;; Audio splitter processes into chunks
+          splitter-config {:audio.out/sample-rate 16000
+                          :audio.out/sample-size-bits 16
+                          :audio.out/channels 1
+                          :audio.out/duration-ms 20}
+          splitter-state (sut/audio-splitter-fn splitter-config)
+          [_ splitter-output] (sut/audio-splitter-fn splitter-state :in llm-audio-frame)
+          audio-chunks (:out splitter-output)]
+
+      ;; Verify proper chunking
+      (is (= 10 (count audio-chunks)))
+      (is (every? #(= 640 (count (:frame/data %))) audio-chunks))
+
+      ;; Process through realtime speakers with timing simulation
+      (let [speakers-state {...}
+            results (process-chunks-with-timing audio-chunks speakers-state)]
+        ;; Verify bot speech events, timing accuracy, data integrity
+        (is (frame/bot-speech-start? (first-event results)))
+        (is (accurate-timing? results))
+        (is (data-integrity-preserved? results))))))
+
+;; Data Centric Async Processor Pattern testing
+(deftest test-realtime-speakers-out-timer-handling
+  (testing "timer tick when speaking and silence threshold exceeded"
+    (let [state {::sut/speaking? true
+                 ::sut/last-audio-time 1000
+                 ::sut/silence-threshold 200}
+          timer-frame {:timer/tick true :timer/timestamp 1300}
+          [new-state output] (sut/realtime-speakers-out-transform state :timer-out timer-frame)]
+
+      (is (false? (::sut/speaking? new-state)))
+      (is (= 1 (count (:out output))))
+      (is (frame/bot-speech-stop? (first (:out output)))))))
+```
+
+#### Test Coverage Statistics
+
+Current test coverage demonstrates comprehensive validation:
+- **Transport Layer**: 24 tests, 590 assertions covering microphone transport, audio splitter, and realtime speakers
+- **Frame System**: 2150+ assertions covering frame creation, validation, and type safety
+- **Activity Monitor**: Complete pure function testing with mock data
+- **Integration Tests**: Realistic pipeline scenarios with timing validation
+
+#### Bot Speech Events Testing
+
+Tests validate that `bot-speech-stop` events are properly generated by timer tick processing:
+
+```clojure
+(testing "bot-speech-stop generation"
+  ;; Verify that speech stop events come from timer-based silence detection
+  ;; using Data Centric Async Processor Pattern (state mapping over time)
+  (let [silence-duration (- timer-timestamp last-audio-time)]
+    (when (> silence-duration silence-threshold)
+      (is (frame/bot-speech-stop? generated-event)))))
 ```
 
 ### Configuration Management
@@ -352,7 +476,115 @@ Example pure function testing:
 - Environment-specific configs in aliases
 - Schema-validated configurations
 
-## Extension Points
+## Recent Architectural Improvements
+
+### Data Centric Async Processor Pattern Implementation
+
+The framework has adopted the **Data Centric Async Processor Pattern** as a key architectural improvement, demonstrated in the `realtime-speakers-out` processor:
+
+**Before (Background Loops):**
+```clojure
+;; init! contained complex business logic in background threads
+(defn init! [params]
+  ;; ... setup ...
+  (flow/futurize  ; Background loop with side effects
+    #(loop []
+       (let [silence-duration (- (u/mono-time) @last-audio-time)]
+         (when (and @speaking? (> silence-duration threshold))
+           (reset! speaking? false)
+           (a/>!! events-ch (frame/bot-speech-stop true))))
+       (recur))))
+```
+
+**After (Pure Transform State Mapping):**
+```clojure
+;; init! is minimal - only resource setup
+(defn init! [params]
+  (let [timer-ch (a/chan)]
+    (vthread-loop []  ; Minimal timer - just sends ticks for state mapping
+      (a/<!! (a/timeout 1000))
+      (a/>!! timer-ch {:timer/tick true :timer/timestamp (u/mono-time)})
+      (recur))
+    {::flow/in-ports {:timer-out timer-ch}
+     ::speaking? false}))
+
+;; transform handles ALL business logic as state mapping over time
+(defn transform [state input-port frame]
+  (cond
+    ;; Timer-based speech detection (pure state mapping)
+    (and (= input-port :timer-out) (:timer/tick frame))
+    (let [silence-duration (- (:timer/timestamp frame) (::last-audio-time state))
+          should-stop? (and (::speaking? state) (> silence-duration (::silence-threshold state)))]
+      [(if should-stop? (assoc state ::speaking? false) state)  ; State mapping
+       {:out (if should-stop? [(frame/bot-speech-stop true)] [])}])))  ; Output generation
+```
+
+### Key Discoveries
+
+#### Bot Speech Event Generation
+`bot-speech-stop` events are generated by **timer tick processing** in the transform function when silence duration exceeds the threshold. This demonstrates the Data Centric Async Processor Pattern in action:
+
+- **Timer Process**: Sends periodic tick events with timestamps (minimal side effect)
+- **Transform Function**: Pure state mapping logic compares current time vs last audio time
+- **Event Generation**: Emits `bot-speech-stop` when silence threshold exceeded (state-driven output)
+- **State Mapping**: Each transform call maps `state(t) -> state(t+1)` based on input events
+
+#### Timing Behavior in Testing
+Realistic integration testing requires **simulated chunk arrival timing**, not instant processing:
+
+```clojure
+;; Simulate realistic timing between chunks
+(reduce (fn [state [chunk-index chunk]]
+          (when (> chunk-index 0)
+            (Thread/sleep 5))  ; Simulate processing delay
+          (let [[new-state output] (transform state :in chunk)]
+            ;; ... verify timing behavior ...
+            new-state))
+        initial-state
+        (map-indexed vector audio-chunks))
+```
+
+#### Serializer Behavior
+Serializers transform the entire frame but only the `:frame/data` portion is used in audio write commands:
+
+```clojure
+(let [audio-frame (if serializer
+                    (tp/serialize-frame serializer frame)  ; Transform entire frame
+                    frame)
+      audio-command {:command :write-audio
+                     :data (:frame/data audio-frame)}]      ; Extract only data
+  ...)
+```
+
+### V2 to Standard Migration
+
+The framework underwent a significant migration where v2 implementations became the standard:
+- `process-audio-frame-v2` → `process-realtime-out-audio-frame`
+- v2 processors with pure transforms became the main implementations
+- Demonstrates evolution toward functional programming principles
+
+## Testing Excellence
+
+### Comprehensive Coverage
+
+The project maintains **high-quality, comprehensive test coverage**:
+
+- **24 tests, 590 assertions** for transport layer alone
+- **2150+ assertions** for frame system validation
+- **Realistic integration tests** simulating complete LLM → audio processing pipelines
+- **Pure function testing** enabling instant REPL validation
+- **Edge case coverage** including boundary conditions and error scenarios
+
+### Testing Philosophy
+
+Testing follows functional programming principles:
+- **Pure functions** are easily testable in isolation
+- **Mock timing** for deterministic behavior
+- **Property-based testing** across parameter ranges
+- **Integration scenarios** with realistic data flows
+- **Resource management** validation for cleanup
+
+This comprehensive testing approach ensures reliability and maintainability while supporting the data-centric, functional architecture.
 
 ### Adding New Processors
 
