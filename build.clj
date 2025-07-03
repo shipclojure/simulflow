@@ -6,7 +6,7 @@
    [deps-deploy.deps-deploy :as dd]))
 
 (def lib 'com.shipclojure/simulflow)
-(def version "0.1.5-alpha")
+(def version "v0.1.5-alpha")
 #_ ; alternatively, use MAJOR.MINOR.COMMITS:
 (def version (format "1.0.%s" (b/git-count-revs nil)))
 (def class-dir "target/classes")
@@ -33,10 +33,9 @@
          :target "target"
          :src-dirs ["src"]))
 
-(defn ci
+(defn jar
   "Run the CI pipeline of tests (and build the JAR)."
   [opts]
-  (test opts)
   (b/delete {:path "target"})
   (let [opts (jar-opts opts)]
     (println "\nWriting pom.xml...")

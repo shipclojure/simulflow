@@ -68,4 +68,9 @@
                com.bhauman/clojure-mcp {:git/url "https://github.com/bhauman/clojure-mcp.git"
                                         :git/sha "e158d8a67a31ab29f2a31fea86f2e3037ffd593e"}}
         :exec-fn clojure-mcp.main/start-mcp-server
-        :exec-args {:port 8000}}}}
+        :exec-args {:port 8000}}
+  :deploy {:extra-deps {slipset/deps-deploy {:mvn/version "0.2.2"}}
+           :exec-fn deps-deploy.deps-deploy/deploy
+           :exec-args {:installer :remote
+                       :sign-releases? false
+                       :artifact "target/com.shipclojure/simulflow-v0.1.5-alpha.jar"}}}}
