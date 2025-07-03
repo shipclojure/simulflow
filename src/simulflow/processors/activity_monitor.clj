@@ -87,30 +87,36 @@
 
         :else [state]))))
 
-(def activity-monitor
-  (flow/process
-   (flow/map->step
-    {:describe (fn [] {:ins {:in "Channel for activity events (user-speech-start, bot-speech-start etc.)"
-                             :sys-in "Channel for system messages"}
-                       :outs {:out "Channel for inactivity prompts"}
-                       :params (schema/->flow-describe-parameters ActivityMonitorConfigSchema)})
+(def describe
+  {:ins {:in "Channel for activity events (user-speech-start, bot-speech-start etc.)"
+         :sys-in "Channel for system messages"}
+   :outs {:out "Channel for inactivity prompts"}
+   :params (schema/->flow-describe-parameters ActivityMonitorConfigSchema)})
 
-     :init (fn [params]
-             (let [{::keys [timeout-ms] :as parsed} (schema/parse-with-defaults ActivityMonitorConfigSchema params)
-                   timer-in-ch (a/chan 1024)
-                   timer-out-ch (a/chan 1024)]
-               (vthread-loop []
-                 (let [timeout-ch (a/timeout timeout-ms)]
-                   (when-let [[_ c] (a/alts!! [timer-in-ch timeout-ch])]
-                     (when (= c timeout-ch)
-                       (a/>!! timer-out-ch {::timeout? true}))
-                     (recur))))
+(defn init! [params]
+  (let [{::keys [timeout-ms] :as parsed} (schema/parse-with-defaults ActivityMonitorConfigSchema params)
+        timer-in-ch (a/chan 1024)
+        timer-out-ch (a/chan 1024)]
+    (vthread-loop []
+      (let [timeout-ch (a/timeout timeout-ms)]
+        (when-let [[_ c] (a/alts!! [timer-in-ch timeout-ch])]
+          (when (= c timeout-ch)
+            (a/>!! timer-out-ch {::timeout? true}))
+          (recur))))
 
-               (merge {::flow/out-ports {:timer-process-in timer-in-ch}
-                       ::flow/in-ports {:timer-process-out timer-out-ch}}
-                      parsed)))
-     :transition (fn [{::flow/keys [out-ports]} transition]
-                   (when (= transition ::flow/stop)
-                     (doseq [port (vals out-ports)]
-                       (a/close! port))))
-     :transform transform})))
+    (merge {::flow/out-ports {:timer-process-in timer-in-ch}
+            ::flow/in-ports {:timer-process-out timer-out-ch}}
+           parsed)))
+
+(defn transition [{::flow/keys [out-ports]} transition]
+  (when (= transition ::flow/stop)
+    (doseq [port (vals out-ports)]
+      (a/close! port))))
+
+(defn processor-fn
+  ([] describe)
+  ([params] (init! params))
+  ([state transition] (transition state transition))
+  ([state in msg] (transform state in msg)))
+
+(def activity-monitor (flow/process processor-fn))
