@@ -430,7 +430,7 @@
     {::flow/in-ports {:timer-out timer-out-ch}
      ::flow/out-ports {:timer-in timer-in-ch
                        :audio-write audio-write-ch}
-     ;; Business logic state (managed in transform)
+     ;; Initial business logic state (managed in transform)
      ::speaking? false
      ::last-audio-time 0
      ::next-send-time (u/mono-time)
@@ -490,14 +490,12 @@
       :else [state {}])))
 
 (defn realtime-speakers-out-fn
-  "Refactored realtime speakers out following activity monitor pattern.
-   Moves business logic from init! to transform for better testability."
+  "Processor fn that sends audio chunks to output speakers in a realtime maner"
   ([] realtime-speakers-out-describe)
   ([params] (realtime-speakers-out-init! params))
   ([state transition] (realtime-speakers-out-transition state transition))
   ([state input-port frame] (realtime-speakers-out-transform state input-port frame)))
 
 (def realtime-speakers-out-processor
-  "V2 processor that moves timing and speech detection logic to transform.
-   Follows activity monitor pattern for better testability and reasoning."
+  "Processor fn that sends audio chunks to output speakers in a realtime maner"
   (flow/process realtime-speakers-out-fn))

@@ -10,7 +10,9 @@ All notable changes to this project will be documented in this file. This change
 - Comprehensive test suite for `simulflow.processors.activity-monitor` with pure function testing
 - **Microphone Transport**: Added pure functions `process-mic-buffer` and `mic-resource-config` for better testability and REPL-driven development
 - **Audio Splitter**: Added pure functions `split-audio-into-chunks` and `audio-splitter-config` for better testability and data-centric design
-- **Transport Testing**: Comprehensive test suite for transport layer (477 assertions) covering microphone transport (149 assertions) and audio splitter (328 assertions) with pure functions, multi-arity functions, property-based testing, performance, and edge cases
+- **Transport Testing**: Comprehensive test suite for transport layer (590 assertions) covering microphone transport, audio splitter, and realtime speakers with pure functions, multi-arity functions, property-based testing, performance, and edge cases
+- **Realtime Speakers Out**: Added comprehensive test coverage including realistic LLM → audio splitter → speakers pipeline integration test simulating end-to-end audio processing flow
+- **Realtime Speakers Out**: Added extensive unit tests for describe, init, transition, transform, timer handling, system config, serializer integration, and timing accuracy validation
 
 ### Changed
 - **BREAKING**: Frame types now use proper `simulflow.frame` namespace (e.g., `:simulflow.frame/user-speech-start`)
@@ -35,7 +37,11 @@ All notable changes to this project will be documented in this file. This change
 - **Audio Splitter**: Extracted pure functions for audio byte array splitting and chunk size calculation, improving testability and following data-centric design principles
 - **Audio Splitter**: Enhanced with comprehensive edge case handling (nil audio, zero chunk size, exact division) and data integrity verification
 - **Transport Architecture**: Extracted pure functions for audio buffer processing, resource configuration, and audio splitting, improving testability and following data-centric design principles
-- **REPL Experience**: Pure function extraction enables instant interactive testing and verification of core audio processing logic without complex setup
+- **Realtime Speakers Out**: Following Activity Monitor Pattern, moved business logic from init! background loops to pure transform function for better testability and functional programming alignment
+- **Realtime Speakers Out**: Enhanced with timer-based speech detection in transform function, replacing background monitoring loops with explicit timer tick event handling
+- **Realtime Speakers Out**: Improved state management with explicit data structures and pure function transformations for speech start/stop detection and audio timing calculations
+- **Test Quality**: Added realistic integration testing simulating LLM audio generation → audio splitting → realtime speakers with proper timing validation and data integrity verification
+- **Bot Speech Events**: Clarified that `bot-speech-stop` events come from timer tick processing when silence exceeds threshold, demonstrating Activity Monitor Pattern in action
 
 - Updated dependencies to latest
 
