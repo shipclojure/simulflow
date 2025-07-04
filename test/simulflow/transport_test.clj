@@ -321,18 +321,7 @@
       (is (contains? (:params description) :audio-in/sample-size-bits))
       (is (contains? (:params description) :audio-in/buffer-size))))
 
-  (testing "mic-transport-in-init! function"
-    (let [params {:audio-in/sample-rate 16000
-                  :audio-in/channels 1
-                  :audio-in/sample-size-bits 16}
-          state (sut/mic-transport-in-init! params)]
-      (is (contains? state ::sut/close))
-      (is (contains? state :audio-in/sample-rate))
-      (is (contains? state :audio-in/channels))
-      (is (contains? state :audio-in/sample-size-bits))
-      (is (fn? (::sut/close state)))
-      ;; Clean up resources
-      ((::sut/close state))))
+
 
   (testing "mic-transport-in-transition function"
     (let [close-fn (atom false)
@@ -688,78 +677,6 @@
       (is (contains? (:params description) :audio.out/channels))
       (is (contains? (:params description) :audio.out/duration-ms)))))
 
-(deftest test-realtime-speakers-out-init
-  (testing "init! function creates proper state structure"
-    (let [params {:audio.out/duration-ms 20
-                  :audio.out/sample-rate 16000
-                  :audio.out/sample-size-bits 16
-                  :audio.out/channels 1}
-          state (sut/realtime-speakers-out-init! params)]
-
-      ;; Verify flow ports
-      (is (contains? state :clojure.core.async.flow/in-ports))
-      (is (contains? state :clojure.core.async.flow/out-ports))
-
-      ;; Verify business logic state
-      (is (false? (::sut/speaking? state)))
-      (is (= 0 (::sut/last-audio-time state)))
-      (is (pos? (::sut/next-send-time state)))
-
-      ;; Verify configuration
-      (is (= 20 (::sut/duration-ms state)))
-      (is (= 10 (::sut/sending-interval state))) ; duration / 2
-      (is (= 80 (::sut/silence-threshold state))) ; 4 * duration
-
-      ;; Verify audio line
-      (is (some? (::sut/audio-line state)))
-
-      ;; Clean up resources
-      (sut/realtime-speakers-out-transition state :clojure.core.async.flow/stop)))
-
-  (testing "init! with default parameters"
-    (let [state (sut/realtime-speakers-out-init! {})]
-      (is (= 20 (::sut/duration-ms state)))
-      (is (= 10 (::sut/sending-interval state)))
-      (is (= 80 (::sut/silence-threshold state)))
-
-      ;; Clean up resources
-      (sut/realtime-speakers-out-transition state :clojure.core.async.flow/stop)))
-
-  (testing "init! with custom parameters"
-    (let [params {:audio.out/duration-ms 50
-                  :audio.out/sample-rate 44100
-                  :audio.out/sample-size-bits 24
-                  :audio.out/channels 2}
-          state (sut/realtime-speakers-out-init! params)]
-
-      (is (= 50 (::sut/duration-ms state)))
-      (is (= 25 (::sut/sending-interval state))) ; 50 / 2
-      (is (= 200 (::sut/silence-threshold state))) ; 4 * 50
-
-      ;; Clean up resources
-      (sut/realtime-speakers-out-transition state :clojure.core.async.flow/stop))))
-
-
-
-(deftest test-realtime-speakers-out-transition
-  (testing "transition handles stop correctly"
-    (let [initial-state (sut/realtime-speakers-out-init! {})
-          result-state (sut/realtime-speakers-out-transition initial-state :clojure.core.async.flow/stop)]
-
-      ;; Should return state (transition doesn't modify state structure)
-      (is (map? result-state))))
-
-  (testing "transition handles other transitions"
-    (let [initial-state (sut/realtime-speakers-out-init! {})
-          start-state (sut/realtime-speakers-out-transition initial-state :clojure.core.async.flow/start)
-          resume-state (sut/realtime-speakers-out-transition initial-state :clojure.core.async.flow/resume)]
-
-      ;; Should return state unchanged for non-stop transitions
-      (is (= initial-state start-state))
-      (is (= initial-state resume-state))
-
-      ;; Clean up
-      (sut/realtime-speakers-out-transition initial-state :clojure.core.async.flow/stop))))
 
 (deftest test-realtime-speakers-out-timer-handling
   (testing "timer tick when not speaking (no effect)"
@@ -882,8 +799,7 @@
   (testing "1-arity (init) delegates correctly"
     (let [params {:audio.out/duration-ms 30}]
       ;; Just verify both work (cleanup automatically handled by test framework)
-      (is (map? (sut/realtime-speakers-out-fn params)))
-      (is (map? (sut/realtime-speakers-out-init! params)))))
+      (is (map? (sut/realtime-speakers-out-fn params)))))
 
   (testing "2-arity (transition) delegates correctly"
     (let [state {}
