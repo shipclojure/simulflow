@@ -328,6 +328,97 @@ When enabled, creating frames with invalid data will throw exceptions with detai
 
 **Warning**: Never enable schema checking in production as it significantly impacts performance.
 
+#### Creating Custom Frames
+
+Simulflow provides the `defframe` macro to easily define new frame types with automatic validation and helper functions.
+
+##### The `defframe` Macro
+
+The `defframe` macro creates three things for each frame type:
+
+1. **Frame Creator Function** - Creates frames with optional timestamp
+2. **Frame Predicate Function** - Tests if a value is a frame of that type
+3. **Frame Schema** - Malli schema for validation
+
+```clojure
+(ns my.custom.frames
+  (:require [simulflow.frame :refer [defframe]]))
+
+;; Define a custom frame type
+(defframe custom-data
+  "Frame containing custom application data"
+  {:type ::custom-data-frame
+   :schema [:map
+            [:user-id :string]
+            [:action [:enum :create :update :delete]]
+            [:payload :any]]})
+```
+
+This generates:
+
+```clojure
+;; 1. Frame creator function (supports both arities)
+(custom-data {:user-id "123" :action :create :payload {...}})
+(custom-data {:user-id "123" :action :create :payload {...}} {:timestamp 1640995200000})
+
+;; 2. Frame predicate function
+(custom-data? some-frame) ;; => true/false
+
+;; 3. Frame schema (for advanced validation)
+custom-data-schema ;; => Malli schema definition
+```
+
+##### Frame Creation Options
+
+Frame creator functions support flexible timestamp handling:
+
+```clojure
+;; Use current timestamp (default)
+(custom-data {:user-id "123" :action :create :payload data})
+
+;; Explicit timestamp as milliseconds
+(custom-data data {:timestamp 1640995200000})
+
+;; Explicit timestamp as java.util.Date
+(custom-data data {:timestamp #inst "2022-01-01T00:00:00.000Z"})
+```
+
+##### Frame Structure
+
+All frames have a consistent structure:
+
+```clojure
+{:frame/type ::custom-data-frame           ; Frame type keyword
+ :frame/data {:user-id "123" :action :create} ; Your data
+ :frame/ts #inst "2022-01-01T00:00:00.000Z"   ; Timestamp
+ ;; Plus metadata: ^{:type :simulflow.frame/frame}
+}
+```
+
+##### Usage in Processors
+
+Use your custom frames in processor transform functions:
+
+```clojure
+(defn my-processor-transform [state input-port data]
+  (cond
+    (custom-data? data)
+    (let [user-id (get-in data [:frame/data :user-id])]
+      [state {:out [(frame/system-start true)]}])
+
+    :else [state {}]))
+```
+
+##### Schema Validation
+
+When frame schema checking is enabled, invalid data will be caught automatically:
+
+```clojure
+;; This will throw if schema checking is enabled
+(custom-data {:user-id 123 :action :invalid}) ; user-id should be string, action invalid
+;; => ex-info "Invalid frame data" {:error {...}}
+```
+
 See [frame.clj](./src/simulflow/frame.clj) for all possible frames.
 
 
