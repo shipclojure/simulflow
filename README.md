@@ -327,6 +327,88 @@ Components that transform frames:
 
 Read core.async.flow docs for more information about flow precesses.
 
+## Modular Processor Functions
+
+Simulflow processors are designed for modularity and reuse. Each processor can expose its core functionality as multi-arity functions that can be used independently or composed into custom processors.
+
+### Multi-Arity Function Pattern
+
+Processors follow a standard multi-arity pattern that maps directly to `core.async.flow` lifecycle:
+
+```clojure
+(defn processor-fn
+  ([] {:ins {:in "Description"} :outs {:out "Description"} :params {...}})  ; 0-arity: describe
+  ([config] {...})                                                          ; 1-arity: init
+  ([state transition] {...})                                                ; 2-arity: transition
+  ([state input-port data] [state {...}]))                                  ; 3-arity: transform
+```
+
+### Example: Reusing Transport Functions
+
+Here's how you can reuse transport processor functions in your own custom processors:
+
+```clojure
+(ns my-cool-processor
+  (:require [simulflow.transport :as transport]
+            [simulflow.frame :as frame]
+            [simulflow.utils.audio :as audio]))
+
+(defn mic-transport-fn
+  "Custom microphone transport with audio processing"
+  ([] (transport/mic-transport-in-describe))
+  ([params] (transport/mic-transport-in-init! params))
+  ([state transition]
+   (transport/mic-transport-in-transition state transition))
+
+  ;; Custom transform with audio processing
+  ([state _ {:keys [audio-data timestamp]}]
+   (let [processed-audio (audio/apply-noise-reduction audio-data)
+         float-audio (PCMConverter/convertToFloat32Buffer processed-audio)]
+     [state {:out [(frame/audio-input-raw float-audio {:timestamp timestamp})]}])))
+
+;; Use in a flow
+(def my-flow
+  (flow/create-flow
+    {:procs {:custom-mic {:proc (flow/process mic-transport-fn)
+                          :args {:audio-in/sample-rate 16000}}}
+     :conns [[:custom-mic :out] [:next-processor :in]]}))
+```
+
+### Composing Processor Logic
+
+You can also compose transform logic from multiple processors:
+
+```clojure
+(defn hybrid-processor-fn
+  ([] {:ins {:in "Mixed input"} :outs {:out "Processed output"}})
+  ([params] {:config params})
+  ([state transition] (when (= transition :stop) (cleanup state)))
+
+  ([state input-port data]
+   (cond
+     ;; Handle audio using transport transform
+     (frame/audio-input-raw? data)
+     (transport/mic-transport-transform state input-port data)
+
+     ;; Handle text using LLM transform
+     (frame/llm-context? data)
+     (openai/transform state input-port data)
+
+     ;; Custom handling for other frames
+     :else
+     [state {:out [(custom-transform data)]}])))
+```
+
+### Benefits of Modular Functions
+
+- **Reusability**: Use processor logic across different flows
+- **Testability**: Test individual transform functions in isolation
+- **Composability**: Mix and match functionality from different processors
+- **Customization**: Override specific behaviors while reusing core logic
+- **Debugging**: Easier to debug individual components
+
+This pattern enables building complex AI pipelines by composing smaller, well-tested components while maintaining the data-driven architecture that makes simulflow powerful.
+
 
 ## Built With
 
