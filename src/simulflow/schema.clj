@@ -1,5 +1,6 @@
 (ns simulflow.schema
   (:require
+   [clojure.core.async.impl.protocols :as impl]
    [malli.core :as m]
    [malli.error :as me]
    [malli.transform :as mt]
@@ -77,7 +78,7 @@
   [schema params]
   (let [;; First validate that required parameters are present
         required-fields (get-required-fields schema)
-        missing-required (remove #(contains? params %) required-fields)]
+        missing-required (vec (remove #(contains? params %) required-fields))]
 
     (when (seq missing-required)
       (throw (ex-info "Missing required parameters"
@@ -646,7 +647,7 @@
   [:fn
    {:error/message "Must be a core.async channel"
     :description "core.async channel"}
-   #(satisfies? async-protocols/Channel %)])
+   #(satisfies? impl/Channel %)])
 
 (def PipelineConfigSchema
   [:map

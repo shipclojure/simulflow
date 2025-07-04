@@ -1,7 +1,8 @@
 (ns simulflow.processors.activity-monitor-test
-  (:require [clojure.test :refer [deftest is testing]]
-            [simulflow.frame :as frame]
-            [simulflow.processors.activity-monitor :as activity-monitor]))
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [simulflow.frame :as frame]
+   [simulflow.processors.activity-monitor :as activity-monitor]))
 
 (def current-time #inst "2025-06-27T06:13:35.236-00:00")
 
@@ -231,3 +232,68 @@
            [{::activity-monitor/ping-count 0
              ::activity-monitor/max-pings 3
              :now current-time} {:out [(frame/speak-frame "Goodbye!" {:timestamp current-time})]}]))))
+
+(deftest activity-monitor-init-schema-validation-test
+  (testing "succeeds with empty params since all fields are optional"
+    (let [result (activity-monitor/init! {})]
+      (is (some? result))
+      (is (contains? result ::activity-monitor/timeout-ms))
+      (is (contains? result ::activity-monitor/end-phrase))
+      (is (contains? result ::activity-monitor/max-pings))
+      (is (contains? result ::activity-monitor/ping-phrases))
+      ;; Check defaults are applied
+      (is (= (::activity-monitor/timeout-ms result) 5000))
+      (is (= (::activity-monitor/end-phrase result) "Goodbye!"))
+      (is (= (::activity-monitor/max-pings result) 3))
+      (is (= (::activity-monitor/ping-phrases result) #{"Are you still there?"}))
+      (activity-monitor/transition result :clojure.core.async.flow/stop)))
+
+  (testing "applies custom values when provided"
+    (let [config {::activity-monitor/timeout-ms 10000
+                  ::activity-monitor/end-phrase "See you later!"
+                  ::activity-monitor/max-pings 5
+                  ::activity-monitor/ping-phrases ["Hello?", "Anyone there?"]}
+          result (activity-monitor/init! config)]
+      (is (= (::activity-monitor/timeout-ms result) 10000))
+      (is (= (::activity-monitor/end-phrase result) "See you later!"))
+      (is (= (::activity-monitor/max-pings result) 5))
+      (is (= (::activity-monitor/ping-phrases result) ["Hello?" "Anyone there?"]))
+      (activity-monitor/transition result :clojure.core.async.flow/stop)))
+
+  (testing "throws when field values are invalid"
+    (testing "timeout-ms not an integer"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (activity-monitor/init! {::activity-monitor/timeout-ms "not-a-number"}))))
+
+    (testing "end-phrase not a string"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (activity-monitor/init! {::activity-monitor/end-phrase 123}))))
+
+    (testing "max-pings not an integer"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (activity-monitor/init! {::activity-monitor/max-pings "not-a-number"}))))
+
+    (testing "ping-phrases not set or vector"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (activity-monitor/init! {::activity-monitor/ping-phrases "not-a-collection"})))))
+
+  (testing "handles ping-phrases as both set and vector"
+    (testing "ping-phrases as set"
+      (let [config {::activity-monitor/ping-phrases #{"Are you there?" "Hello?"}}
+            result (activity-monitor/init! config)]
+        (is (= (::activity-monitor/ping-phrases result) #{"Are you there?" "Hello?"}))
+        (activity-monitor/transition result :clojure.core.async.flow/stop)))
+
+    (testing "ping-phrases as vector"
+      (let [config {::activity-monitor/ping-phrases ["Are you there?" "Hello?"]}
+            result (activity-monitor/init! config)]
+        (is (= (::activity-monitor/ping-phrases result) ["Are you there?" "Hello?"]))
+        (activity-monitor/transition result :clojure.core.async.flow/stop)))))

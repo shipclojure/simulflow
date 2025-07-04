@@ -1,6 +1,5 @@
 (ns simulflow.transport-test
   (:require
-   [clojure.core.async.flow :as flow]
    [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
    [simulflow.transport :as sut]
@@ -338,11 +337,11 @@
   (testing "mic-transport-in-transition function"
     (let [close-fn (atom false)
           state {::sut/close #(reset! close-fn true)}
-          result (sut/mic-transport-in-transition state ::flow/stop)]
+          result (sut/mic-transport-in-transition state :clojure.core.async.flow/stop)]
       (is @close-fn "Close function should be called on stop transition")
       ;; Test other transitions don't call close
       (reset! close-fn false)
-      (sut/mic-transport-in-transition state ::flow/start)
+      (sut/mic-transport-in-transition state :clojure.core.async.flow/start)
       (is (not @close-fn) "Close function should not be called on start transition")))
 
   (testing "mic-transport-in-transform function"
@@ -698,8 +697,8 @@
           state (sut/realtime-speakers-out-init! params)]
 
       ;; Verify flow ports
-      (is (contains? state ::flow/in-ports))
-      (is (contains? state ::flow/out-ports))
+      (is (contains? state :clojure.core.async.flow/in-ports))
+      (is (contains? state :clojure.core.async.flow/out-ports))
 
       ;; Verify business logic state
       (is (false? (::sut/speaking? state)))
@@ -715,7 +714,7 @@
       (is (some? (::sut/audio-line state)))
 
       ;; Clean up resources
-      (sut/realtime-speakers-out-transition state ::flow/stop)))
+      (sut/realtime-speakers-out-transition state :clojure.core.async.flow/stop)))
 
   (testing "init! with default parameters"
     (let [state (sut/realtime-speakers-out-init! {})]
@@ -724,7 +723,7 @@
       (is (= 80 (::sut/silence-threshold state)))
 
       ;; Clean up resources
-      (sut/realtime-speakers-out-transition state ::flow/stop)))
+      (sut/realtime-speakers-out-transition state :clojure.core.async.flow/stop)))
 
   (testing "init! with custom parameters"
     (let [params {:audio.out/duration-ms 50
@@ -738,27 +737,29 @@
       (is (= 200 (::sut/silence-threshold state))) ; 4 * 50
 
       ;; Clean up resources
-      (sut/realtime-speakers-out-transition state ::flow/stop))))
+      (sut/realtime-speakers-out-transition state :clojure.core.async.flow/stop))))
+
+
 
 (deftest test-realtime-speakers-out-transition
   (testing "transition handles stop correctly"
     (let [initial-state (sut/realtime-speakers-out-init! {})
-          result-state (sut/realtime-speakers-out-transition initial-state ::flow/stop)]
+          result-state (sut/realtime-speakers-out-transition initial-state :clojure.core.async.flow/stop)]
 
       ;; Should return state (transition doesn't modify state structure)
       (is (map? result-state))))
 
   (testing "transition handles other transitions"
     (let [initial-state (sut/realtime-speakers-out-init! {})
-          start-state (sut/realtime-speakers-out-transition initial-state ::flow/start)
-          resume-state (sut/realtime-speakers-out-transition initial-state ::flow/resume)]
+          start-state (sut/realtime-speakers-out-transition initial-state :clojure.core.async.flow/start)
+          resume-state (sut/realtime-speakers-out-transition initial-state :clojure.core.async.flow/resume)]
 
       ;; Should return state unchanged for non-stop transitions
       (is (= initial-state start-state))
       (is (= initial-state resume-state))
 
       ;; Clean up
-      (sut/realtime-speakers-out-transition initial-state ::flow/stop))))
+      (sut/realtime-speakers-out-transition initial-state :clojure.core.async.flow/stop))))
 
 (deftest test-realtime-speakers-out-timer-handling
   (testing "timer tick when not speaking (no effect)"
@@ -886,7 +887,7 @@
 
   (testing "2-arity (transition) delegates correctly"
     (let [state {}
-          transition ::flow/start
+          transition :clojure.core.async.flow/start
           multi-arity-result (sut/realtime-speakers-out-fn state transition)
           direct-result (sut/realtime-speakers-out-transition state transition)]
       (is (= multi-arity-result direct-result))))

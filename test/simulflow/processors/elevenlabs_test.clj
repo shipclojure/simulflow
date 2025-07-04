@@ -125,3 +125,94 @@
     (let [[state output] (elevenlabs/elevenlabs-tts-transform {} :unknown-port "message")]
       (is (= state {}))
       (is (nil? output)))))
+
+(deftest elevenlabs-init-schema-validation-test
+  (testing "throws when required fields are missing"
+    (testing "missing api-key"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Missing required parameters"
+           (elevenlabs/elevenlabs-tts-init! {:elevenlabs/voice-id "1234567890abcdefghij"}))))
+
+    (testing "missing voice-id"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Missing required parameters"
+           (elevenlabs/elevenlabs-tts-init! {:elevenlabs/api-key "sk-1234567890abcdefghijklmnopqrstuvwxyz"}))))
+
+    (testing "missing both required fields"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Missing required parameters"
+           (elevenlabs/elevenlabs-tts-init! {})))))
+
+  (testing "throws when field values are invalid"
+    (testing "api-key too short"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (elevenlabs/elevenlabs-tts-init! {:elevenlabs/api-key "short"
+                                             :elevenlabs/voice-id "1234567890abcdefghij"}))))
+
+    (testing "voice-id wrong length"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (elevenlabs/elevenlabs-tts-init! {:elevenlabs/api-key "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+                                             :elevenlabs/voice-id "wrong-length"}))))
+
+    (testing "stability out of range"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (elevenlabs/elevenlabs-tts-init! {:elevenlabs/api-key "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+                                             :elevenlabs/voice-id "1234567890abcdefghij"
+                                             :voice/stability 2.0}))))
+
+    (testing "similarity-boost out of range"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Parameters invalid after applying defaults"
+           (elevenlabs/elevenlabs-tts-init! {:elevenlabs/api-key "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+                                             :elevenlabs/voice-id "1234567890abcdefghij"
+                                             :voice/similarity-boost -0.1})))))
+
+  (testing "includes helpful error information"
+    (try
+      (elevenlabs/elevenlabs-tts-init! {})
+      (is false "Should have thrown")
+      (catch clojure.lang.ExceptionInfo e
+        (let [data (ex-data e)]
+          (is (contains? (set (:missing-required data)) :elevenlabs/api-key))
+          (is (contains? (set (:missing-required data)) :elevenlabs/voice-id))
+          (is (= #{:elevenlabs/api-key :elevenlabs/voice-id} (set (:required-fields data))))))))
+
+  (testing "succeeds with valid configuration"
+    (testing "minimal valid config applies defaults"
+      ;; Note: This test will fail if WebSocket connection actually tries to connect
+      ;; In a real test, you'd want to mock the WebSocket connection
+      (comment
+        (let [result (elevenlabs/elevenlabs-tts-init! {:elevenlabs/api-key "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+                                                       :elevenlabs/voice-id "1234567890abcdefghij"})]
+          (is (some? result))
+          (is (contains? result :websocket/conn))
+          (is (contains? result :websocket/alive?)))))
+
+    ;; Test schema validation separately without actually initializing
+    (testing "schema parsing with valid config"
+      (let [config {:elevenlabs/api-key "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+                    :elevenlabs/voice-id "1234567890abcdefghij"}]
+        ;; This should not throw - just test the schema validation part
+        (is (some? (simulflow.schema/parse-with-defaults elevenlabs/ElevenLabsTTSConfig config)))))
+
+    (testing "schema parsing with optional parameters"
+      (let [config {:elevenlabs/api-key "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+                    :elevenlabs/voice-id "1234567890abcdefghij"
+                    :voice/stability 0.3
+                    :voice/similarity-boost 0.9
+                    :voice/use-speaker-boost? false}
+            parsed (simulflow.schema/parse-with-defaults elevenlabs/ElevenLabsTTSConfig config)]
+        (is (= (:voice/stability parsed) 0.3))
+        (is (= (:voice/similarity-boost parsed) 0.9))
+        (is (= (:voice/use-speaker-boost? parsed) false))
+        (is (= (:elevenlabs/model-id parsed) "eleven_flash_v2_5"))))))
