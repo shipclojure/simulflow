@@ -63,8 +63,6 @@
 (def ElevenLabsTTSConfig
   "Configuration for Elevenlabs TextToSpeech service"
   [:map
-   {:closed true ;; No additional fields allowed
-    :description "ElevenLabs TTS configuration"}
    [:elevenlabs/api-key
     [:string
      {:min 32 ;; ElevenLabs API keys are typically long
