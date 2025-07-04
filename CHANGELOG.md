@@ -3,6 +3,12 @@ All notable changes to this project will be documented in this file. This change
 
 ## Unreleased
 
+### Added
+- Command system to express IO commands from transform function for easier testing
+
+### Improved
+- **OpenAI LLM Process**: Moved llm completion request logic to `transform` pure function for easier testing and reasoning.
+
 ## [0.1.5-alpha] - 2025-07-03
 
 ### Added
