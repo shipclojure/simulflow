@@ -69,7 +69,7 @@
   ([]
    {:ins {:in "Channel for incoming context aggregations"}
     :outs {:out "Channel where streaming responses will go"}
-    :params (schema/->flow-describe-parameters GoogleLLMConfigSchema)
+    :params (schema/->describe-parameters GoogleLLMConfigSchema)
     :workload :io})
   ([params]
    (when-let [error (m/explain GoogleLLMConfigSchema params)]

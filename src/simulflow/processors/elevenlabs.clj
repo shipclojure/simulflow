@@ -174,15 +174,7 @@
          :in "Channel for audio input frames (from transport-in) "}
    :outs {:sys-out "Channel for system messages that have priority"
           :out "Channel on which transcription frames are put"}
-   :params {:elevenlabs/api-key "Api key required for 11labs connection"
-            :elevenlabs/model-id "Model used for voice generation"
-            :elevenlabs/voice-id "Voice id"
-            :voice/stability "Optional voice stability factor (0.0 to 1.0)"
-            :voice/similarity-boost "Optional voice similarity boost factor (0.0 to 1.0)"
-            :voice/use-speaker-boost? "Wether to enable speaker boost enchancement"
-            :flow/language "Language to use"
-            :audio.out/encoding "Encoding for the audio generated"
-            :audio.out/sample-rate "Sample rate for the audio generated"}
+   :params (schema/->describe-parameters ElevenLabsTTSConfig)
    :workload :io})
 
 (defn elevenlabs-tts-init! [params]

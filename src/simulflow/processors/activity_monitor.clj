@@ -90,7 +90,7 @@
   {:ins {:in "Channel for activity events (user-speech-start, bot-speech-start etc.)"
          :sys-in "Channel for system messages"}
    :outs {:out "Channel for inactivity prompts"}
-   :params (schema/->flow-describe-parameters ActivityMonitorConfigSchema)})
+   :params (schema/->describe-parameters ActivityMonitorConfigSchema)})
 
 (defn init! [params]
   (let [{::keys [timeout-ms] :as parsed} (schema/parse-with-defaults ActivityMonitorConfigSchema params)

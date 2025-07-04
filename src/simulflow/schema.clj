@@ -24,7 +24,7 @@
        :data data
        :children (if (= 1 (count childs)) (first childs) (vec childs))})))
 
-(defn ->flow-describe-parameters
+(defn ->describe-parameters
   "Take a malli schema and transform to core.async.flow processor :describe key format"
   [s]
   (let [{:keys [children type]} (parse-schema s)]

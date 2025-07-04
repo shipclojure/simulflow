@@ -106,7 +106,7 @@
   []
   {:ins {:in "Channel for incoming context aggregations"}
    :outs {:out "Channel where streaming responses will go"}
-   :params (schema/->flow-describe-parameters OpenAILLMConfigSchema)
+   :params (schema/->describe-parameters OpenAILLMConfigSchema)
    :workload :io})
 
 (defn handle-response
