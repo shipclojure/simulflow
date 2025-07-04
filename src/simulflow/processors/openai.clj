@@ -1,19 +1,21 @@
 (ns simulflow.processors.openai
-  (:require [clojure.core.async :as a]
-            [clojure.core.async.flow :as flow]
-            [malli.core :as m]
-            [simulflow.async :refer [vthread-loop]]
-            [simulflow.frame :as frame]
-            [simulflow.schema :as schema]
-            [simulflow.utils.core :as u]
-            [simulflow.utils.openai :as uai]
-            [taoensso.telemere :as t]))
+  (:require
+   [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
+   [malli.core :as m]
+   [simulflow.async :refer [vthread-loop]]
+   [simulflow.command :as command]
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
+   [simulflow.utils.core :as u]
+   [simulflow.utils.openai :as uai]
+   [taoensso.telemere :as t]))
 
 (def OpenAILLMConfigSchema
   [:map
    {:description "OpenAI LLM configuration"}
 
-   [:llm/model
+   [:llm/model {:default :gpt-4o-mini}
     (schema/flex-enum
      {:description "OpenAI model identifier"
       :error/message "Must be a valid OpenAI model"
@@ -80,7 +82,10 @@
      {:description "OpenAI API key"
       :secret true ;; Marks this as sensitive data
       :min 40 ;; OpenAI API keys are typically longer
-      :error/message "Invalid OpenAI API key format"}]]])
+      :error/message "Invalid OpenAI API key format"}]]
+
+   [:api/completions-url {:optional true
+                          :default uai/openai-completions-url} :string]])
 
 ;; Example validation:
 (comment
@@ -114,23 +119,18 @@
 (defn init!
   [params]
   (let [parsed-config (schema/parse-with-defaults OpenAILLMConfigSchema params)
-        {:llm/keys [model] :openai/keys [api-key] :as parsed-config} parsed-config
         llm-write (a/chan 100)
         llm-read (a/chan 1024)]
-
     (vthread-loop []
-      (when-let [frame (a/<!! llm-write)]
-        (t/log! :info ["AI REQUEST" (:frame/data frame)])
-        (assert (or (frame/llm-context? frame)
-                    (frame/control-interrupt-start? frame))
-                "Invalid frame sent to LLM. Only llm-context or interrupt-start")
-        (let [context (:frame/data frame)
-              stream-ch (uai/stream-chat-completion {:model model
-                                                     :api-key api-key
-                                                     :messages (:messages context)
-                                                     :tools (mapv u/->tool-fn (:tools context))})]
-          ;; Send response to transform function
-          (handle-response stream-ch llm-read))
+      (when-let [command (a/<!! llm-write)]
+        (try
+          (t/log! :info ["AI REQUEST COMMAND" command])
+          (assert (= (:command/kind command) :command/sse-request)
+                  "OpenAI processor only supports SSE request commands")
+          ;; Execute the command and handle the streaming response
+          (handle-response (command/handle-command command) llm-read)
+          (catch Exception e
+            (t/log! {:level :error :id :openai-command-error :error e} "Error processing command")))
         (recur)))
 
     (merge parsed-config
@@ -169,8 +169,19 @@
     (transform-handle-llm-response state msg)
 
     (frame/llm-context? msg)
-    [state {::llm-write [msg]
-            :out [(frame/llm-full-response-start true)]}]
+    (let [context (:frame/data msg)
+          {:llm/keys [model] :openai/keys [api-key] :api/keys [completions-url]} state
+          tools (mapv u/->tool-fn (:tools context))
+          request-body (u/json-str (cond-> {:messages (:messages context)
+                                            :stream true
+                                            :model model}
+                                     (pos? (count tools)) (assoc :tools tools)))]
+      [state {::llm-write [(command/sse-request-command {:url completions-url
+                                                         :method :post
+                                                         :body request-body
+                                                         :headers {"Authorization" (str "Bearer " api-key)
+                                                                   "Content-Type" "application/json"}})]
+              :out [(frame/llm-full-response-start true)]}])
 
     :else
     [state {}]))

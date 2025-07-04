@@ -2,7 +2,9 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
-   [simulflow.processors.openai :as openai]))
+   [simulflow.processors.openai :as openai]
+   [simulflow.schema :as schema]
+   [simulflow.utils.core :as u]))
 
 (deftest openai-describe-test
   (testing "describe function returns correct structure"
@@ -15,16 +17,32 @@
       (is (contains? (:ins result) :in))
       (is (contains? (:outs result) :out)))))
 
+(def test-api-key "test-api-key-miiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiin")
+
 (deftest openai-transform-test
   (testing "handles llm-context message on input port"
-    (let [context-frame (frame/llm-context {:messages [{:role :system :content "You are a helpful assistant"}] :tools []})
-          [state output] (openai/transform {} :in context-frame)]
-      (is (= state {}))
-      (is (contains? output ::openai/llm-write))
-      (is (= (::openai/llm-write output) [context-frame]))
-      (is (contains? output :out))
-      (is (= (count (:out output)) 1))
-      (is (frame/llm-full-response-start? (first (:out output))))))
+    (let [state (schema/parse-with-defaults openai/OpenAILLMConfigSchema {:openai/api-key test-api-key})
+          ai-messages [{:role "system" :content "You are a helpful assistant"} {:role "user" :content "Hello, do you hear me?"}]
+          ai-context {:messages ai-messages :tools []}
+          context-frame (frame/llm-context ai-context)
+          [new-state output] (openai/transform state :in context-frame)]
+      (is (= new-state state))
+      (testing "Sends appropriate llm completion request based on the new user context"
+        (is (contains? output ::openai/llm-write))
+        (is (= (count (::openai/llm-write output)) 1))
+        (let [command (first (::openai/llm-write output))
+              messages (:messages (u/parse-if-json (get-in command [:command/data :body])))]
+          (is (= command #:command{:kind :command/sse-request,
+                                   :data {:url "https://api.openai.com/v1/chat/completions",
+                                          :method :post,
+                                          :body (u/json-str {:messages ai-messages :stream true, :model (:llm/model state)}),
+                                          :headers {"Authorization" (str "Bearer " test-api-key)
+                                                    "Content-Type" "application/json"}}}))
+          (is (= messages (:messages ai-context)))))
+      (testing "Marks the start of the llm completion request to the pipeline"
+        (is (contains? output :out))
+        (is (= (count (:out output)) 1))
+        (is (frame/llm-full-response-start? (first (:out output)))))))
 
   (testing "handles unknown input port gracefully"
     (let [[state output] (openai/transform {} :unknown-port "message")]
@@ -108,13 +126,13 @@
             valid-results (remove nil? results)]
         (is (= (count valid-results) 5)) ; 4 content chunks + 1 done
 
-        ; Check content chunks
+                                        ; Check content chunks
         (doseq [i (range 4)]
           (let [[state output] (nth valid-results i)]
             (is (= state {}))
             (is (frame/llm-text-chunk? (first (:out output))))))
 
-        ; Check done chunk
+                                        ; Check done chunk
         (let [[state output] (last valid-results)]
           (is (= state {}))
           (is (frame/llm-full-response-end? (first (:out output)))))))
@@ -131,13 +149,13 @@
             valid-results (remove nil? results)]
         (is (= (count valid-results) 7)) ; 6 tool call chunks + 1 done
 
-        ; Check tool call chunks
+                                        ; Check tool call chunks
         (doseq [i (range 6)]
           (let [[state output] (nth valid-results i)]
             (is (= state {}))
             (is (frame/llm-tool-call-chunk? (first (:out output))))))
 
-        ; Check done chunk
+                                        ; Check done chunk
         (let [[state output] (last valid-results)]
           (is (= state {}))
           (is (frame/llm-full-response-end? (first (:out output)))))))
@@ -237,6 +255,8 @@
 
   (testing "3-arity delegates to transform"
     (let [context-frame (frame/llm-context {:messages [{:role :system :content "You are helpful"}] :tools []})
-          [_ output] (openai/openai-llm-fn {} :in context-frame)]
+          state {:llm/model "gpt-4o-mini" :openai/api-key "test-key"}
+          [_ output] (openai/openai-llm-fn state :in context-frame)]
       (is (contains? output ::openai/llm-write))
-      (is (contains? output :out)))))
+      (is (contains? output :out))
+      (is (= (:command/kind (first (::openai/llm-write output))) :command/sse-request)))))
