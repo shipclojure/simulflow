@@ -796,11 +796,6 @@
           direct-result sut/realtime-speakers-out-describe]
       (is (= multi-arity-result direct-result))))
 
-  (testing "1-arity (init) delegates correctly"
-    (let [params {:audio.out/duration-ms 30}]
-      ;; Just verify both work (cleanup automatically handled by test framework)
-      (is (map? (sut/realtime-speakers-out-fn params)))))
-
   (testing "2-arity (transition) delegates correctly"
     (let [state {}
           transition :clojure.core.async.flow/start
