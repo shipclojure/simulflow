@@ -104,6 +104,13 @@
    :params (schema/->flow-describe-parameters OpenAILLMConfigSchema)
    :workload :io})
 
+(defn handle-response
+  [in-ch out-ch]
+  (vthread-loop []
+    (when-let [chunk (a/<!! in-ch)]
+      (a/>!! out-ch chunk)
+      (recur))))
+
 (defn init!
   [params]
   (let [parsed-config (schema/parse-with-defaults OpenAILLMConfigSchema params)
@@ -122,12 +129,13 @@
                                                      :api-key api-key
                                                      :messages (:messages context)
                                                      :tools (mapv u/->tool-fn (:tools context))})]
-          (uai/handle-completion-request! stream-ch llm-read))
+          ;; Send response to transform function
+          (handle-response stream-ch llm-read))
         (recur)))
 
     (merge parsed-config
-           {::flow/in-ports {:llm-read llm-read}
-            ::flow/out-ports {:llm-write llm-write}})))
+           {::flow/in-ports {::llm-read llm-read}
+            ::flow/out-ports {::llm-write llm-write}})))
 
 (defn transition
   [{::flow/keys [in-ports out-ports]} transition]
@@ -135,17 +143,37 @@
     (doseq [port (concat (vals in-ports) (vals out-ports))]
       (a/close! port))))
 
+(defn transform-handle-llm-response
+  "Handle the streaming response from the LLM. Return appropriate frames based on
+  the stream. "
+  [state msg]
+  (let [d (uai/response-chunk-delta msg)
+        tool-call (first (:tool_calls d))
+        c (:content d)]
+    (cond
+      (= msg :done)
+      [state {:out [(frame/llm-full-response-end true)]}]
+
+      tool-call
+      [state {:out [(frame/llm-tool-call-chunk tool-call)]}]
+
+      c
+      [state {:out [(frame/llm-text-chunk c)]}]
+
+      :else [state])))
+
 (defn transform
   [state in msg]
-  (if (= in :llm-read)
-    [state {:out [msg]}]
-    (cond
-      (frame/llm-context? msg)
-      [state {:llm-write [msg]
-              :out [(frame/llm-full-response-start true)]}]
+  (cond
+    (= in ::llm-read)
+    (transform-handle-llm-response state msg)
 
-      :else
-      [state {}])))
+    (frame/llm-context? msg)
+    [state {::llm-write [msg]
+            :out [(frame/llm-full-response-start true)]}]
+
+    :else
+    [state {}]))
 
 (defn openai-llm-fn
   "Multi-arity processor function for OpenAI LLM"
