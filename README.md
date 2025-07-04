@@ -304,6 +304,30 @@ The basic unit of data flow, representing typed messages like:
 
 Each frame has a type and optionally a schema for the data contained in it.
 
+#### Frame Schema Validation (Development Only)
+
+For development and debugging, you can enable frame schema validation to catch invalid frame data early. This should **only be used during development** as it adds runtime overhead:
+
+```bash
+# Enable frame schema checking via JVM property
+clojure -J-Dsimulflow.frame.schema-checking=true -M:dev your-namespace
+
+# Or add to your deps.edn :dev alias
+{:aliases
+ {:dev {:jvm-opts ["-Dsimulflow.frame.schema-checking=true"]
+        ...}}}
+```
+
+When enabled, creating frames with invalid data will throw exceptions with detailed error messages:
+
+```clojure
+;; This will throw if schema checking is enabled and data is invalid
+(frame/audio-input-raw "invalid-data") ; Should be byte array
+;; => ex-info "Invalid frame data" {...}
+```
+
+**Warning**: Never enable schema checking in production as it significantly impacts performance.
+
 See [frame.clj](./src/simulflow/frame.clj) for all possible frames.
 
 
