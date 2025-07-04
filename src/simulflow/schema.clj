@@ -4,7 +4,8 @@
    [malli.core :as m]
    [malli.error :as me]
    [malli.transform :as mt]
-   [malli.util :as mu]))
+   [malli.util :as mu]
+   [clojure.core.async.impl.protocols :as async-protocols]))
 
 (defn parse-schema
   [s]
