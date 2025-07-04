@@ -292,14 +292,19 @@ You will see processors like `:transport-in` & `:transport-out`
 
 The basic unit of data flow, representing typed messages like:
 
--   `:audio/input-raw` - Raw audio data
--   `:transcription/result` - Transcribed text
--   `:llm/text-chunk` - LLM response chunks
--   `:system/start`, `:system/stop` - Control signals
+-   `:simulflow.frame/audio-input-raw` - Raw audio data from input transport
+-   `:simulflow.frame/transcription-result` - Transcribed text from speech-to-text
+-   `:simulflow.frame/llm-text-chunk` - LLM response text chunks
+-   `:simulflow.frame/llm-tool-call-chunk` - LLM tool call request chunks
+-   `:simulflow.frame/audio-output-raw` - Raw audio data for playback
+-   `:simulflow.frame/speak-frame` - Text for TTS processing
+-   `:simulflow.frame/user-speech-start`, `:simulflow.frame/user-speech-stop` - User speech events
+-   `:simulflow.frame/bot-speech-start`, `:simulflow.frame/bot-speech-stop` - Bot speech events
+-   `:simulflow.frame/system-start`, `:simulflow.frame/system-stop` - System control signals
 
 Each frame has a type and optionally a schema for the data contained in it.
 
-See [frame.clj](./src/voice_fn/frame.clj) for all possible frames.
+See [frame.clj](./src/simulflow/frame.clj) for all possible frames.
 
 
 ### Processes
