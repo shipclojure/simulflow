@@ -670,3 +670,45 @@
    [:twilio/stream-sid :string]])
 
 (def PartialConfigSchema (mu/optional-keys PipelineConfigSchema))
+
+;; Command System Schemas
+;; Commands allow transform functions to generate pure data that describe
+;; side effects, which are then executed by init! functions
+
+(def CommandKind
+  "Types of commands that processors can generate"
+  (flex-enum
+   {:description "Command type identifier"
+    :error/message "Must be a valid command kind"}
+   [:command/sse-request ;; Server-sent events streaming request
+    :command/http-request ;; Regular HTTP request
+    :command/websocket-send ;; WebSocket message send
+    :command/timer-start ;; Start a timer
+    :command/timer-stop])) ;; Stop a timer
+
+(def SSERequestCommand
+  "Command for making server-sent events requests (streaming)"
+  [:map
+   {:description "SSE request command data"}
+   [:url :string]
+   [:method [:enum :get :post :put :delete :patch]]
+   [:headers {:optional true} [:map-of :string :string]]
+   [:body {:optional true} :string]
+   [:timeout-ms {:optional true} :int]
+   [:buffer-size {:optional true} :int]])
+
+(def CommandData
+  "Union of all command data types"
+  [:multi {:dispatch (fn [cmd] (:command/kind cmd))}
+   [:command/sse-request [:map
+                          [:command/kind [:= :command/sse-request]]
+                          [:command/data SSERequestCommand]
+                          [:command/id {:optional true} [:maybe :string]]]]])
+
+(def Command
+  "A command that describes a side effect to be executed"
+  [:map
+   {:description "Command structure for side effects"}
+   [:command/kind CommandKind]
+   [:command/data CommandData] ; Simplified for now
+   [:command/id {:optional true} [:maybe :string]]])

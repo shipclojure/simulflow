@@ -58,7 +58,7 @@
   [url search-params-m]
   (let [search-params (merge (search-params url)
                              search-params-m)
-        search (->> (map  (fn [[k v]] (str (name k) "=" (if (keyword? v) (name v) v))) search-params)
+        search (->> (map (fn [[k v]] (str (name k) "=" (if (keyword? v) (name v) v))) search-params)
                     (str/join #"&")
                     (str "?"))]
     (str (strip-search-params url) search)))
@@ -175,4 +175,4 @@
   "Monotonic time in milliseconds. Used to check if we should send the next chunk
   of audio."
   []
-  (long (/ (System/nanoTime)  1e6)))
+  (long (/ (System/nanoTime) 1e6)))

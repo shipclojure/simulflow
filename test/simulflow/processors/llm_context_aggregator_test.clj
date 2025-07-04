@@ -332,7 +332,12 @@
                  (:llm/context next-state)))
           (is (nil? out)))))))
 
-(def chunk->frame (comp frame/llm-tool-call-chunk first :tool_calls :delta first :choices))
+(defn chunk->frame [chunk-data]
+  (let [tool-call-data (-> chunk-data :choices first :delta :tool_calls first)
+        created-timestamp (:created chunk-data)]
+    (frame/llm-tool-call-chunk tool-call-data
+                               {:timestamp (when created-timestamp
+                                             (* created-timestamp 1000))})))
 
 (deftest assistant-response-aggregation-test
   (testing "assistant response aggregation"

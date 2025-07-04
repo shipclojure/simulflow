@@ -11,7 +11,7 @@
   (:import
    (java.io InputStream)))
 
-(def event-mask (re-pattern (str "(?s).+?\n\n")))
+(def event-mask (re-pattern "(?s).+?\n\n"))
 
 (defn deliver-events
   [events {:keys [on-next]}]
