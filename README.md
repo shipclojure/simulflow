@@ -21,10 +21,40 @@ Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simul
 
 **simulflow** is a Clojure framework for building real-time multimodal AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, video and AI interactions with built-in support for major AI providers.
 
-
 > [!WARNING]
 > While Simulflow has been used in live, production applications - it's still under *active* development.
 > Expect breaking changes to support new usecases
+
+## Table of Contents
+
+- [Installation](#installation)
+  - [Clojure CLI/deps.edn](#clojure-clidepsedn)
+  - [Leiningen/Boot](#leiningenboot)
+  - [Maven](#maven)
+- [Requirements](#requirements)
+- [Video presentation](#video-presentation)
+- [Core Features](#core-features)
+- [Quick Start: Local example](#quick-start-local-example)
+- [Supported Providers](#supported-providers)
+  - [Text-to-Speech (TTS)](#text-to-speech-tts)
+  - [Speech-to-Text (STT)](#speech-to-text-stt)
+  - [Text Based Large Language Models (LLM)](#text-based-large-language-models-llm)
+- [Key Concepts](#key-concepts)
+  - [Flows](#flows)
+  - [Transport](#transport)
+  - [Frames](#frames)
+    - [Frame Schema Validation (Development Only)](#frame-schema-validation-development-only)
+    - [Creating Custom Frames](#creating-custom-frames)
+  - [Processes](#processes)
+- [Adding Custom Processes](#adding-custom-processes)
+- [Modular Processor Functions](#modular-processor-functions)
+  - [Multi-Arity Function Pattern](#multi-arity-function-pattern)
+  - [Example: Reusing Transport Functions](#example-reusing-transport-functions)
+  - [Composing Processor Logic](#composing-processor-logic)
+  - [Benefits of Modular Functions](#benefits-of-modular-functions)
+- [Built With](#built-with)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
 
 ## Installation
 
