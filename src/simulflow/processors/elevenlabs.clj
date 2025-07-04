@@ -5,7 +5,6 @@
             [simulflow.async :refer [vthread-loop]]
             [simulflow.frame :as frame]
             [simulflow.schema :as schema]
-            [simulflow.secrets :as secrets]
             [simulflow.utils.core :as u]
             [taoensso.telemere :as t])
   (:import (java.nio HeapCharBuffer)))
@@ -36,15 +35,6 @@
                             {:model_id model-id
                              :language_code language
                              :output_format (encoding->elevenlabs encoding sample-rate)})))
-
-(comment
-  (make-elevenlabs-ws-url
-   {:elevenlabs/api-key (secrets/secret [:elevenlabs :api-key])
-    :elevenlabs/model-id "eleven_flash_v2_5"
-    :elevenlabs/voice-id (secrets/secret [:elevenlabs :voice-id])
-    :voice/stability 0.5
-    :voice/similarity-boost 0.8
-    :voice/use-speaker-boost? true}))
 
 (defn begin-stream-message
   [{:voice/keys [stability similarity-boost use-speaker-boost?]
@@ -80,32 +70,32 @@
      {:min 32 ;; ElevenLabs API keys are typically long
       :secret true ;; Marks this as sensitive data
       :description "ElevenLabs API key"}]]
-   [:elevenlabs/model-id
+   [:flow/language {:default :en} schema/Language]
+   [:elevenlabs/model-id {:default :eleven_flash_v2_5
+                          :description "ElevenLabs model identifier"}
     (schema/flex-enum
-     {:default "eleven_flash_v2_5"
-      :description "ElevenLabs model identifier"}
-     ["eleven_multilingual_v2" "eleven_turbo_v2_5" "eleven_turbo_v2" "eleven_monolingual_v1" "eleven_multilingual_v1" "eleven_multilingual_sts_v2" "eleven_flash_v2" "eleven_flash_v2_5" "eleven_english_sts_v2"])]
+     [:eleven_multilingual_v2 :eleven_turbo_v2_5 :eleven_turbo_v2 :eleven_monolingual_v1
+      :eleven_multilingual_v1 :eleven_multilingual_sts_v2 :eleven_flash_v2 :eleven_flash_v2_5 :eleven_english_sts_v2])]
    [:elevenlabs/voice-id
     [:string
      {:min 20 ;; ElevenLabs voice IDs are fixed length
       :max 20
       :description "ElevenLabs voice identifier"}]]
-   [:voice/stability
+   [:voice/stability {:default 0.5
+                      :description "Voice stability factor (0.0 to 1.0)"}
     [:double
      {:min 0.0
-      :max 1.0
-      :default 0.5
-      :description "Voice stability factor (0.0 to 1.0)"}]]
-   [:voice/similarity-boost
+      :max 1.0}]]
+   [:voice/similarity-boost {:default 0.8
+                             :description "Voice similarity boost factor (0.0 to 1.0)"}
     [:double
      {:min 0.0
-      :max 1.0
-      :default 0.8
-      :description "Voice similarity boost factor (0.0 to 1.0)"}]]
-   [:voice/use-speaker-boost?
-    [:boolean
-     {:default true
-      :description "Whether to enable speaker beoost enhancement"}]]])
+      :max 1.0}]]
+   [:voice/use-speaker-boost? {:default true
+                               :description "Whether to enable speaker beoost enhancement"}
+    :boolean]
+   [:audio.out/encoding {:default :pcm-signed} schema/AudioEncoding]
+   [:audio.out/sample-rate {:default 16000} schema/SampleRate]])
 
 (defn accumulate-json-response
   "Pure function to accumulate JSON response fragments.
