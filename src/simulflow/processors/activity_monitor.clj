@@ -119,4 +119,4 @@
   ([state trs] (transition state trs))
   ([state in msg] (transform state in msg)))
 
-(def activity-monitor (flow/process processor-fn))
+(def process (flow/process processor-fn))

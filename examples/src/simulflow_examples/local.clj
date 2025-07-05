@@ -4,7 +4,7 @@
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [simulflow.async :refer [vthread-loop]]
-   [simulflow.processors.activity-monitor :refer [activity-monitor]]
+   [simulflow.processors.activity-monitor :as activity-monitor]
    [simulflow.processors.deepgram :as deepgram]
    [simulflow.processors.elevenlabs :as xi]
    [simulflow.processors.llm-context-aggregator :as context]
@@ -126,7 +126,8 @@
                                           ([_] nil)
                                           ([_ _] nil)
                                           ([_ _ v] (prn v))))}
-         :activity-monitor {:proc activity-monitor}}
+         :activity-monitor {:proc activity-monitor/process
+                            :args {::activity-monitor/timeout-ms 2000}}}
         extra-procs)
       :conns (concat
                [[[:transport-in :out] [:transcriptor :in]]
