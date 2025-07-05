@@ -48,8 +48,10 @@
 
 (defn interim-transcript?
   [m]
-  (and (not (final-transcript? m))
-       (not= "" (transcript m))))
+  (let [trsc (transcript m)]
+    (and (not (final-transcript? m))
+         (string? trsc)
+         (not= "" trsc))))
 
 (defn speech-started-event?
   [m]
@@ -109,7 +111,7 @@
                                 :optional true} :boolean]
    [:transcription/utterance-end-ms {:optional true} :int]
    [:transcription/sample-rate schema/SampleRate]
-   [:transcription/encoding schema/AudioEncoding]
+   [:transcription/encoding {:default :pcm-signed} schema/AudioEncoding]
    [:transcription/language {:default :en} schema/Language]
    [:transcription/punctuate? {:default false} :boolean]])
 
@@ -206,7 +208,7 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
 (defn processor-fn
   ([] describe)
   ([params] (init! params))
-  ([state transition] (transition state transition))
+  ([state trs] (transition state trs))
   ([state in-name msg] (transform state in-name msg)))
 
 (def deepgram-processor (flow/process processor-fn))
