@@ -107,15 +107,16 @@
             ::flow/in-ports {:timer-process-out timer-out-ch}}
            parsed)))
 
-(defn transition [{::flow/keys [out-ports]} transition]
+(defn transition [{::flow/keys [out-ports in-ports] :as state} transition]
   (when (= transition ::flow/stop)
-    (doseq [port (vals out-ports)]
-      (a/close! port))))
+    (doseq [port (concat (vals out-ports) (vals in-ports))]
+      (a/close! port)))
+  state)
 
 (defn processor-fn
   ([] describe)
   ([params] (init! params))
-  ([state transition] (transition state transition))
+  ([state trs] (transition state trs))
   ([state in msg] (transform state in msg)))
 
 (def activity-monitor (flow/process processor-fn))

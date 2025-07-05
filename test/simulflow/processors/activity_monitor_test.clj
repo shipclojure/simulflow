@@ -1,8 +1,10 @@
 (ns simulflow.processors.activity-monitor-test
-  (:require
-   [clojure.test :refer [deftest is testing]]
-   [simulflow.frame :as frame]
-   [simulflow.processors.activity-monitor :as activity-monitor]))
+  (:require [clojure.core.async :as a]
+            [clojure.core.async.flow :as flow]
+            [clojure.core.async.impl.protocols :as impl]
+            [clojure.test :refer [deftest is testing]]
+            [simulflow.frame :as frame]
+            [simulflow.processors.activity-monitor :as activity-monitor]))
 
 (def current-time #inst "2025-06-27T06:13:35.236-00:00")
 
@@ -233,6 +235,11 @@
              ::activity-monitor/max-pings 3
              :now current-time} {:out [(frame/speak-frame "Goodbye!" {:timestamp current-time})]}]))))
 
+(deftest activity-monitor-transition-test
+  (testing "Transition always returns state back"
+    (is (= (activity-monitor/transition {:hello :world} ::flow/stop)
+           {:hello :world}))))
+
 (deftest activity-monitor-init-schema-validation-test
   (testing "succeeds with empty params since all fields are optional"
     (let [result (activity-monitor/init! {})]
@@ -297,3 +304,45 @@
             result (activity-monitor/init! config)]
         (is (= (::activity-monitor/ping-phrases result) ["Are you there?" "Hello?"]))
         (activity-monitor/transition result :clojure.core.async.flow/stop)))))
+
+
+(deftest processor-fn-test
+  (testing "0 arity describe"
+    (is (= (activity-monitor/processor-fn)
+           {:ins {:in "Channel for activity events (user-speech-start, bot-speech-start etc.)",
+                  :sys-in "Channel for system messages"},
+            :outs {:out "Channel for inactivity prompts"},
+            :params {:simulflow.processors.activity-monitor/end-phrase "Type: string; Optional ; Description: Message for bot to say in order to end the conversation",
+                     :simulflow.processors.activity-monitor/max-pings "Type: integer; Optional ; Description: Maximum number of inactivity pings before ending the conversation",
+                     :simulflow.processors.activity-monitor/ping-phrases "Type: (set of string or vector of string); Optional ; Description: Collection (set or vector) with messages to send when inactivity is detected.",
+                     :simulflow.processors.activity-monitor/timeout-ms "Type: integer; Optional ; Description: Timeout in ms before sending inactivity message. Default 5000ms"}})))
+  (testing "1 arity init"
+    (let [state (activity-monitor/processor-fn {})]
+      (is (= (select-keys state [::activity-monitor/end-phrase,
+                                 ::activity-monitor/max-pings ,
+                                 ::activity-monitor/ping-phrases,
+                                 ::activity-monitor/timeout-ms ])
+             #:simulflow.processors.activity-monitor{:end-phrase "Goodbye!",
+                                                     :max-pings 3,
+                                                     :ping-phrases #{"Are you still there?"},
+                                                     :timeout-ms 5000}))
+      (is (satisfies? impl/Channel (get-in state [::flow/in-ports :timer-process-out])))
+      (is (satisfies? impl/Channel (get-in state [::flow/out-ports :timer-process-in])))
+      ;; Cleaning up created channels and vthreads
+      (activity-monitor/processor-fn state ::flow/stop)))
+
+  (testing "2 arity transition"
+    (let [state (activity-monitor/processor-fn {})]
+      (testing "Transition always returns back the state"
+        (is (= (activity-monitor/processor-fn state ::flow/stop) state)))
+
+      (testing "The resulting channels were closed"
+        (is (impl/closed? (get-in state [::flow/in-ports :timer-process-out])))
+        (is (impl/closed? (get-in state [::flow/out-ports :timer-process-in]))))))
+  (testing "3 arity transform"
+    (let [speech-start (frame/user-speech-start true {:timestamp current-time})]
+      (is (= (activity-monitor/processor-fn
+              {::activity-monitor/user-speaking? false}
+              :in
+              speech-start)
+             [{::activity-monitor/user-speaking? true} {:timer-process-in [speech-start]}])))))
