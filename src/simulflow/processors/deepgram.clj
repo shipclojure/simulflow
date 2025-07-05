@@ -22,20 +22,21 @@
    :alaw :alaw})
 
 (defn make-websocket-url
-  [{:transcription/keys [interim-results? punctuate? model sample-rate utterance-end-ms language  vad-events? smart-format? encoding channels]
+  [{:transcription/keys [interim-results? punctuate? model sample-rate utterance-end-ms language vad-events? smart-format? encoding channels]
     :or {interim-results? false
          punctuate? false
          channels 1}}]
-  (u/append-search-params deepgram-url (u/without-nils {:encoding (deepgram-encoding encoding encoding)
-                                                        :language language
-                                                        :sample_rate sample-rate
-                                                        :model model
-                                                        :smart_format smart-format?
-                                                        :channels channels
-                                                        :vad_events vad-events?
-                                                        :utterance_end_ms utterance-end-ms
-                                                        :interim_results interim-results?
-                                                        :punctuate punctuate?})))
+  (u/append-search-params deepgram-url
+                          (u/without-nils {:encoding (deepgram-encoding encoding encoding)
+                                           :language language
+                                           :sample_rate sample-rate
+                                           :model model
+                                           :smart_format smart-format?
+                                           :channels channels
+                                           :vad_events vad-events?
+                                           :utterance_end_ms utterance-end-ms
+                                           :interim_results interim-results?
+                                           :punctuate punctuate?})))
 
 (defn transcript
   [m]
@@ -90,113 +91,122 @@
         [(frame/transcription-interim trsc) (frame/control-interrupt-start true)]
         [(frame/transcription-interim trsc)]))))
 
+(def DeepgramConfigSchema
+  [:map
+   [:transcription/api-key :string]
+   [:transcription/model {:default :nova-2-general}
+    (flex-enum (into [:nova-2] (map #(str "nova-2-" %) #{"general" "meeting" "phonecall" "voicemail" "finance" "conversationalai" "video" "medical" "drivethru" "automotive" "atc"})))]
+   [:transcription/interim-results? {:default false
+                                     :optional true} :boolean]
+   [:transcription/channels {:default 1} [:enum 1 2]]
+   [:transcription/smart-format? {:default true
+                                  :optional true} :boolean]
+   [:transcription/profanity-filter? {:default true
+                                      :optional true} :boolean]
+   [:transcription/supports-interrupt? {:optional true
+                                        :default false} :boolean]
+   [:transcription/vad-events? {:default false
+                                :optional true} :boolean]
+   [:transcription/utterance-end-ms {:optional true} :int]
+   [:transcription/sample-rate schema/SampleRate]
+   [:transcription/encoding schema/AudioEncoding]
+   [:transcription/language {:default :en} schema/Language]
+   [:transcription/punctuate? {:default false} :boolean]])
+
 (def DeepgramConfig
   [:and
-   [:map
-    [:transcription/api-key :string]
-    [:transcription/model {:default :nova-2-general}
-     (flex-enum (into [:nova-2] (map #(str "nova-2-" %) #{"general" "meeting" "phonecall" "voicemail" "finance" "conversationalai" "video" "medical" "drivethru" "automotive" "atc"})))]
-    [:transcription/interim-results? {:default false
-                                      :optional true} :boolean]
-    [:transcription/channels {:default 1} [:enum 1 2]]
-    [:transcription/smart-format? {:default true
-                                   :optional true} :boolean]
-    [:transcription/profanity-filter? {:default true
-                                       :optional true} :boolean]
-    [:transcription/supports-interrupt? {:optional true
-                                         :default false} :boolean]
-    [:transcription/vad-events? {:default false
-                                 :optional true} :boolean]
-    [:transcription/utterance-end-ms {:default 1000
-                                      :optional true} :int]
-    [:transcription/sample-rate schema/SampleRate]
-    [:transcription/encoding {:default :linear16} (flex-enum [:linear16 :mulaw :alaw :mp3 :opus :flac :aac])]
-    [:transcription/language {:default :en} schema/Language]
-    [:transcription/punctuate? {:default false} :boolean]]
+   DeepgramConfigSchema
    ;; if smart-format is true, no need for punctuate
    [:fn {:error/message "When :transcription/utterance-end-ms is provided, :transcription/interim-results? must be true. More details here:
 https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using-utteranceend"}
     (fn [{:transcription/keys [utterance-end-ms interim-results?]}]
-      (and (int? utterance-end-ms) interim-results?))]
+      (if (some? utterance-end-ms)
+        interim-results?
+        true))]
    [:fn {:error/message "When :transcription/smart-format? is true, :transcription/punctuate? must be false. More details here: https://developers.deepgram.com/docs/smart-format#enable-feature"}
     (fn [{:transcription/keys [smart-format? punctuate?]}]
       (not (and smart-format? punctuate?)))]])
 
-(def deepgram-processor
-  (flow/process
-    (flow/map->step
-      {:describe (fn [] {:ins {:sys-in "Channel for system messages that take priority"
-                               :in "Channel for audio input frames (from transport-in) "}
-                         :outs {:sys-out "Channel for system messages that have priority"
-                                :out "Channel on which transcription frames are put"}
-                         :params {:transcription/api-key "Api key required for deepgram connection"
-                                  :transcription/interim-results? "Wether deepgram should send interim transcriptions back"
-                                  :transcription/punctuate? "If transcriptions are punctuated or not. Not required if transcription/smart-format is true"
-                                  :transcription/vad-events? "Enable this for deepgram to send speech-start/utterance end events"
-                                  :transcription/smart-format? "Enable smart format"
-                                  :transcription/model "Model used for transcription"
-                                  :transcription/utterance-end-ms "silence time after speech in ms until utterance is considered ended"
-                                  :transcription/language "Language for speech"
-                                  :transcription/channels "Number of channels for audio (1 or 2)"
-                                  :transcription/encoding "Audio encoding of the input audio"
-                                  :transcription/sample-rate "Sample rate of the input audio"}
-                         :workload :io})
-       :init (fn [args]
-               (let [websocket-url (make-websocket-url args)
-                     ws-read-chan (a/chan 1024)
-                     ws-write-chan (a/chan 1024)
-                     alive? (atom true)
-                     conn-config {:headers {"Authorization" (str "Token " (:transcription/api-key args))}
-                                  :on-open (fn [_]
-                                             (t/log! :info "Deepgram websocket connection open"))
-                                  :on-message (fn [_ws ^HeapCharBuffer data _last?]
-                                                (a/put! ws-read-chan (str data)))
-                                  :on-error (fn [_ e]
-                                              (t/log! {:level :error :id :deepgram-transcriptor} ["Error" e]))
-                                  :on-close (fn [_ws code reason]
-                                              (reset! alive? false)
-                                              (t/log! {:level :info :id :deepgram-transcriptor} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason]))}
+(def describe
+  {:ins {:sys-in "Channel for system messages that take priority"
+         :in "Channel for audio input frames (from transport-in)"}
+   :outs {:sys-out "Channel for system messages that have priority"
+          :out "Channel on which transcription frames are put"}
+   :params (schema/->describe-parameters DeepgramConfigSchema)
+   :workload :io})
 
-                     _ (t/log! {:level :info :id :deepgram-transcriptor} ["Connecting to transcription websocket" websocket-url])
-                     ws-conn @(ws/websocket
-                                websocket-url
-                                conn-config)]
-                 (vthread-loop []
-                   (when @alive?
-                     (when-let [msg (a/<!! ws-write-chan)]
-                       (when (and (frame/audio-input-raw? msg) @alive?)
-                         (ws/send! ws-conn (:frame/data msg))
-                         (recur)))))
-                 (vthread-loop []
-                   (when @alive?
-                     (a/<!! (a/timeout 3000))
-                     (t/log! {:level :trace :id :deepgram} "Sending keep-alive message")
-                     (ws/send! ws-conn keep-alive-payload)
-                     (recur)))
-                 {:websocket/conn ws-conn
-                  :websocket/alive? alive?
-                  ::flow/in-ports {:ws-read ws-read-chan}
-                  ::flow/out-ports {:ws-write ws-write-chan}}))
+(defn init!
+  [args]
+  ;; Validate configuration
+  (let [validated-args (schema/parse-with-defaults DeepgramConfig args)
+        websocket-url (make-websocket-url validated-args)
+        ws-read-chan (a/chan 1024)
+        ws-write-chan (a/chan 1024)
+        alive? (atom true)
+        conn-config {:headers {"Authorization" (str "Token " (:transcription/api-key validated-args))}
+                     :on-open (fn [_]
+                                (t/log! :info "Deepgram websocket connection open"))
+                     :on-message (fn [_ws ^HeapCharBuffer data _last?]
+                                   (a/put! ws-read-chan (str data)))
+                     :on-error (fn [_ e]
+                                 (t/log! {:level :error :id :deepgram-transcriptor} ["Error" e]))
+                     :on-close (fn [_ws code reason]
+                                 (reset! alive? false)
+                                 (t/log! {:level :info :id :deepgram-transcriptor} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason]))}
 
-       ;; Close ws when pipeline stops
-       :transition (fn [{:websocket/keys [conn]
-                         ::flow/keys [in-ports out-ports] :as state} transition]
-                     (when (= transition ::flow/stop)
-                       (t/log! {:id :deepgram-transcriptor :level :info} "Closing transcription websocket connection")
-                       (reset! (:websocket/alive? state) false)
-                       (when conn
-                         (ws/send! conn close-connection-payload)
-                         (ws/close! conn))
-                       (doseq [port (concat (vals in-ports) (vals out-ports))]
-                         (a/close! port))
-                       state)
-                     state)
+        _ (t/log! {:level :info :id :deepgram-transcriptor} ["Connecting to transcription websocket" websocket-url])
+        ws-conn @(ws/websocket websocket-url conn-config)]
 
-       :transform (fn [state in-name msg]
-                    (if (= in-name :ws-read)
-                      (let [m (u/parse-if-json msg)
-                            frames (deepgram-event->frames m)]
-                        [state {:out frames}])
-                      (cond
-                        (frame/audio-input-raw? msg) [state {:ws-write [msg]}]
-                        :else [state])))})))
+    ;; Audio message processing loop
+    (vthread-loop []
+      (when @alive?
+        (when-let [msg (a/<!! ws-write-chan)]
+          (when (and (frame/audio-input-raw? msg) @alive?)
+            (ws/send! ws-conn (:frame/data msg))
+            (recur)))))
+
+    ;; Keep-alive loop
+    (vthread-loop []
+      (when @alive?
+        (a/<!! (a/timeout 3000))
+        (t/log! {:level :trace :id :deepgram} "Sending keep-alive message")
+        (ws/send! ws-conn keep-alive-payload)
+        (recur)))
+
+    {:websocket/conn ws-conn
+     :websocket/alive? alive?
+     ::flow/in-ports {:ws-read ws-read-chan}
+     ::flow/out-ports {:ws-write ws-write-chan}}))
+
+(defn transition
+  [{:websocket/keys [conn]
+    ::flow/keys [in-ports out-ports] :as state} transition]
+  (when (= transition ::flow/stop)
+    (t/log! {:id :deepgram-transcriptor :level :info} "Closing transcription websocket connection")
+    (when (:websocket/alive? state)
+      (reset! (:websocket/alive? state) false))
+    (when conn
+      (ws/send! conn close-connection-payload)
+      (ws/close! conn))
+    (doseq [port (concat (vals in-ports) (vals out-ports))]
+      (when port
+        (a/close! port))))
+  state)
+
+(defn transform
+  [state in-name msg]
+  (if (= in-name :ws-read)
+    (let [m (u/parse-if-json msg)
+          frames (deepgram-event->frames m)]
+      [state {:out frames}])
+    (cond
+      (frame/audio-input-raw? msg) [state {:ws-write [msg]}]
+      :else [state])))
+
+(defn processor-fn
+  ([] describe)
+  ([params] (init! params))
+  ([state transition] (transition state transition))
+  ([state in-name msg] (transform state in-name msg)))
+
+(def deepgram-processor (flow/process processor-fn))
