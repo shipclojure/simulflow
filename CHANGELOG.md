@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file. This change
 ### Fixed
 - **Schema Description**: Fixed `schema/->describe-parameters` function to properly handle `:or` clauses, now displays human-readable descriptions like "Type: (set of string or vector of string)" instead of unhelpful "Type: :or"
 - **Schema Description**: Added recursive schema type description with `describe-schema-type` helper function that properly handles complex nested types including `:or`, `:set`, `:vector`, and basic types
+- **Activity Monitor**: Fixed a bug where the transition function wasn't returning correct state
 
 ### Improved
 - **OpenAI LLM Process**: Moved llm completion request logic to `transform` pure function for easier testing and reasoning.
