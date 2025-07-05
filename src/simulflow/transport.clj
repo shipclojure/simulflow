@@ -332,7 +332,8 @@
   (when (and (= transition ::flow/stop)
              (fn? (::close state)))
     (t/log! :info "Closing transport in")
-    ((::close state))))
+    ((::close state)))
+  state)
 
 (defn mic-transport-in-transform
   [state _ {:keys [audio-data timestamp]}]
