@@ -343,7 +343,11 @@ S: Start, E: End, T: Transcription, I: Interim, X: Text
   ([] {:ins {:in "Channel for llm text chunks"}
        :outs {:out "Channel for assembled speak frames"}})
   ([_] {:acc nil})
-  ([state _] state)
+  ([state transition]
+   (when (= transition ::flow/stop)
+     ;; No cleanup needed for this processor
+     )
+   state)
   ([{:keys [acc]} _ msg]
    (when (frame/llm-text-chunk? msg)
      (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
