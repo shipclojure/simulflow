@@ -166,7 +166,8 @@
       (when @flow-started?
         (when-let [[msg c] (a/alts!! [report-chan error-chan])]
           (when (map? msg)
-            (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
+            (t/log! (cond-> {:level :debug :id (if (= c error-chan) :error :report)}
+                      (= c error-chan) (assoc :error msg)) msg))
           (recur)))))
 
   ;; Stop the conversation
