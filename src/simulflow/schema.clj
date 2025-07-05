@@ -1,6 +1,7 @@
 (ns simulflow.schema
   (:require
    [clojure.core.async.impl.protocols :as impl]
+   [clojure.string :as str]
    [malli.core :as m]
    [malli.error :as me]
    [malli.transform :as mt]
@@ -24,21 +25,39 @@
        :data data
        :children (if (= 1 (count childs)) (first childs) (vec childs))})))
 
+(defn describe-schema-type
+  "Recursively describe a schema type for human readability"
+  [schema]
+  (let [schema-type (m/type schema)]
+    (case schema-type
+      :or (str "(" (str/join " or " (map describe-schema-type (m/children schema))) ")")
+      :set (str "set of " (describe-schema-type (first (m/children schema))))
+      :vector (str "vector of " (describe-schema-type (first (m/children schema))))
+      :map "map"
+      :string "string"
+      :int "integer"
+      :boolean "boolean"
+      :keyword "keyword"
+      :any "any"
+      ;; For simple keyword schemas or other types
+      (str schema-type))))
+
 (defn ->describe-parameters
   "Take a malli schema and transform to core.async.flow processor :describe key format"
   [s]
-  (let [{:keys [children type]} (parse-schema s)]
-    (assert (= type :map) "Can only transform :map schemas to :describe parameter format ")
-    (reduce
-     (fn [acc child]
-       (let [{key-name :type
-              {:keys [description optional]} :data
-              children :children} (parse-schema child)
-             {:keys [type data]} (parse-schema children)
-             description (or description (:description data))]
-         (assoc acc key-name (apply str (remove nil? ["Type: " type (when optional "; Optional ") (when description (str "; Description: " description))])))))
-     {}
-     children)))
+  (assert (= :map (m/type s)) "Can only transform :map schemas to :describe parameter format")
+  (reduce
+   (fn [acc [key-name props schema]]
+     (let [schema-type (describe-schema-type schema)
+           {:keys [description optional]} props
+           description (or description (:description props))]
+       (assoc acc key-name
+              (apply str (remove nil?
+                                 ["Type: " schema-type
+                                  (when optional "; Optional ")
+                                  (when description (str "; Description: " description))])))))
+   {}
+   (m/children s)))
 
 (defn get-required-fields
   "Extract required field keys from a Malli schema.

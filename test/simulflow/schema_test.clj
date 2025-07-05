@@ -210,3 +210,105 @@
           params {::required-param "test"}
           result (sut/parse-with-defaults activity-schema params)]
       (is (= result {::required-param "test", ::timeout-ms 5000})))))
+
+(deftest ->describe-parameters-test
+  (testing "Simple schema with basic types"
+    (let [schema [:map
+                  [::simple-string {:optional true
+                                    :description "A simple string field"}
+                   :string]
+                  [::simple-int {:description "A required integer field"}
+                   :int]
+                  [::no-description :boolean]]
+          result (sut/->describe-parameters schema)]
+      (is (= result {::simple-string "Type: string; Optional ; Description: A simple string field"
+                     ::simple-int "Type: integer; Description: A required integer field"
+                     ::no-description "Type: boolean"}))))
+
+  (testing "Schema with :or alternatives"
+    (let [schema [:map
+                  [::or-simple {:optional true
+                                :description "String or integer"}
+                   [:or :string :int]]
+                  [::or-collections {:description "Set or vector of strings"}
+                   [:or
+                    [:set :string]
+                    [:vector :string]]]]
+          result (sut/->describe-parameters schema)]
+      (is (= result {::or-simple "Type: (string or integer); Optional ; Description: String or integer"
+                     ::or-collections "Type: (set of string or vector of string); Description: Set or vector of strings"}))))
+
+  (testing "Schema with complex nested types"
+    (let [schema [:map
+                  [::vector-field {:description "Vector of integers"}
+                   [:vector :int]]
+                  [::set-field {:optional true}
+                   [:set :keyword]]
+                  [::map-field {:description "Nested map"}
+                   :map]]
+          result (sut/->describe-parameters schema)]
+      (is (= result {::vector-field "Type: vector of integer; Description: Vector of integers"
+                     ::set-field "Type: set of keyword; Optional "
+                     ::map-field "Type: map; Description: Nested map"}))))
+
+  (testing "Schema with multi-alternative :or"
+    (let [schema [:map
+                  [::multi-or {:description "String, integer, or boolean"}
+                   [:or :string :int :boolean]]
+                  [::complex-or {:optional true
+                                 :description "Multiple collection types"}
+                   [:or
+                    [:set :string]
+                    [:vector :int]
+                    [:set :keyword]]]]
+          result (sut/->describe-parameters schema)]
+      (is (= result {::multi-or "Type: (string or integer or boolean); Description: String, integer, or boolean"
+                     ::complex-or "Type: (set of string or vector of integer or set of keyword); Optional ; Description: Multiple collection types"}))))
+
+  (testing "Edge cases and validation"
+    (testing "Non-map schema throws assertion error"
+      (is (thrown-with-msg?
+           AssertionError
+           #"Can only transform :map schemas"
+           (sut/->describe-parameters :string))))
+
+    (testing "Empty map schema"
+      (let [schema [:map]
+            result (sut/->describe-parameters schema)]
+        (is (= result {}))))
+
+    (testing "Field without description or optional flag"
+      (let [schema [:map
+                    [::bare-field :string]]
+            result (sut/->describe-parameters schema)]
+        (is (= result {::bare-field "Type: string"}))))))
+
+(deftest describe-schema-type-test
+  (testing "Basic schema types"
+    (is (= (sut/describe-schema-type :string) "string"))
+    (is (= (sut/describe-schema-type :int) "integer"))
+    (is (= (sut/describe-schema-type :boolean) "boolean"))
+    (is (= (sut/describe-schema-type :keyword) "keyword"))
+    (is (= (sut/describe-schema-type :any) "any"))
+    (is (= (sut/describe-schema-type :map) "map")))
+
+  (testing "Collection schema types"
+    (is (= (sut/describe-schema-type [:set :string]) "set of string"))
+    (is (= (sut/describe-schema-type [:vector :int]) "vector of integer"))
+    (is (= (sut/describe-schema-type [:set :keyword]) "set of keyword")))
+
+  (testing ":or schema types"
+    (is (= (sut/describe-schema-type [:or :string :int]) "(string or integer)"))
+    (is (= (sut/describe-schema-type [:or [:set :string] [:vector :string]]) "(set of string or vector of string)"))
+    (is (= (sut/describe-schema-type [:or :string :int :boolean]) "(string or integer or boolean)")))
+
+  (testing "Complex nested schemas"
+    (is (= (sut/describe-schema-type [:or
+                                      [:set :string]
+                                      [:vector :int]
+                                      [:set :keyword]])
+           "(set of string or vector of integer or set of keyword)")))
+
+  (testing "Unknown schema types fall back to string representation"
+    ;; Test with a simple keyword that isn't recognized but is valid
+    (is (= (sut/describe-schema-type :double) ":double"))))
