@@ -236,11 +236,11 @@
     ;; This test would need mock channels to verify closure
     ;; For now, just test that the function exists and doesn't throw
     (let [mock-state {:clojure.core.async.flow/in-ports {} :clojure.core.async.flow/out-ports {}}]
-      (is (nil? (openai/transition mock-state :clojure.core.async.flow/stop)))))
+      (is (= (openai/transition mock-state :clojure.core.async.flow/stop) mock-state))))
 
   (testing "ignores non-stop transitions"
     (let [mock-state {:clojure.core.async.flow/in-ports {} :clojure.core.async.flow/out-ports {}}]
-      (is (nil? (openai/transition mock-state :clojure.core.async.flow/start))))))
+      (is (= (openai/transition mock-state :clojure.core.async.flow/start) mock-state)))))
 
 (deftest openai-multi-arity-fn-test
   (testing "0-arity returns describe"
@@ -251,7 +251,7 @@
 
   (testing "2-arity delegates to transition"
     (let [mock-state {:clojure.core.async.flow/in-ports {} :clojure.core.async.flow/out-ports {}}]
-      (is (nil? (openai/openai-llm-fn mock-state :clojure.core.async.flow/stop)))))
+      (is (= mock-state (openai/openai-llm-fn mock-state :clojure.core.async.flow/stop)))))
 
   (testing "3-arity delegates to transform"
     (let [context-frame (frame/llm-context {:messages [{:role :system :content "You are helpful"}] :tools []})

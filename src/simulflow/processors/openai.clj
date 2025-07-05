@@ -138,10 +138,11 @@
             ::flow/out-ports {::llm-write llm-write}})))
 
 (defn transition
-  [{::flow/keys [in-ports out-ports]} transition]
+  [{::flow/keys [in-ports out-ports] :as state} transition]
   (when (= transition ::flow/stop)
     (doseq [port (concat (vals in-ports) (vals out-ports))]
-      (a/close! port))))
+      (a/close! port)))
+  state)
 
 (defn transform-handle-llm-response
   "Handle the streaming response from the LLM. Return appropriate frames based on
