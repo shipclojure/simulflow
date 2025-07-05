@@ -94,7 +94,7 @@
     [:string
      {:description "Groq API key"
       :secret true ;; Marks this as sensitive data
-      :min 40      ;; Groq API keys are typically longer
+      :min 40 ;; Groq API keys are typically longer
       :error/message "Invalid Groq API key format"}]]])
 
 (defn flow-do-completion!
@@ -148,10 +148,11 @@
                                 :llm/max-completion-tokens "Optional Max tokens in completion"}
                        :workload :io})
 
-     :transition (fn [{::flow/keys [in-ports out-ports]} transition]
+     :transition (fn [{::flow/keys [in-ports out-ports] :as state} transition]
                    (when (= transition ::flow/stop)
                      (doseq [port (concat (vals in-ports) (vals out-ports))]
-                       (a/close! port))))
+                       (a/close! port)))
+                   state)
      :init (fn [params]
              (let [state (m/decode GroqLLMConfigSchema params mt/default-value-transformer)
                    llm-write (a/chan 100)
