@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This change
 ### Added
 - Command system to express IO commands from transform function for easier testing
 - Comprehensive test suite for `simulflow.schema` namespace with `->describe-parameters` and `describe-schema-type` functions
+- Comprehensive test suite for `simulflow.processors.deepgram`
 
 ### Fixed
 - **Schema Description**: Fixed `schema/->describe-parameters` function to properly handle `:or` clauses, now displays human-readable descriptions like "Type: (set of string or vector of string)" instead of unhelpful "Type: :or"
@@ -15,6 +16,7 @@ All notable changes to this project will be documented in this file. This change
 ### Improved
 - **OpenAI LLM Process**: Moved llm completion request logic to `transform` pure function for easier testing and reasoning.
 - **Schema System**: Enhanced schema description system to use Malli's built-in functions (`m/type`, `m/children`) for more robust schema parsing and type description
+- **Deepgram Process**: Split the process into modular functions to enable composability for the user
 
 ## [0.1.5-alpha] - 2025-07-03
 
