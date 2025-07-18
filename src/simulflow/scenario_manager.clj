@@ -1,7 +1,8 @@
 (ns simulflow.scenario-manager
-  "Scenario Manager is a way to build structured conversations with the underlying
-  LLM. In enables you to create predefined conversation scenarios that follow a
-  specific flow. Use it when the interaction is highly structured.
+  "Scenario Manager is a way to give instructions to the LLM that need to be
+  executed in ordrr. In enables you to create predefined scenarios that follow a
+  specific flow. Use it when the interaction is highly structured, new tasks are
+  conditioned by previous tasks success.
 
   The scenario manager works by appending the messages that define the current
   node to the existing llm context."

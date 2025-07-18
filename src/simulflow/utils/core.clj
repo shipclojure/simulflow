@@ -6,7 +6,6 @@
   (:import
    (clojure.core.async.impl.channels ManyToManyChannel)
    (java.util Base64)))
-;; => nil
 
 (defmulti encode-base64 (fn [s] (class s)))
 
