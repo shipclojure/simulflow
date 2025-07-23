@@ -1,0 +1,45 @@
+#+title: Drafts
+#+description: The place where ideas battle it out to become decisions
+#+startup: indent
+
+* Audio out transport
+
+There are two current modes of audio out transport:
+- =speakers= - just write the audio to a audio source line
+
+- =core.async channel= - put audio frames on a channel to be handled by the
+  outside world. Even =speakers= could be handled this way, we ship it as a
+  commodity for people.
+
+
+** Responsabilities of the audio out
+
+
+*** 1. Buffer audio frames to maintain realtime sending
+
+This is important because we support bot interruption, therefore when the user
+speaks, we need to be able to stop the flow of frames. We cannot rely on the
+output "device" to handle that when we send an interrupt signal
+
+*** 2. Send bot speech events
+
+The audio out sends bot speech events when the bot started/stopped speaking.
+These are important for judging if the bot should be interrupted at certain
+times or to understand if there is activity on the call - used for [[file:~/workspace/simulflow/src/simulflow/processors/activity_monitor.clj::(ns simulflow.processors.activity-monitor][activity
+monitoring]] among others
+
+*** 3. Accept system frames that contain serializer and serialize output frames when a serializer exists
+This is something that most of the time can be handled on the other side of the
+core async channel to limit the responsability of the simulflow core but there
+might be cases where this is required here.
+
+** Current problems
+
+1. The logic was created more for =speakers-out= but it is better positioned for
+normal =realtime async out=. At the core of it, =speakers-out= is just a
+different =init!= that starts a audio source line. The code should be
+refactored.
+
+* Audio in transport
+
+** TODO Provide a transport in processor that just takes a in channel and receives in frames on it (might be there already)

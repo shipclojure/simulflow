@@ -1,0 +1,4 @@
+#+title: This directory contains implementation docs & decisions
+
+Follow this document if you want to understand why things are the way they are
+and how it got to this point.
