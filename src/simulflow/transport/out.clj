@@ -7,6 +7,7 @@
    [simulflow.transport.protocols :as tp]
    [simulflow.utils.audio :refer [open-line!]]
    [simulflow.utils.core :as u]
+   [taoensso.telemere :as t]
    [uncomplicate.clojure-sound.core :as sound]
    [uncomplicate.clojure-sound.sampled :as sampled]
    [uncomplicate.commons.core :refer [close!]]))
@@ -29,10 +30,17 @@
         ;; Generate audio write command
         audio-frame (if serializer
                       (tp/serialize-frame serializer frame)
-                      frame)
+                      (:frame/data frame))
         audio-command {:command :write-audio
-                       :data (:frame/data audio-frame)
+                       :data audio-frame
                        :delay-until (::next-send-time updated-state)}]
+    (t/log! {:msg "Sending to audio write"
+             :id :realtime-out
+             :level :debug
+             :data {:out events
+                    :frame frame
+                    :state state
+                    :audio-write [audio-command]}})
 
     [updated-state {:out events
                     :audio-write [audio-command]}]))
@@ -51,7 +59,9 @@
          :sys-in "Channel for system messages"}
    :outs {:out "Channel for bot speech status frames"}
    :params {:audio.out/chan "Core async channel to put audio data. The data is raw byte array or serialzed if a serializer is active"
-            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
+            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
+            :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
+            }})
 
 (defn realtime-speakers-out-init!
   [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
@@ -73,22 +83,23 @@
 
     ;; Minimal timer process - just sends timing events (like activity monitor)
     (vthread-loop []
-                  (let [check-interval 1000] ; Check every second for speech timeout
-                    (<!! (timeout check-interval))
-                    (>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
-                    (recur)))
+      (let [check-interval 1000] ; Check every second for speech timeout
+        (<!! (timeout check-interval))
+        (>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
+        (recur)))
 
     ;; Audio writer process - handles only audio I/O side effects
     (vthread-loop []
-                  (when-let [audio-command (<!! audio-write-ch)]
-                    (when (= (:command audio-command) :write-audio)
-                      (let [current-time (u/mono-time)
-                            delay-until (:delay-until audio-command 0)
-                            wait-time (max 0 (- delay-until current-time))]
-                        (when (pos? wait-time)
-                          (<!! (timeout wait-time)))
-                        (sound/write! (:data audio-command) line 0)))
-                    (recur)))
+      (when-let [audio-command (<!! audio-write-ch)]
+
+        (when (= (:command audio-command) :write-audio)
+          (let [current-time (u/mono-time)
+                delay-until (:delay-until audio-command 0)
+                wait-time (max 0 (- delay-until current-time))]
+            #_(when (pos? wait-time)
+              (<!! (timeout wait-time)))
+            (sound/write! (:data audio-command) line 0)))
+        (recur)))
 
     ;; Return state with minimal setup
     {::flow/in-ports {:timer-out timer-out-ch}
@@ -104,10 +115,10 @@
      ::audio-line line}))
 
 (defn realtime-out-init!
-  [{:audio.out/keys [duration-ms chan]}]
+  [{:audio.out/keys [duration-ms chan sending-interval]}]
   (let [;; Configuration
         duration (or duration-ms 20)
-        sending-interval (/ duration 2)
+        sending-interval (or sending-interval (/ duration 2) )
         silence-threshold (* 4 duration)
 
         ;; Channels following activity monitor pattern
@@ -125,6 +136,9 @@
     ;; Audio writer process - handles only audio I/O side effects
     (vthread-loop []
       (when-let [audio-command (<!! audio-write-ch)]
+        (t/log! {:data audio-command
+                 :level :debug
+                 :id :out-init! })
         (when (= (:command audio-command) :write-audio)
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)

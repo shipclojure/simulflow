@@ -136,7 +136,7 @@
         (let [[_ output] (sut/realtime-out-transform state :in frame)
               audio-write (first (:audio-write output))]
           (is (= :write-audio (:command audio-write)))
-          (is (= [99 99 99] (:data audio-write))))))) ; Should use serialized data
+          (is (= [99 99 99] (:frame/data (:data audio-write)))))))) ; Should use serialized data
 
   (testing "transform without serializer"
     (let [state {::sut/speaking? false

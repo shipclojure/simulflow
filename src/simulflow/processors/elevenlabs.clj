@@ -196,7 +196,7 @@
     (vthread-loop []
       (when @alive?
         (a/<!! (a/timeout 3000))
-        (t/log! {:level :trace :id :elevenlabs} "Sending keep-alive message")
+        (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
         (ws/send! ws-conn keep-alive-message)
         (recur)))
     {:websocket/conn ws-conn

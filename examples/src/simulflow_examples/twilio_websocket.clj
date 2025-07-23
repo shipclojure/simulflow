@@ -136,7 +136,8 @@
                                :audio.out/channels channels
                                :audio.out/duration-ms chunk-duration-ms}}
        :realtime-out {:proc transport-out/realtime-out-processor
-                      :args {:audio.out/chan out}}
+                      :args {:audio.out/chan out
+                             :audio.out/sending-interval 1}}
        :activity-monitor {:proc activity-monitor/process
                           :args {::activity-monitor/timeout-ms 2000}}}
       extra-procs)
