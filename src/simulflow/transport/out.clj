@@ -146,7 +146,7 @@
      ::silence-threshold silence-threshold}))
 
 
-(defn realtime-speakers-out-transition
+(defn realtime-out-transition
   [{::flow/keys [in-ports out-ports] :as state} transition]
   (when (= transition ::flow/stop)
     (when-let [line (::audio-line state)]
@@ -200,7 +200,7 @@
   "Processor fn that sends audio chunks to output channel in a realtime manner"
   ([] realtime-out-describe)
   ([params] (realtime-out-init! params))
-  ([state transition] (realtime-speakers-out-transition state transition))
+  ([state transition] (realtime-out-transition state transition))
   ([state input-port frame] (realtime-out-transform state input-port frame)))
 
 (def realtime-out-processor
@@ -211,7 +211,7 @@
   "Processor fn that sends audio chunks to output speakers in a realtime manner"
   ([] realtime-speakers-out-describe)
   ([params] (realtime-speakers-out-init! params))
-  ([state transition] (realtime-speakers-out-transition state transition))
+  ([state transition] (realtime-out-transition state transition))
   ([state input-port frame] (realtime-out-transform state input-port frame)))
 
 (def realtime-speakers-out-processor
