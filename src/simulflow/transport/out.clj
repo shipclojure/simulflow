@@ -45,6 +45,13 @@
             :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
             :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
 
+(def realtime-out-describe
+  {:ins {:in "Channel for audio output frames"
+         :sys-in "Channel for system messages"}
+   :outs {:out "Channel for bot speech status frames"}
+   :params {:audio.out/chan "Core async channel to put audio data. The data is raw byte array or serialzed if a serializer is active"
+            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
+
 (defn realtime-speakers-out-init!
   [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
     :or {sample-rate 16000
@@ -191,8 +198,8 @@
 
 (defn realtime-out-fn
   "Processor fn that sends audio chunks to output channel in a realtime manner"
-  ([] realtime-speakers-out-describe)
-  ([params] (realtime-speakers-out-init! params))
+  ([] realtime-out-describe)
+  ([params] (realtime-out-init! params))
   ([state transition] (realtime-speakers-out-transition state transition))
   ([state input-port frame] (realtime-out-transform state input-port frame)))
 
