@@ -1,4 +1,24 @@
-(ns simulflow.utils.audio)
+(ns simulflow.utils.audio
+  (:require [uncomplicate.clojure-sound.core :as sound]
+            [uncomplicate.clojure-sound.sampled :as sampled])
+  (:import (javax.sound.sampled AudioFormat AudioSystem DataLine$Info)))
+
+(defn line-supported?
+  [^DataLine$Info info]
+  (AudioSystem/isLineSupported info))
+
+(defn open-line!
+  "Opens line with specified format. Returns the TargetDataLine or SourceDataLine"
+  [line-type ^AudioFormat format]
+  (assert (#{:target :source} line-type) "Invalid line type")
+  (let [info (sampled/line-info line-type format)
+        line (sampled/line info)]
+    (when-not (line-supported? info)
+      (throw (ex-info "Audio line not supported"
+                      {:format format})))
+    (sound/open! line format)
+    (sound/start! line)
+    line))
 
 (defn audio-chunk-size
   "Calculates the size of an audio chunk in bytes based on audio parameters.

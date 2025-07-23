@@ -5,16 +5,14 @@
             [simulflow.frame :as frame]
             [simulflow.schema :as schema]
             [simulflow.transport.out :as out]
-            [simulflow.transport.protocols :as tp]
             [simulflow.transport.serializers :refer [make-twilio-serializer]]
-            [simulflow.utils.audio :as au]
+            [simulflow.utils.audio :as audio]
             [simulflow.utils.core :as u :refer [defaliases]]
             [taoensso.telemere :as t]
             [uncomplicate.clojure-sound.core :as sound]
             [uncomplicate.clojure-sound.sampled :as sampled]
             [uncomplicate.commons.core :refer [close!]])
-  (:import (java.util Arrays)
-           (javax.sound.sampled AudioFormat AudioSystem DataLine$Info)))
+  (:import (java.util Arrays)))
 
 (def AsyncOutputProcessorSchema
   [:map
@@ -51,23 +49,6 @@
   (if (bytes? input)
     [state {:out [(frame/audio-input-raw input)]}]
     [state]))
-
-(defn line-supported?
-  [^DataLine$Info info]
-  (AudioSystem/isLineSupported info))
-
-(defn open-line!
-  "Opens the microphone with specified format. Returns the TargetDataLine."
-  [line-type ^AudioFormat format]
-  (assert (#{:target :source} line-type) "Invalid line type")
-  (let [info (sampled/line-info line-type format)
-        line (sampled/line info)]
-    (when-not (line-supported? info)
-      (throw (ex-info "Audio line not supported"
-                      {:format format})))
-    (sound/open! line format)
-    (sound/start! line)
-    line))
 
 (defn- frame-buffer-size
   "Get read buffer size based on the sample rate for input"
@@ -122,7 +103,7 @@
           "Either provide :audio.out/chunk-size or sample-rate, sample-size-bits, channels and chunk duration for the size to be computed")
   (assoc config :audio.out/chunk-size
          (or chunk-size
-             (au/audio-chunk-size {:sample-rate sample-rate
+             (audio/audio-chunk-size {:sample-rate sample-rate
                                    :sample-size-bits sample-size-bits
                                    :channels channels
                                    :duration-ms duration-ms}))))
@@ -190,24 +171,6 @@
                     :transform async-in-transform})))
 
 
-(defn realtime-out-describe
-  []
-  {:ins {:in "Channel for audio output frames "
-         :sys-in "Channel for system messages"}
-   :outs {:out "Channel for bot speech status frames"}
-   :params {:transport/out-chan "Channel on which to put buffered serialized audio"
-            :audio.out/duration-ms "Duration of each audio chunk. Defaults to 20ms"
-            :transport/supports-interrupt? "Whether the processor supports interrupt or not"}})
-
-(defn realtime-out-transition
-  [{::flow/keys [in-ports out-ports] :as state} transition]
-  (when (= transition ::flow/stop)
-    (doseq [port (concat (vals in-ports) (vals out-ports))]
-      (a/close! port)))
-  state)
-
-
-
 (defn mic-transport-in-describe
   []
   {:outs {:out "Channel on which audio frames are put"}
@@ -232,7 +195,7 @@
                               :buffer-size buffer-size
                               :signed signed
                               :endian? endian})
-        line (open-line! :target audio-format)
+        line (audio/open-line! :target audio-format)
         mic-in-ch (a/chan channel-size)
         buffer (byte-array buffer-size)
         running? (atom true)
@@ -281,142 +244,6 @@
    (mic-transport-in-transform state in msg)))
 
 (def microphone-transport-in (flow/process mic-transport-in-fn))
-
-(defn process-realtime-out-audio-frame
-  "Pure function to process an audio frame and determine state changes.
-   Returns [updated-state output-map] for the given state, frame, and current time."
-  [state frame serializer current-time]
-  (let [should-emit-start? (not (::speaking? state))
-        updated-state (-> state
-                          (assoc ::speaking? true)
-                          (assoc ::last-audio-time current-time)
-                          (assoc ::next-send-time (+ current-time (::sending-interval state))))
-
-        ;; Generate events based on state transitions
-        events (if should-emit-start?
-                 [(frame/bot-speech-start true)]
-                 [])
-
-        ;; Generate audio write command
-        audio-frame (if serializer
-                      (tp/serialize-frame serializer frame)
-                      frame)
-        audio-command {:command :write-audio
-                       :data (:frame/data audio-frame)
-                       :delay-until (::next-send-time updated-state)}]
-
-    [updated-state {:out events
-                    :audio-write [audio-command]}]))
-
-(def realtime-speakers-out-describe
-  {:ins {:in "Channel for audio output frames"
-         :sys-in "Channel for system messages"}
-   :outs {:out "Channel for bot speech status frames"}
-   :params {:audio.out/sample-rate "Sample rate of the output audio"
-            :audio.out/sample-size-bits "Size in bits for each sample"
-            :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
-            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
-
-(defn realtime-speakers-out-init!
-  [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
-    :or {sample-rate 16000
-         channels 1
-         sample-size-bits 16}}]
-  (let [;; Configuration
-        duration (or duration-ms 20)
-        sending-interval (/ duration 2)
-        silence-threshold (* 4 duration)
-
-        ;; Audio line setup
-        line (open-line! :source (sampled/audio-format sample-rate sample-size-bits channels))
-
-        ;; Channels following activity monitor pattern
-        timer-in-ch (a/chan 1024)
-        timer-out-ch (a/chan 1024)
-        audio-write-ch (a/chan 1024)]
-
-    ;; Minimal timer process - just sends timing events (like activity monitor)
-    (vthread-loop []
-      (let [check-interval 1000] ; Check every second for speech timeout
-        (a/<!! (a/timeout check-interval))
-        (a/>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
-        (recur)))
-
-    ;; Audio writer process - handles only audio I/O side effects
-    (vthread-loop []
-      (when-let [audio-command (a/<!! audio-write-ch)]
-        (when (= (:command audio-command) :write-audio)
-          (let [current-time (u/mono-time)
-                delay-until (:delay-until audio-command 0)
-                wait-time (max 0 (- delay-until current-time))]
-            (when (pos? wait-time)
-              (a/<!! (a/timeout wait-time)))
-            (sound/write! (:data audio-command) line 0)))
-        (recur)))
-
-    ;; Return state with minimal setup
-    {::flow/in-ports {:timer-out timer-out-ch}
-     ::flow/out-ports {:timer-in timer-in-ch
-                       :audio-write audio-write-ch}
-     ;; Initial business logic state (managed in transform)
-     ::speaking? false
-     ::last-audio-time 0
-     ::next-send-time (u/mono-time)
-     ::duration-ms duration
-     ::sending-interval sending-interval
-     ::silence-threshold silence-threshold
-     ::audio-line line}))
-
-(defn realtime-speakers-out-transition
-  [{::flow/keys [in-ports out-ports] :as state} transition]
-  (when (= transition ::flow/stop)
-    (when-let [line (::audio-line state)]
-      (sound/stop! line)
-      (sampled/flush! line)
-      (close! line))
-    (doseq [port (concat (vals in-ports) (vals out-ports))]
-      (a/close! port)))
-  state)
-
-(defn realtime-speakers-out-transform
-  [{:transport/keys [serializer] :as state} input-port frame]
-  (let [current-time (u/mono-time)]
-    (cond
-      ;; Handle incoming audio frames - core business logic moved here
-      (and (= input-port :in)
-           (frame/audio-output-raw? frame))
-      (process-realtime-out-audio-frame state frame serializer current-time)
-
-      (and (= input-port :timer-out)
-           (:timer/tick frame))
-      (let [silence-duration (- (:timer/timestamp frame) (::last-audio-time state))
-            should-emit-stop? (and (::speaking? state)
-                                   (> silence-duration (::silence-threshold state)))
-
-            updated-state (if should-emit-stop?
-                            (assoc state ::speaking? false)
-                            state)
-
-            events (if should-emit-stop?
-                     [(frame/bot-speech-stop true)]
-                     [])]
-
-        [updated-state {:out events}])
-
-      ;; Handle system config changes
-      (and (= input-port :in)
-           (frame/system-config-change? frame))
-      (if-let [new-serializer (:transport/serializer (:frame/data frame))]
-        [(assoc state :transport/serializer new-serializer) {}]
-        [state {}])
-
-      ;; Handle system input passthrough
-      (= input-port :sys-in)
-      [state {:out [frame]}]
-
-      ;; Default case
-      :else [state {}])))
-
 
 ;; Backward compatibility
 (defaliases
