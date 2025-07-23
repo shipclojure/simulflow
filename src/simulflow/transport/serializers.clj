@@ -13,7 +13,7 @@
       (when (frame/audio-output-raw? frame)
         (u/json-str {:event "media"
                      :streamSid stream-sid
-                     :media {:payload (u/encode-base64 (:data frame))}})))
+                     :media {:payload (u/encode-base64 (:frame/data frame))}})))
 
     (deserialize-frame [_ raw-data]
       ;; Convert Twilio message to pipeline frame

@@ -1,14 +1,15 @@
 (ns simulflow.transport.out
-  (:require [clojure.core.async :refer [<!! >!! chan close! timeout]]
-            [clojure.core.async.flow :as flow]
-            [simulflow.async :refer [vthread-loop]]
-            [simulflow.frame :as frame]
-            [simulflow.transport.protocols :as tp]
-            [simulflow.utils.audio :refer [open-line!]]
-            [simulflow.utils.core :as u]
-            [uncomplicate.clojure-sound.core :as sound]
-            [uncomplicate.clojure-sound.sampled :as sampled]
-            [uncomplicate.commons.core :refer [close!]]))
+  (:require
+   [clojure.core.async :as a :refer [<!! >!! chan timeout]]
+   [clojure.core.async.flow :as flow]
+   [simulflow.async :refer [vthread-loop]]
+   [simulflow.frame :as frame]
+   [simulflow.transport.protocols :as tp]
+   [simulflow.utils.audio :refer [open-line!]]
+   [simulflow.utils.core :as u]
+   [uncomplicate.clojure-sound.core :as sound]
+   [uncomplicate.clojure-sound.sampled :as sampled]
+   [uncomplicate.commons.core :refer [close!]]))
 
 (defn process-realtime-out-audio-frame
   "Pure function to process an audio frame and determine state changes.
@@ -110,9 +111,9 @@
         silence-threshold (* 4 duration)
 
         ;; Channels following activity monitor pattern
-        timer-in-ch (chan 1024)
-        timer-out-ch (chan 1024)
-        audio-write-ch (chan 1024)]
+        timer-in-ch (a/chan 1024)
+        timer-out-ch (a/chan 1024)
+        audio-write-ch (a/chan 1024)]
 
     ;; Minimal timer process - just sends timing events (like activity monitor)
     (vthread-loop []
@@ -145,7 +146,6 @@
      ::sending-interval sending-interval
      ::silence-threshold silence-threshold}))
 
-
 (defn realtime-out-transition
   [{::flow/keys [in-ports out-ports] :as state} transition]
   (when (= transition ::flow/stop)
@@ -154,7 +154,7 @@
       (sampled/flush! line)
       (close! line))
     (doseq [port (concat (vals in-ports) (vals out-ports))]
-      (close! port)))
+      (a/close! port)))
   state)
 
 (defn realtime-out-transform
@@ -183,8 +183,7 @@
         [updated-state {:out events}])
 
       ;; Handle system config changes
-      (and (= input-port :in)
-           (frame/system-config-change? frame))
+      (frame/system-config-change? frame)
       (if-let [new-serializer (:transport/serializer (:frame/data frame))]
         [(assoc state :transport/serializer new-serializer) {}]
         [state {}])
