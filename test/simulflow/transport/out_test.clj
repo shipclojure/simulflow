@@ -185,7 +185,7 @@
     (let [state {}
           transition :clojure.core.async.flow/start
           multi-arity-result (sut/realtime-speakers-out-fn state transition)
-          direct-result (sut/realtime-speakers-out-transition state transition)]
+          direct-result (sut/realtime-out-transition state transition)]
       (is (= multi-arity-result direct-result))))
 
   (testing "3-arity (transform) delegates correctly"

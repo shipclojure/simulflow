@@ -1,7 +1,7 @@
 (ns simulflow.transport-test
   (:require [clojure.test :refer [deftest is testing]]
             [simulflow.frame :as frame]
-            [simulflow.transport :as transport]
+            [simulflow.transport :as sut]
             [simulflow.transport.out :as out]
             [simulflow.utils.core :as u])
   (:import (java.util Date)))

@@ -248,11 +248,11 @@
 ;; Backward compatibility
 (defaliases
   {:src out/realtime-out-describe}
-  {:src out/realtime-out-processor}
   {:src out/realtime-out-init!}
   {:src out/realtime-out-transition}
   {:src out/realtime-out-transform}
   {:src out/realtime-out-fn}
+  {:src out/realtime-out-processor}
 
   {:src out/realtime-speakers-out-describe}
   {:src out/realtime-speakers-out-init!}

@@ -133,7 +133,7 @@
                                 :audio.out/sample-size-bits sample-size-bits
                                 :audio.out/channels channels
                                 :audio.out/duration-ms chunk-duration-ms}}
-        :realtime-out {:proc transport/realtime-transport-out-processor
+        :realtime-out {:proc transport/realtime-out-processor
                        :args {:transport/out-chan out}}}
        extra-procs)
 
