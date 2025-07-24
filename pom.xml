@@ -22,9 +22,9 @@
     <url>https://github.com/shipclojure/simulflow</url>
     <connection>scm:git:git://github.com/shipclojure/simulflow.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/shipclojure/simulflow.git</developerConnection>
-    <tag>v0.1.5-alfa</tag>
+    <tag>v0.1.6-alpha</tag>
   </scm>
-  <version>v0.1.5-alfa</version>
+  <version>v0.1.6-alpha</version>
   <build>
     <sourceDirectory>src</sourceDirectory>
   </build>

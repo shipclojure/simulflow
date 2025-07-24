@@ -6,7 +6,7 @@
    [deps-deploy.deps-deploy :as dd]))
 
 (def lib 'com.shipclojure/simulflow)
-(def version "v0.1.5-alpha")
+(def version "v0.1.6-alpha")
 #_ ; alternatively, use MAJOR.MINOR.COMMITS:
 (def version (format "1.0.%s" (b/git-count-revs nil)))
 (def class-dir "target/classes")

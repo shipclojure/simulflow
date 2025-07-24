@@ -1,7 +1,7 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
-## Unreleased
+## [0.1.5-alpha] - 2025-07-24
 
 ### Added
 - Command system to express IO commands from transform function for easier testing - still alfa
@@ -20,8 +20,6 @@ All notable changes to this project will be documented in this file. This change
 - Explicit timestamp support for frames with `java.util.Date` (#inst reader macro) and millisecond integers
 - Frame creation functions now support optional `opts` parameter for timestamp control
 - Utility functions `normalize-timestamp` and `timestamp->date` for timestamp conversion
-- Comprehensive test suite for `simulflow.frame` namespace using `clojure.test` (2150+ assertions)
-- Comprehensive test suite for `simulflow.processors.activity-monitor` with pure function testing
 - **Microphone Transport**: Added pure functions `process-mic-buffer` and `mic-resource-config` for better testability and REPL-driven development
 - **Transport Testing**: Comprehensive test suite for transport layer covering microphone transport, audio splitter, and realtime speakers
 - **Realtime Speakers Out**: Added comprehensive test coverage including realistic LLM → audio splitter → speakers pipeline integration test simulating end-to-end audio processing flow
@@ -29,8 +27,6 @@ All notable changes to this project will be documented in this file. This change
 
 ### Changed
 - **BREAKING**: Frame types now use proper `simulflow.frame` namespace (e.g., `:simulflow.frame/user-speech-start`)
-- Frame system is now completely pure when timestamps are specified explicitly
-- Updated clj-kondo hook for `defframe` to support multi-arity functions with timestamp options
 - Fixed schema typos in `user-speech-stop` and `bot-speech-stop` frame definitions
 - **Microphone Transport**: Refactored `microphone-transport-in` to use multi-arity function pattern (`mic-transport-in-fn`) for better flow integration
 - **Audio Splitter**: Refactored `audio-splitter` to use multi-arity function pattern (`audio-splitter-fn`) for better flow integration and consistency with other transport processors
