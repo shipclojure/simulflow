@@ -1,6 +1,15 @@
 #+TITLE: Tasks to do for simulflow
+#+startup: indent content
 
-* TODO Add pipeline interruptions :mvp:
+* TODO [#A] Add TTFT metric
+
+* TODO [#A] Add support for telnyx transport
+
+* TODO [#A] Add LLM usage metrics based on chunks responses [[https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage][API docs for usage]]
+
+* TODO [#A] Implement background noise filtering with [[https://docs.pipecat.ai/guides/features/krisp][krisp.ai]]
+
+* TODO [#A] Add pipeline interruptions                                  :mvp:
 
 ** TODO Make assistant context aggregator support interrupt :mvp:
 * TODO Add support for first message greeting in the pipeline :mvp:
@@ -14,8 +23,6 @@ CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
 * DONE Add support for google gemini
 CLOSED: [2025-05-13 Tue 11:29]
 
-* TODO Add support for telnyx transport
-
 * TODO Add support for openai realtime API
 
 * TODO Research webrtc support
@@ -25,10 +32,6 @@ CLOSED: [2025-05-13 Tue 11:30]
 :LOGBOOK:
 CLOCK: [2025-02-06 Thu 08:07]--[2025-02-06 Thu 08:32] =>  0:25
 :END:
-
-* TODO Add TTFT metric
-
-* TODO Add LLM usage metrics based on chunks responses [[https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage][API docs for usage]]
 
 * TODO research [[https://github.com/phronmophobic/clj-media][clojure-media]] for dedicated ffmpeg support for media conversion
 
@@ -239,7 +242,5 @@ CLOSED: [2025-05-13 Tue 11:30]
 :LOGBOOK:
 CLOCK: [2025-02-03 Mon 09:35]--[2025-02-03 Mon 10:00] =>  0:25
 :END:
-
-* TODO Implement background noise filtering with [[https://docs.pipecat.ai/guides/features/krisp][krisp.ai]]
 
 * TODO Add support for [[https://talon.wiki/][Talon]] STT
