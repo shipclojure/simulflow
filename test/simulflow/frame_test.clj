@@ -88,7 +88,6 @@
       frame/system-stop true true
       frame/user-speech-start true true
       frame/user-speech-stop true true
-      frame/control-bot-interrupt true true
       frame/control-interrupt-start true true
       frame/control-interrupt-stop true true
       ;; Non-system frames
@@ -231,12 +230,6 @@
 
 (deftest test-control-frames
   (testing "control frame creation and predicates"
-    (testing "control-bot-interrupt"
-      (let [frame (frame/control-bot-interrupt true)]
-        (is (frame/frame? frame))
-        (is (= :simulflow.frame/control-bot-interrupt (:frame/type frame)))
-        (is (frame/control-bot-interrupt? frame))))
-
     (testing "control-interrupt-start"
       (let [frame (frame/control-interrupt-start true)]
         (is (frame/frame? frame))

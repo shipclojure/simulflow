@@ -63,7 +63,6 @@
   (let [frame-type (:frame/type frame)]
     (or (= frame-type ::system-start)
         (= frame-type ::system-stop)
-        (= frame-type ::control-bot-interrupt)
         (= frame-type ::user-speech-start)
         (= frame-type ::user-speech-stop)
         (= frame-type ::control-interrupt-start)
@@ -328,11 +327,6 @@
 ;; Control Frames
 ;; Frames for pipeline flow control
 ;;
-
-(defframe control-bot-interrupt
-  "Bot should be interrupted"
-  {:type ::control-bot-interrupt
-   :schema :boolean})
 
 (defframe control-interrupt-start
   "Start pipeline interruption"
