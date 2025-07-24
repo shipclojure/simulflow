@@ -494,7 +494,7 @@
 
           ;; Initialize speakers state (simulating what init! would create)
           initial-speakers-state {::out/speaking? false
-                                  ::out/last-audio-time 0
+                                  ::out/last-send-time 0
                                   ::out/sending-interval sending-interval
                                   ::out/silence-threshold 200
                                   :transport/serializer nil}
@@ -586,8 +586,11 @@
         (let [audio-writes (mapcat #(get-in % [:output :audio-write]) @results)
               delay-times (mapv :delay-until audio-writes)]
 
-          ;; All delay times should be reasonable (not in the past, not too far future)
-          (is (every? #(> % pipeline-start-time) delay-times)
+          ;; All delay times (after the first which is equal to
+          ;; pipeline-start-time) should be reasonable (not in the past, not too
+          ;; far future)
+          (is (= pipeline-start-time (first delay-times)))
+          (is (every? #(> % pipeline-start-time) (rest delay-times))
               "All delays should be after pipeline start")
           (is (every? #(< % (+ pipeline-start-time 1000)) delay-times)
               "All delays should be within reasonable timeframe")))
@@ -597,10 +600,10 @@
         (is (every? #(true? (::out/speaking? (:state-after %))) @results)
             "All states should show speaking after processing audio")
 
-        ;; Verify last-audio-time is being updated
-        (let [last-audio-times (mapv #(::out/last-audio-time (:state-after %)) @results)]
-          (is (every? pos? last-audio-times)
-              "All last-audio-time values should be positive")))
+        ;; Verify last-send-time is being updated
+        (let [last-send-time (mapv #(::out/last-send-time (:state-after %)) @results)]
+          (is (every? pos? last-send-time)
+              "All last-send-time values should be positive")))
 
       (testing "Audio data integrity through pipeline"
         ;; Verify that all audio data makes it through
