@@ -12,6 +12,7 @@
    [uncomplicate.clojure-sound.sampled :as sampled]
    [uncomplicate.commons.core :refer [close!]]))
 
+
 (def realtime-speakers-out-describe
   {:ins {:in "Channel for audio output frames"
          :sys-in "Channel for system messages"}
@@ -117,7 +118,7 @@
                             :current-time current-time
                             :wait-time wait-time}
                      :level :debug
-                     :sample   0.05
+                     :sample 0.05
                      :id :realtime-out})
             (when (pos? wait-time)
               (<!! (timeout wait-time)))

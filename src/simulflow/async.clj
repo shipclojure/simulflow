@@ -1,5 +1,6 @@
 (ns simulflow.async
   (:require
+   [clojure.core.async :refer [alts!!]]
    [clojure.core.async.flow :as flow])
   (:import
    (java.util.concurrent Executors)))
@@ -47,3 +48,14 @@
        (recur (inc count))))"
   [bindings & body]
   `(vthread (loop ~bindings ~@body)))
+
+
+(defn drain-channel!
+  "Drains all pending messages from a channel without blocking.
+   Returns the number of messages drained."
+  [ch]
+  (loop [count 0]
+    (let [[msg _port] (alts!! [ch] :default ::none)]
+      (if (= msg ::none)
+        count
+        (recur (inc count))))))
