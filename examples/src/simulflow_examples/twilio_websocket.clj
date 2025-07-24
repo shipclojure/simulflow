@@ -27,8 +27,6 @@
    [simulflow.utils.core :as u]
    [taoensso.telemere :as t]))
 
-(t/set-min-level! :debug)
-
 (comment
   (portal/open)
   (add-tap #'portal/submit))

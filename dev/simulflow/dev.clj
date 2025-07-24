@@ -1,7 +1,12 @@
 (ns simulflow.dev
-  (:require [clj-reload.core :as reload]
-            [clojure.java.io :as io]
-            [malli.dev :as malli-dev]))
+  (:require
+   [clj-reload.core :as reload]
+   [clojure.java.io :as io]
+   [malli.dev :as malli-dev]
+   [taoensso.telemere :as t]))
+
+
+(t/set-min-level! :info)
 
 (defmacro jit [sym]
   `(requiring-resolve '~sym))

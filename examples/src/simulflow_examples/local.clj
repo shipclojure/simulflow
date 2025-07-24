@@ -14,7 +14,7 @@
    [simulflow.utils.core :as u]
    [taoensso.telemere :as t]))
 
-(t/set-min-level! :debug)
+
 
 (defn make-local-flow
   "This example showcases a voice AI agent for the local computer.  Audio is
