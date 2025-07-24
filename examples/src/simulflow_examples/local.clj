@@ -120,6 +120,7 @@
                          :args {:audio.out/sample-rate sample-rate
                                 :audio.out/sample-size-bits sample-size-bits
                                 :audio.out/channels channels
+                                :audio.out/sending-interval chunk-duration-ms
                                 :audio.out/duration-ms chunk-duration-ms}}
          :prn-sink {:proc (flow/process (fn
                                           ([] {:ins {:in "gimme stuff to print!"}})
