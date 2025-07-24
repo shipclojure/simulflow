@@ -20,6 +20,7 @@
             :audio.out/sample-size-bits "Size in bits for each sample"
             :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
             :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
+            :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
             :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
 
 (def realtime-out-describe
@@ -32,14 +33,14 @@
             :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
 
 (defn realtime-speakers-out-init!
-  [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
+  [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels sending-interval]
     :activity-detection/keys [silence-threshold-ms]
     :or {sample-rate 16000
          channels 1
          sample-size-bits 16}}]
   (let [;; Configuration
         duration (or duration-ms 20)
-        sending-interval (/ duration 2)
+        sending-interval (or sending-interval (/ duration 2))
         silence-threshold (or silence-threshold-ms (* 4 duration))
 
         ;; Audio line setup
