@@ -6,7 +6,7 @@
    [taoensso.telemere :as t]))
 
 
-(t/set-min-level! :info)
+(t/set-min-level! :debug)
 
 (defmacro jit [sym]
   `(requiring-resolve '~sym))

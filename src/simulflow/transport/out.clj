@@ -34,14 +34,6 @@
         audio-command {:command :write-audio
                        :data audio-frame
                        :delay-until (::next-send-time updated-state)}]
-    (t/log! {:msg "Sending to audio write"
-             :id :realtime-out
-             :level :debug
-             :data {:out events
-                    :frame frame
-                    :state state
-                    :audio-write [audio-command]}})
-
     [updated-state {:out events
                     :audio-write [audio-command]}]))
 
@@ -52,7 +44,8 @@
    :params {:audio.out/sample-rate "Sample rate of the output audio"
             :audio.out/sample-size-bits "Size in bits for each sample"
             :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
-            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
+            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
+            :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
 
 (def realtime-out-describe
   {:ins {:in "Channel for audio output frames"
@@ -61,17 +54,18 @@
    :params {:audio.out/chan "Core async channel to put audio data. The data is raw byte array or serialzed if a serializer is active"
             :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
             :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
-            }})
+            :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
 
 (defn realtime-speakers-out-init!
   [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels]
+    :activity-detection/keys [silence-threshold-ms]
     :or {sample-rate 16000
          channels 1
          sample-size-bits 16}}]
   (let [;; Configuration
         duration (or duration-ms 20)
         sending-interval (/ duration 2)
-        silence-threshold (* 4 duration)
+        silence-threshold (or silence-threshold-ms (* 4 duration))
 
         ;; Audio line setup
         line (open-line! :source (sampled/audio-format sample-rate sample-size-bits channels))
@@ -96,7 +90,7 @@
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)
                 wait-time (max 0 (- delay-until current-time))]
-            #_(when (pos? wait-time)
+            (when (pos? wait-time)
               (<!! (timeout wait-time)))
             (sound/write! (:data audio-command) line 0)))
         (recur)))
@@ -115,11 +109,12 @@
      ::audio-line line}))
 
 (defn realtime-out-init!
-  [{:audio.out/keys [duration-ms chan sending-interval]}]
+  [{:audio.out/keys [duration-ms chan sending-interval]
+    :activity-detection/keys [silence-threshold-ms]}]
   (let [;; Configuration
         duration (or duration-ms 20)
-        sending-interval (or sending-interval (/ duration 2) )
-        silence-threshold (* 4 duration)
+        sending-interval (or sending-interval (/ duration 2))
+        silence-threshold (or silence-threshold-ms (* 4 duration))
 
         ;; Channels following activity monitor pattern
         timer-in-ch (a/chan 1024)
@@ -138,7 +133,7 @@
       (when-let [audio-command (<!! audio-write-ch)]
         (t/log! {:data audio-command
                  :level :debug
-                 :id :out-init! })
+                 :id :out-init!})
         (when (= (:command audio-command) :write-audio)
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)

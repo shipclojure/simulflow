@@ -125,9 +125,9 @@
                                           ([] {:ins {:in "gimme stuff to print!"}})
                                           ([_] nil)
                                           ([_ _] nil)
-                                          ([_ _ v] (prn v))))}
+                                          ([_ _ v] (t/log! {:id :prn-sink :data v}))))}
          :activity-monitor {:proc activity-monitor/process
-                            :args {::activity-monitor/timeout-ms 2000}}}
+                            :args {::activity-monitor/timeout-ms 5000}}}
         extra-procs)
       :conns (concat
                [[[:transport-in :out] [:transcriptor :in]]

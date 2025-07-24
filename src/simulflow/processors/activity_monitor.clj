@@ -4,7 +4,8 @@
             [clojure.core.async.flow :as flow]
             [simulflow.async :refer [vthread-loop]]
             [simulflow.frame :as frame]
-            [simulflow.schema :as schema]))
+            [simulflow.schema :as schema]
+            [taoensso.telemere :as t]))
 
 (def ActivityMonitorConfigSchema
   [:map
@@ -97,11 +98,15 @@
         timer-in-ch (a/chan 1024)
         timer-out-ch (a/chan 1024)]
     (vthread-loop []
-      (let [timeout-ch (a/timeout timeout-ms)]
-        (when-let [[_ c] (a/alts!! [timer-in-ch timeout-ch])]
-          (when (= c timeout-ch)
-            (a/>!! timer-out-ch {::timeout? true}))
-          (recur))))
+      (let [timeout-ch (a/timeout timeout-ms)
+            [v c] (a/alts!! [timer-in-ch timeout-ch])]
+        (when (= c timeout-ch)
+          (t/log! {:msg "Activity timeout activated!"
+                   :data {:timeout-ms timeout-ms :c c :v v}
+                   :id :activity-monitor
+                   :level :debug})
+          (a/>!! timer-out-ch {::timeout? true}))
+        (recur)))
 
     (merge {::flow/out-ports {:timer-process-in timer-in-ch}
             ::flow/in-ports {:timer-process-out timer-out-ch}}

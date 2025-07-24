@@ -1,13 +1,15 @@
 (ns simulflow.processors.elevenlabs
-  (:require [clojure.core.async :as a]
-            [clojure.core.async.flow :as flow]
-            [hato.websocket :as ws]
-            [simulflow.async :refer [vthread-loop]]
-            [simulflow.frame :as frame]
-            [simulflow.schema :as schema]
-            [simulflow.utils.core :as u]
-            [taoensso.telemere :as t])
-  (:import (java.nio HeapCharBuffer)))
+  (:require
+   [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
+   [hato.websocket :as ws]
+   [simulflow.async :refer [vthread-loop]]
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
+   [simulflow.utils.core :as u]
+   [taoensso.telemere :as t])
+  (:import
+   (java.nio HeapCharBuffer)))
 
 (def ^:private xi-tts-websocket-url "wss://api.elevenlabs.io/v1/text-to-speech/%s/stream-input")
 
@@ -161,7 +163,8 @@
 
     ;; Handle speak frames (convert to WebSocket messages)
     (frame/speak-frame? msg)
-    [state {::ws-write [(process-speak-frame msg)]}]
+    (do (t/log! {:level :debug :id :elevenlabs :data msg :msg "Got speak-frame"})
+        [state {::ws-write [(process-speak-frame msg)]}])
 
     ;; Default case - no action
     :else

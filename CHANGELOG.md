@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file. This change
 
 ### Added
 - Command system to express IO commands from transform function for easier testing - still alfa
+- **Realtime out transport**: Configurable buffering duration between audio chunks: `audio.out/sending-interval` (defaults to half of chunk duration)
+- **Realtime out transport**: Configurable silence detection threshold: `activity-detection/silence-threshold-ms` (defaults to 4 x chunk duration)
 
 ### Fixed
 - **Schema Description**: Fixed `schema/->describe-parameters` function to properly handle `:or` clauses, now displays human-readable descriptions like "Type: (set of string or vector of string)" instead of unhelpful "Type: :or"
