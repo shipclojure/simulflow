@@ -135,9 +135,15 @@
                                :audio.out/duration-ms chunk-duration-ms}}
        :realtime-out {:proc transport-out/realtime-out-processor
                       :args {:audio.out/chan out
-                             :audio.out/sending-interval 1}}
+                             :audio.out/sending-interval 20}}
        :activity-monitor {:proc activity-monitor/process
-                          :args {::activity-monitor/timeout-ms 2000}}}
+                          :args {::activity-monitor/timeout-ms 5000}}
+
+       :prn-sink {:proc (flow/process (fn
+                                        ([] {:ins {:in "gimme stuff to print!"}})
+                                        ([_] nil)
+                                        ([_ _] nil)
+                                        ([_ _ v] (t/log! {:id :prn-sink :data v}))))}}
       extra-procs)
 
      :conns (concat
@@ -159,7 +165,8 @@
               [[:transport-in :sys-out] [:realtime-out :sys-in]]
               [[:audio-splitter :out] [:realtime-out :in]]
 
-              ;; Activity monitor connections
+              ;; Activity monitor connections - basically check if there is
+              ;; activity on the pipeline
               [[:realtime-out :out] [:activity-monitor :in]]
               [[:transcriptor :out] [:activity-monitor :in]]
               [[:activity-monitor :out] [:context-aggregator :in]]
@@ -224,9 +231,6 @@
                      (vthread-loop []
                        (when @call-ongoing?
                          (when-let [output (a/<!! out)]
-                           (t/log! {:data output
-                                    :level :debug
-                                    :msg "Got output"})
                            (ws/send socket output)
                            (recur)))))
                    (flow/resume fl)

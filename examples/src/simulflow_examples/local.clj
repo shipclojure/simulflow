@@ -145,7 +145,10 @@
 
                 [[:tts :out] [:audio-splitter :in]]
                 [[:audio-splitter :out] [:transport-out :in]]
+
                 [[:transport-out :out] [:prn-sink :in]]
+
+                ;; Activity detection
                 [[:transport-out :out] [:activity-monitor :in]]
                 [[:transcriptor :out] [:activity-monitor :in]]
                 [[:activity-monitor :out] [:context-aggregator :in]]

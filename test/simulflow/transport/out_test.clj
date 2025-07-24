@@ -8,15 +8,14 @@
 (deftest process-realtime-out-audio-frame-test
   (testing "process-realtime-out-audio-frame with first audio frame"
     (let [state {::sut/speaking? false
-                 ::sut/last-audio-time 0
+                 ::sut/last-send-time 0
                  ::sut/sending-interval 20}
           frame (frame/audio-output-raw (byte-array [1 2 3]))
-          serializer nil
           current-time 2000
-          [new-state output] (sut/process-realtime-out-audio-frame state frame serializer current-time)]
+          [new-state output] (sut/process-realtime-out-audio-frame state frame current-time)]
 
       (is (true? (::sut/speaking? new-state)))
-      (is (= current-time (::sut/last-audio-time new-state)))
+      (is (= current-time (::sut/last-send-time new-state)))
       (is (= 1 (count (:out output))))
       (is (frame/bot-speech-start? (first (:out output))))
       (is (= 1 (count (:audio-write output)))))))
@@ -33,7 +32,7 @@
 
   (testing "transform with timer tick (stop speaking)"
     (let [state {::sut/speaking? true
-                 ::sut/last-audio-time 1000
+                 ::sut/last-send-time 1000
                  ::sut/silence-threshold 200}
           timer-frame {:timer/tick true :timer/timestamp 1300}
           [new-state output] (sut/realtime-out-transform state :timer-out timer-frame)]
@@ -66,7 +65,7 @@
 (deftest test-realtime-out-timer-handling
   (testing "timer tick when not speaking (no effect)"
     (let [state {::sut/speaking? false
-                 ::sut/last-audio-time 1000
+                 ::sut/last-send-time 1000
                  ::sut/silence-threshold 200}
           timer-frame {:timer/tick true :timer/timestamp 1500}
           [new-state output] (sut/realtime-out-transform state :timer-out timer-frame)]
@@ -76,7 +75,7 @@
 
   (testing "timer tick when speaking but silence threshold not exceeded"
     (let [state {::sut/speaking? true
-                 ::sut/last-audio-time 1000
+                 ::sut/last-send-time 1000
                  ::sut/silence-threshold 200}
           timer-frame {:timer/tick true :timer/timestamp 1100} ; Only 100ms silence
           [new-state output] (sut/realtime-out-transform state :timer-out timer-frame)]
@@ -86,7 +85,7 @@
 
   (testing "timer tick when speaking and silence threshold exceeded"
     (let [state {::sut/speaking? true
-                 ::sut/last-audio-time 1000
+                 ::sut/last-send-time 1000
                  ::sut/silence-threshold 200}
           timer-frame {:timer/tick true :timer/timestamp 1300} ; 300ms silence > 200ms threshold
           [new-state output] (sut/realtime-out-transform state :timer-out timer-frame)]
@@ -128,7 +127,7 @@
                               ;; Serializer modifies the frame data
                               (assoc frame :frame/data [99 99 99])))
           state {::sut/speaking? false
-                 ::sut/last-audio-time 0
+                 ::sut/last-send-time 0
                  ::sut/sending-interval 20
                  :transport/serializer mock-serializer}
           frame (frame/audio-output-raw (byte-array [1 2 3]))]
@@ -140,7 +139,7 @@
 
   (testing "transform without serializer"
     (let [state {::sut/speaking? false
-                 ::sut/last-audio-time 0
+                 ::sut/last-send-time 0
                  ::sut/sending-interval 20
                  :transport/serializer nil}
           frame (frame/audio-output-raw (byte-array [1 2 3]))]
@@ -199,7 +198,7 @@
 (deftest test-realtime-out-state-transitions
   (testing "speaking state progression"
     (let [initial-state {::sut/speaking? false
-                         ::sut/last-audio-time 0
+                         ::sut/last-send-time 0
                          ::sut/sending-interval 20}
           frame1 (frame/audio-output-raw (byte-array [1 2 3]))
           frame2 (frame/audio-output-raw (byte-array [4 5 6]))]
@@ -214,7 +213,7 @@
 
               ;; Process timer tick after silence threshold
               timer-frame {:timer/tick true
-                           :timer/timestamp (+ (::sut/last-audio-time state2) 1000)}
+                           :timer/timestamp (+ (::sut/last-send-time state2) 1000)}
               [state3 output3] (sut/realtime-out-transform
                                 (assoc state2 ::sut/silence-threshold 500)
                                 :timer-out timer-frame)]
@@ -235,23 +234,32 @@
     (let [current-time 1000
           sending-interval 25
           state {::sut/speaking? false
-                 ::sut/last-audio-time 0
-                 ::sut/sending-interval sending-interval}
-          frame (frame/audio-output-raw (byte-array [1 2 3]))]
+                 ::sut/last-send-time 0
+                 ::sut/sending-interval sending-interval
+                 ::sut/now current-time}
+          frame (frame/audio-output-raw (byte-array [1 2 3]))
+          [new-state output] (sut/realtime-out-transform state :in frame)
+          audio-write (first (:audio-write output))
+          [next-state] (sut/realtime-out-transform (assoc new-state ::sut/now 1020) :in frame)
+          [next-state2] (sut/realtime-out-transform (assoc next-state ::sut/now 1025) :in frame)
 
-      (with-redefs [u/mono-time (constantly current-time)]
-        (let [[new-state output] (sut/realtime-out-transform state :in frame)
-              audio-write (first (:audio-write output))]
 
-          (is (= (+ current-time sending-interval) (:delay-until audio-write)))
-          (is (= current-time (::sut/last-audio-time new-state)))
-          (is (= (+ current-time sending-interval) (::sut/next-send-time new-state)))))))
+]
+
+      (is (= current-time (:delay-until audio-write)))
+      (is (= current-time (::sut/last-send-time new-state)))
+      (is (= next-state #::sut{:last-send-time 1025,
+                              :sending-interval 25,
+                              :speaking? true}))
+      (is (= next-state2 #::sut{:last-send-time 1050,
+                                :sending-interval 25,
+                                :speaking? true}))))
 
   (testing "silence threshold calculations"
     (let [base-time 2000
           silence-threshold 300
           state {::sut/speaking? true
-                 ::sut/last-audio-time base-time
+                 ::sut/last-send-time base-time
                  ::sut/silence-threshold silence-threshold}
 
           ;; Timer tick just under threshold

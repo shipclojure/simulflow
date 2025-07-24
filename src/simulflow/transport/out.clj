@@ -12,31 +12,6 @@
    [uncomplicate.clojure-sound.sampled :as sampled]
    [uncomplicate.commons.core :refer [close!]]))
 
-(defn process-realtime-out-audio-frame
-  "Pure function to process an audio frame and determine state changes.
-   Returns [updated-state output-map] for the given state, frame, and current time."
-  [state frame serializer current-time]
-  (let [should-emit-start? (not (::speaking? state))
-        updated-state (-> state
-                          (assoc ::speaking? true)
-                          (assoc ::last-audio-time current-time)
-                          (assoc ::next-send-time (+ current-time (::sending-interval state))))
-
-        ;; Generate events based on state transitions
-        events (if should-emit-start?
-                 [(frame/bot-speech-start true)]
-                 [])
-
-        ;; Generate audio write command
-        audio-frame (if serializer
-                      (tp/serialize-frame serializer frame)
-                      (:frame/data frame))
-        audio-command {:command :write-audio
-                       :data audio-frame
-                       :delay-until (::next-send-time updated-state)}]
-    [updated-state {:out events
-                    :audio-write [audio-command]}]))
-
 (def realtime-speakers-out-describe
   {:ins {:in "Channel for audio output frames"
          :sys-in "Channel for system messages"}
@@ -131,13 +106,18 @@
     ;; Audio writer process - handles only audio I/O side effects
     (vthread-loop []
       (when-let [audio-command (<!! audio-write-ch)]
-        (t/log! {:data audio-command
-                 :level :debug
-                 :id :out-init!})
+
         (when (= (:command audio-command) :write-audio)
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)
                 wait-time (max 0 (- delay-until current-time))]
+            (t/log! {:data {:command :write-audio
+                            :delay-until (:delay-until audio-command 0)
+                            :current-time current-time
+                            :wait-time wait-time}
+                     :level :debug
+                     :sample   0.05
+                     :id :realtime-out})
             (when (pos? wait-time)
               (<!! (timeout wait-time)))
             (>!! chan (:data audio-command))))
@@ -149,8 +129,7 @@
                        :audio-write audio-write-ch}
      ;; Initial business logic state (managed in transform)
      ::speaking? false
-     ::last-audio-time 0
-     ::next-send-time (u/mono-time)
+     ::last-send-time 0
      ::duration-ms duration
      ::sending-interval sending-interval
      ::silence-threshold silence-threshold}))
@@ -166,43 +145,76 @@
       (a/close! port)))
   state)
 
+;; now > last-send-time + duration => send now
+;; now < last-send-time + duration => send last-send-time + duration
+;; keep track of last send time
+(defn process-realtime-out-audio-frame
+  "Pure function to process an audio frame and determine state changes.
+   Returns [updated-state output-map] for the given state, frame, and current time."
+  [{:keys [transport/serializer] :as state
+    ::keys [last-send-time sending-interval]
+    :or {last-send-time 0}} frame now]
+  (let [should-emit-start? (not (::speaking? state))
+        maybe-next-send (+ last-send-time sending-interval)
+        next-send-time (if (>= now maybe-next-send) now maybe-next-send)
+        updated-state (-> state
+                          (dissoc ::now)
+                          (assoc ::speaking? true)
+                          (assoc ::last-send-time next-send-time))
+
+        ;; Generate events based on state transitions
+        events (if should-emit-start?
+                 [(frame/bot-speech-start true)]
+                 [])
+
+        ;; Generate audio write command
+        audio-frame (if serializer
+                      (tp/serialize-frame serializer frame)
+                      (:frame/data frame))
+        audio-command {:command :write-audio
+                       :data audio-frame
+                       :delay-until next-send-time}]
+
+    [updated-state {:out events
+                    :audio-write [audio-command]}]))
+
 (defn realtime-out-transform
-  [{:transport/keys [serializer] :as state} input-port frame]
-  (let [current-time (u/mono-time)]
-    (cond
-      ;; Handle incoming audio frames - core business logic moved here
-      (and (= input-port :in)
-           (frame/audio-output-raw? frame))
-      (process-realtime-out-audio-frame state frame serializer current-time)
+  [{::keys [now] :as state
+    :or {now (u/mono-time)}} input-port frame]
+  (cond
+    ;; Handle incoming audio frames - core business logic moved here
+    (and (= input-port :in)
+         (frame/audio-output-raw? frame))
+    (process-realtime-out-audio-frame state frame now)
 
-      (and (= input-port :timer-out)
-           (:timer/tick frame))
-      (let [silence-duration (- (:timer/timestamp frame) (::last-audio-time state))
-            should-emit-stop? (and (::speaking? state)
-                                   (> silence-duration (::silence-threshold state)))
+    (and (= input-port :timer-out)
+         (:timer/tick frame))
+    (let [silence-duration (- (:timer/timestamp frame) (::last-send-time state 0))
+          should-emit-stop? (and (::speaking? state)
+                                 (> silence-duration (::silence-threshold state)))
 
-            updated-state (if should-emit-stop?
-                            (assoc state ::speaking? false)
-                            state)
+          updated-state (if should-emit-stop?
+                          (assoc state ::speaking? false)
+                          state)
 
-            events (if should-emit-stop?
-                     [(frame/bot-speech-stop true)]
-                     [])]
+          events (if should-emit-stop?
+                   [(frame/bot-speech-stop true)]
+                   [])]
 
-        [updated-state {:out events}])
+      [updated-state {:out events}])
 
-      ;; Handle system config changes
-      (frame/system-config-change? frame)
-      (if-let [new-serializer (:transport/serializer (:frame/data frame))]
-        [(assoc state :transport/serializer new-serializer) {}]
-        [state {}])
+    ;; Handle system config changes
+    (frame/system-config-change? frame)
+    (if-let [new-serializer (:transport/serializer (:frame/data frame))]
+      [(assoc state :transport/serializer new-serializer) {}]
+      [state {}])
 
-      ;; Handle system input passthrough
-      (= input-port :sys-in)
-      [state {:out [frame]}]
+    ;; Handle system input passthrough
+    (= input-port :sys-in)
+    [state {:out [frame]}]
 
-      ;; Default case
-      :else [state {}])))
+    ;; Default case
+    :else [state {}]))
 
 (defn realtime-out-fn
   "Processor fn that sends audio chunks to output channel in a realtime manner"
