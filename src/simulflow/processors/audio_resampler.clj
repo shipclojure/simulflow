@@ -75,11 +75,13 @@
 
           output-frame (assoc frame :frame/data resampled-data)]
 
-      (t/log! {:level :debug :id :audio-resampler}
-              (format "Resampled audio: %d bytes -> %d bytes (%dkHz %s -> %dkHz %s)"
-                      (alength audio-data) (alength resampled-data)
-                      (/ source-sample-rate 1000) source-encoding
-                      (/ target-sample-rate 1000) target-encoding))
+      (t/log! {:level :debug
+               :id :audio-resampler
+               :msg (format "Resampled audio: %d bytes -> %d bytes (%dkHz %s -> %dkHz %s)"
+                            (alength audio-data) (alength resampled-data)
+                            (/ source-sample-rate 1000) source-encoding
+                            (/ target-sample-rate 1000) target-encoding)
+               :sample 0.05})
 
       [state {:out [output-frame]}])
 
