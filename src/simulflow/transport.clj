@@ -137,21 +137,28 @@
   chunks. Chunks are split to achieve realtime streaming."
   (flow/process audio-splitter-fn))
 
+(defn twilio-transport-in-init!
+  [{:transport/keys [in-ch] :twilio/keys [handle-event]}]
+  {::flow/in-ports {:twilio-in in-ch}
+   :twilio/handle-event handle-event})
+
+(def twilio-transport-in-describe
+  {:outs {:sys-out "Channel for system messages that have priority"
+          :out "Channel on which audio frames are put"
+          :speak-out "Channel for speak frames. Used when the user joins the conversation"}
+   :params {:transport/in-ch "Channel from which input comes"
+            :twilio/handle-event "Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"}})
+
+(defn twilio-transport-in-fn
+  ([] twilio-transport-in-describe)
+  ([params] (twilio-transport-in-init! params))
+  ([state _] state)
+  ([state in msg] (twilio-transport-in-transform state in msg)))
+
 (def twilio-transport-in
   "Takes in twilio events and transforms them into audio-input-raw and config
   changes."
-  (flow/process
-   (flow/map->step {:describe (fn [] {:outs {:sys-out "Channel for system messages that have priority"
-                                             :out "Channel on which audio frames are put"
-                                             :speak-out "Channel for speak frames. Used when the user joins the conversation"}
-                                      :params {:transport/in-ch "Channel from which input comes"
-                                               :twilio/handle-event "Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"}})
-
-                    :init (fn [{:transport/keys [in-ch] :twilio/keys [handle-event]}]
-                            {::flow/in-ports {:twilio-in in-ch}
-                             :twilio/handle-event handle-event})
-
-                    :transform twilio-transport-in-transform})))
+  (flow/process twilio-transport-in-fn))
 
 (def async-transport-in
   "Takes in twilio events and transforms them into audio-input-raw and config
