@@ -42,11 +42,21 @@
     {:default 16
      :optional true
      :description "Bit depth of samples"}
-    schema/SampleSizeBits]])
+    schema/SampleSizeBits]
+   [:audio-resample/buffer-size
+    {:default 1024
+     :optional true
+     :description "Audio buffer size in bytes"}
+    schema/BufferSize]
+   [:audio-resample/endian
+    {:default :little-endian
+     :optional true
+     :description "Audio byte order (endianness)"}
+    schema/AudioEndian]])
 
 (defn audio-frame?
   [frame]
-  (or 
+  (or
    (frame/audio-input-raw? frame)
    (frame/audio-output-raw? frame)))
 
@@ -57,19 +67,23 @@
            (audio-frame? frame))
     (let [{:audio-resample/keys [source-sample-rate target-sample-rate
                                  source-encoding target-encoding
-                                 channels sample-size-bits]} state
+                                 channels sample-size-bits buffer-size endian]} state
 
           audio-data (:frame/data frame)
 
           source-config {:sample-rate source-sample-rate
                          :encoding source-encoding
                          :channels channels
-                         :sample-size-bits (if (= source-encoding :ulaw) 8 sample-size-bits)}
+                         :sample-size-bits (if (= source-encoding :ulaw) 8 sample-size-bits)
+                         :buffer-size buffer-size
+                         :endian endian}
 
           target-config {:sample-rate target-sample-rate
                          :encoding target-encoding
                          :channels channels
-                         :sample-size-bits sample-size-bits}
+                         :sample-size-bits sample-size-bits
+                         :buffer-size buffer-size
+                         :endian endian}
 
           resampled-data (audio/resample-audio-data audio-data source-config target-config)
 

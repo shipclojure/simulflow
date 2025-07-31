@@ -48,15 +48,15 @@
 
 (defn create-audio-format
   "Create a javax.sound.sampled.AudioFormat from configuration"
-  [{:keys [sample-rate encoding channels sample-size-bits]
-    :or {sample-rate 16000 encoding :pcm-signed channels 1 sample-size-bits 16}}]
+  [{:keys [sample-rate encoding channels sample-size-bits endian buffer-size]
+    :or {sample-rate 16000 encoding :pcm-signed channels 1 sample-size-bits 16 endian :little-endian buffer-size 1024}}]
   (sampled/audio-format encoding
                         sample-rate
                         sample-size-bits
                         channels
                         (int (* channels (/ sample-size-bits 8)))
                         (float sample-rate)
-                        :little-endian))
+                        endian))
 
 (defn create-encoding-steps
   "Prepares the plan to do audio conversion step by step. Returns an array of
@@ -90,7 +90,7 @@
           (cons intermediate remaining-steps)))
 
       ;; Normal transformation order for other cases
-      (let [transformation-order [:encoding :sample-rate :sample-size-bits :channels]
+      (let [transformation-order [:encoding :sample-rate :sample-size-bits :channels :endian]
             steps (reduce
                    (fn [acc property]
                      (let [current-config (or (last acc) source)
@@ -148,7 +148,8 @@
 
           ;; Read all bytes from resampled stream
           output-stream (ByteArrayOutputStream.)
-          buffer (byte-array 4096)]
+          buffer-size (or (:buffer-size target-config) 1024)
+          buffer (byte-array buffer-size)]
 
       (loop []
         (let [bytes-read (.read target-audio-stream buffer)]

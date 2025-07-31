@@ -146,6 +146,40 @@
           (is (frame/audio-input-raw? (first (:out input-result))) "Input frame type preserved")
           (is (frame/audio-output-raw? (first (:out output-result))) "Output frame type preserved"))))))
 
+(deftest test-buffer-size-and-endian-support
+  (testing "Audio resampler supports buffer-size and endian parameters"
+    (let [state {:audio-resample/source-sample-rate 16000
+                 :audio-resample/target-sample-rate 8000
+                 :audio-resample/source-encoding :pcm-signed
+                 :audio-resample/target-encoding :pcm-signed
+                 :audio-resample/channels 1
+                 :audio-resample/sample-size-bits 16
+                 :audio-resample/buffer-size 2048
+                 :audio-resample/endian :big-endian}]
+
+      (testing "Configuration includes buffer-size and endian"
+        (let [config (sut/audio-resampler-fn {:audio-resample/buffer-size 2048
+                                              :audio-resample/endian :big-endian})]
+          (is (= 2048 (:audio-resample/buffer-size config)) "Buffer size should be set")
+          (is (= :big-endian (:audio-resample/endian config)) "Endian should be set")))
+
+      (testing "Transform function uses buffer-size and endian parameters"
+        (let [test-data (create-test-audio-data 320)
+              input-frame (frame/audio-input-raw test-data)
+              [new-state output] (sut/audio-resampler-fn state :in input-frame)]
+
+          (is (= state new-state) "State should remain unchanged")
+          (is (= 1 (count (:out output))) "Should output one frame")
+          (let [output-frame (first (:out output))]
+            (is (frame/audio-input-raw? output-frame) "Frame type should be preserved")
+            (is (not= (alength (:frame/data input-frame)) (alength (:frame/data output-frame)))
+                "Audio data should be resampled"))))
+
+      (testing "Default values for buffer-size and endian"
+        (let [default-config (sut/audio-resampler-fn {})]
+          (is (= 1024 (:audio-resample/buffer-size default-config)) "Default buffer size should be 1024")
+          (is (= :little-endian (:audio-resample/endian default-config)) "Default endian should be little-endian"))))))
+
 ;; Integration Tests
 
 (deftest test-processor-in-flow

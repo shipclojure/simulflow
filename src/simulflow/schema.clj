@@ -187,6 +187,19 @@
           :json-schema/example 16}
    8 16 24 32])
 
+(def BufferSize
+  [:int {:description "Audio buffer size in bytes"
+         :title "Buffer Size"
+         :json-schema/example 1024
+         :min 64}])
+
+(def AudioEndian
+  [:enum  {:description "Audio byte order (endianness)"
+           :default :little-endian
+           :title "Audio Endianness"
+           :json-schema/example :little-endian}
+   :little-endian :big-endian :little :big])
+
 (def Language
   (flex-enum
    {:description "Language codes including regional variants"}
