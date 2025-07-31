@@ -45,3 +45,4 @@
 !.clj-kondo/src/
 !.clj-kondo/test/
 !.clj-kondo/macros/
+/.mcp.json

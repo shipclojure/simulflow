@@ -58,6 +58,7 @@ Processors are connected in graphs using `core.async.flow`, allowing for:
 - `src/simulflow/processors/groq.clj` - Groq LLM integration
 - `src/simulflow/processors/llm_context_aggregator.clj` - Conversation context management
 - `src/simulflow/processors/activity_monitor.clj` - Audio activity detection
+- `src/simulflow/processors/audio_resampler.clj` - Audio format conversion and resampling processor
 
 ### Transport Layer
 
@@ -68,7 +69,7 @@ Processors are connected in graphs using `core.async.flow`, allowing for:
 
 - `src/simulflow/secrets.clj` - API key and secrets management
 - `src/simulflow/utils/core.clj` - Core utility functions
-- `src/simulflow/utils/audio.clj` - Audio processing utilities
+- `src/simulflow/utils/audio.clj` - Audio processing utilities and format conversion functions
 - `src/simulflow/scenario_manager.clj` - Scenario and state management
 
 ### Examples & Development
@@ -456,6 +457,8 @@ Current test coverage demonstrates comprehensive validation:
 - **Frame System**: 2150+ assertions covering frame creation, validation, and type safety
 - **Activity Monitor**: Complete pure function testing with mock data
 - **Integration Tests**: Realistic pipeline scenarios with timing validation
+- **Audio Processing**: Comprehensive tests for audio format conversions, resampling, and chunk size calculations
+- **Audio Resampler Processor**: Tests for both input and output audio frame handling with type preservation
 
 #### Bot Speech Events Testing
 
@@ -569,8 +572,10 @@ The framework underwent a significant migration where v2 implementations became 
 
 The project maintains **high-quality, comprehensive test coverage**:
 
+- **88+ tests, 3300+ assertions** across the entire codebase
 - **24 tests, 590 assertions** for transport layer alone
 - **2150+ assertions** for frame system validation
+- **Comprehensive audio processing tests** covering format conversions, resampling, and edge cases
 - **Realistic integration tests** simulating complete LLM → audio processing pipelines
 - **Pure function testing** enabling instant REPL validation
 - **Edge case coverage** including boundary conditions and error scenarios
@@ -611,6 +616,33 @@ This comprehensive testing approach ensures reliability and maintainability whil
 1. Define new frame types in `simulflow.frame`
 2. Add Malli schemas for validation
 3. Update processor transform functions to handle new types
+
+## Recent Enhancements
+
+### Audio Processing Improvements
+
+The framework has been enhanced with comprehensive audio processing capabilities:
+
+**Audio Resampler Processor (`src/simulflow/processors/audio_resampler.clj`)**:
+- Handles both `audio-input-raw` and `audio-output-raw` frames
+- Preserves original frame types during processing
+- Supports bidirectional audio conversion (input and output resampling)
+- Configurable source/target sample rates, encodings, channels, and bit depths
+- Multi-arity processor pattern with schema validation
+
+**Audio Utilities (`src/simulflow/utils/audio.clj`)**:
+- `resample-audio-data` - Core audio format conversion function
+- `create-encoding-steps` - Multi-step audio conversion planning
+- `audio-chunk-size` - Calculate chunk sizes for various audio formats
+- Support for μ-law, A-law, PCM (signed/unsigned/float) formats
+- Handles complex conversions with intermediate steps
+
+**Comprehensive Test Coverage**:
+- 7+ new test suites covering audio format conversions
+- Tests for PCM bit depth conversions, channel conversions, telephony formats
+- Edge case handling (empty data, extreme sample rates)
+- Property-based testing across parameter ranges
+- Integration tests for processor bidirectional operation
 
 ## Future Development
 
