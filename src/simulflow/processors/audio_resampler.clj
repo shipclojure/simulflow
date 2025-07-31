@@ -50,7 +50,7 @@
    (frame/audio-input-raw? frame)
    (frame/audio-output-raw? frame)))
 
-(defn audio-resampler-transform
+(defn transform
   "Transform function that resamples audio-input-raw frames"
   [state input-port frame]
   (if (and (= input-port :in)
@@ -86,12 +86,12 @@
     ;; Pass through non-audio frames unchanged
     [state {:out [frame]}]))
 
-(def audio-resampler-describe
+(def describe
   {:ins {:in "Channel for audio-input-raw frames to be resampled"}
    :outs {:out "Channel for resampled audio-input-raw frames"}
    :params (schema/->describe-parameters AudioResamplerConfigSchema)})
 
-(defn audio-resampler-init!
+(defn init!
   "Initialize the audio resampler with configuration"
   [params]
   (let [config (schema/parse-with-defaults AudioResamplerConfigSchema params)]
@@ -103,10 +103,10 @@
                     (:audio-resample/target-encoding config)))
     config))
 
-(defn audio-resampler-transition
+(defn transition
   "Handle processor lifecycle transitions"
-  [state transition]
-  (when (= transition ::flow/stop)
+  [state trs]
+  (when (= trs ::flow/stop)
     (t/log! {:level :info :id :audio-resampler} "Audio resampler stopped"))
   state)
 
@@ -114,13 +114,13 @@
 
 (defn audio-resampler-fn
   "Multi-arity function following simulflow processor pattern"
-  ([] audio-resampler-describe)
-  ([params] (audio-resampler-init! params))
-  ([state transition] (audio-resampler-transition state transition))
-  ([state input-port frame] (audio-resampler-transform state input-port frame)))
+  ([] describe)
+  ([params] (init! params))
+  ([state trs] (transition state trs))
+  ([state input-port frame] (transform state input-port frame)))
 
 ;; Flow Process
 
-(def audio-resampler-processor
+(def process
   "Audio resampling processor for flow integration"
   (flow/process audio-resampler-fn))

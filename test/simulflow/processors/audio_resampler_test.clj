@@ -151,7 +151,7 @@
 (deftest test-processor-in-flow
   (testing "Audio resampler processor in flow context"
     (let [flow-config {:procs
-                       {:resampler {:proc sut/audio-resampler-processor
+                       {:resampler {:proc sut/process
                                     :args {:audio-resample/source-sample-rate 8000
                                            :audio-resample/target-sample-rate 16000
                                            :audio-resample/source-encoding :ulaw
