@@ -1,9 +1,11 @@
 (ns simulflow.utils.audio
-  (:require [taoensso.telemere :as t]
-            [uncomplicate.clojure-sound.core :as sound]
-            [uncomplicate.clojure-sound.sampled :as sampled])
-  (:import (java.io ByteArrayInputStream ByteArrayOutputStream)
-           (javax.sound.sampled AudioFormat AudioSystem DataLine$Info)))
+  (:require
+   [taoensso.telemere :as t]
+   [uncomplicate.clojure-sound.core :as sound]
+   [uncomplicate.clojure-sound.sampled :as sampled])
+  (:import
+   (java.io ByteArrayInputStream ByteArrayOutputStream)
+   (javax.sound.sampled AudioFormat AudioSystem DataLine$Info)))
 
 (defn line-supported?
   [^DataLine$Info info]
@@ -92,15 +94,15 @@
       ;; Normal transformation order for other cases
       (let [transformation-order [:encoding :sample-rate :sample-size-bits :channels :endian]
             steps (reduce
-                   (fn [acc property]
-                     (let [current-config (or (last acc) source)
-                           target-value (get target property)
-                           current-value (get current-config property)]
-                       (if (= current-value target-value)
-                         acc
-                         (conj acc (assoc current-config property target-value)))))
-                   []
-                   transformation-order)]
+                    (fn [acc property]
+                      (let [current-config (or (last acc) source)
+                            target-value (get target property)
+                            current-value (get current-config property)]
+                        (if (= current-value target-value)
+                          acc
+                          (conj acc (assoc current-config property target-value)))))
+                    []
+                    transformation-order)]
         steps))))
 
 (defn convert-with-steps
@@ -138,8 +140,8 @@
   [audio-data source-config target-config]
   (try
     (let [source-audio-stream (bytes->audio-input-stream
-                               audio-data
-                               (create-audio-format source-config))
+                                audio-data
+                                (create-audio-format source-config))
 
           conversion-steps (create-encoding-steps source-config target-config)
 
@@ -165,3 +167,24 @@
       (t/log! {:level :error :id :audio-resampler :error e}
               "Failed to resample audio data")
       audio-data)))
+
+(defn int16-bytes->float32-bytes
+  "Converts byte buffer of signed int16 values to byte buffer of float32 values.
+   Equivalent to: audio_int16 = np.frombuffer(buffer, np.int16)
+                  audio_float32 = audio_int16.astype(np.float32) / 32768.0"
+  [^bytes int16-bytes]
+  (let [num-samples (/ (alength int16-bytes) 2)
+        float-array (float-array num-samples)
+        byte-buffer (java.nio.ByteBuffer/wrap int16-bytes)
+        _ (.order byte-buffer java.nio.ByteOrder/LITTLE_ENDIAN)]
+    ;; Read int16 values and convert to float32
+    (dotimes [i num-samples]
+      (let [int16-val (.getShort byte-buffer (* i 2))
+            float32-val (/ (float int16-val) 32768.0)]
+        (aset float-array i float32-val)))
+    ;; Convert float array to byte array
+    (let [output-buffer (java.nio.ByteBuffer/allocate (* num-samples 4))
+          _ (.order output-buffer java.nio.ByteOrder/LITTLE_ENDIAN)]
+      (dotimes [i num-samples]
+        (.putFloat output-buffer (aget float-array i)))
+      (.array output-buffer))))
