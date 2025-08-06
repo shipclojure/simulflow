@@ -33,6 +33,10 @@ This is something that most of the time can be handled on the other side of the
 core async channel to limit the responsability of the simulflow core but there
 might be cases where this is required here.
 
+*** 4. Handle interuptions
+Discard all new audio frames if it is in an interrupted state and clear out the
+audio playback queue if it receives an interrupt-start frame
+
 ** Current problems
 
 1. The logic was created more for =speakers-out= but it is better positioned for
@@ -43,3 +47,52 @@ refactored.
 * Audio in transport
 
 ** TODO Provide a transport in processor that just takes a in channel and receives in frames on it (might be there already)
+
+* Interruptions - Make the pipeline interruptible either through VAD or Smart Turn detecton
+
+** How pipecat handles interruptions
+
+In pipecat, transport contains both [[file:~/workspace/pipecat/src/pipecat/transports/base_input.py::class BaseInputTransport(FrameProcessor):][in]] & out. When audio comes in, each chunk is
+sent to a VAD analizer like Silero and optionally a Smart turn detection model.
+Based on these analyzers the BaseTransportInput keeps a =speaking= flag. If
+there is a smart turn detector, it's logic for wether the user is
+speaking/stopped speaking will take precedence, otherwise the VAD will be the
+source of truth.
+
+When the VAD state changes, (ex: speaking -> not speaking), the pipeline emits
+=VADUserStartedSpeakingFrame=/=VADUserStoppedSpeakingFrame=. This happens
+regardless in order to have good observation on the pipeline.
+
+The transport input has a role into starting interruptions *if* there isn't a
+interruption strategy created. If one or more *interruption* strategies exists,
+the triggering of the interruption logic is defered to use UserContextAggregator
+that has access to the current transcriptions coming in.
+
+*** Interruption flow
+
+1. When either the BaseTransportInput or the UserContextAggregator deems an
+interruption should start, they emit a frame to do so. BaseTransportInput emits
+a =StartInterruptionFrame= and UserContextAggregator emits a
+=BotInterruptionFrame= which is sent to the BaseTransportInput who upon
+receiving this frame, emits a =StartInterruptionFrame=. This frame does the
+following:
+   - Tells the LLM to cancel in-flight requests and current streaming tokens
+   - Tells TTS processors to cancel in-flight reqeusts and clear their accumulators
+   - Tells TransportOut to stop sending AudioOut frames and clear the current
+     playback queue
+   - (Possibly) tells BotContextAggregator to drop current sentence assembled or
+     just cut it short as the user only heard a part of it.
+
+2. The pipeline is now in a interrupted state (relevant for TransportOut because
+   it drops any new AudioOut frames until it receives a =StopInterruptionFrame=)
+
+3. When user is deemed to have stopped speaking (by either VAD or Turn taking
+   model) a =UserStoppedSpeaking= frame is sent. Which will trigger a
+   =StopInterruptionFrame= if the pipeline supports interuption. This frame will
+   either be sent by the TransportBaseInput or the UserContextAggregator, based
+   on the existence of Interruption strategies.
+
+   Important mention here: The LLM, TTS don't keep a =speaking= flag in this
+   period as they don't care about this state. They only drop their current
+   activity when a =StartInterruptionFrame= is received but don't handle a
+   =StopInterruptionFrame= at all.
