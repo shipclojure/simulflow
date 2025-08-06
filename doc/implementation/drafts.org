@@ -96,3 +96,13 @@ following:
    period as they don't care about this state. They only drop their current
    activity when a =StartInterruptionFrame= is received but don't handle a
    =StopInterruptionFrame= at all.
+
+** Interruption flow responsabilities
+
+1. VAD on each new chunk
+2. (optional) Turn Detect on each new chunk
+3. Start interruption
+4. Stop interruption
+5. Interruption based on strategies
+
+Basically the VAD and turn detections can be protocols not processors

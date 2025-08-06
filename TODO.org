@@ -1,6 +1,9 @@
 #+TITLE: Tasks to do for simulflow
 #+startup: indent content
 
+* TODO Change audio utils for conversion into specific encoding change (ulaw->pcm, pcm->ulaw etc) and resampling (same encoding, different sample rate))
+* TODO Add float32 conversion that is fast to use with VAD or turn detection models
+* TODO Standardize serializers/deserializers to have within the pipeline 16kHz PCM audio
 * TODO [#A] Add TTFT metric
 
 * TODO [#A] Add support for telnyx transport
