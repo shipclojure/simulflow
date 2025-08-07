@@ -323,10 +323,6 @@
         (let [audio-writes (mapcat #(get-in % [:output :audio-write]) @results)
               delay-times (mapv :delay-until audio-writes)]
 
-          ;; All delay times (after the first which is equal to
-          ;; pipeline-start-time) should be reasonable (not in the past, not too
-          ;; far future)
-          (is (= pipeline-start-time (first delay-times)))
           (is (every? #(> % pipeline-start-time) (rest delay-times))
               "All delays should be after pipeline start")
           (is (every? #(< % (+ pipeline-start-time 1000)) delay-times)

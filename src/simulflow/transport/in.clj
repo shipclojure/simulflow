@@ -20,6 +20,9 @@
   {:vad/analyser "An instance of simulflow.vad.core/VADAnalyser protocol to be used on new audio."
    :pipeline/supports-interrupt? "Whether the pipeline supports or not interruptions."})
 
+(def base-transport-outs {:sys-out "Channel for system messages that have priority"
+                          :out "Channel on which audio frames are put"})
+
 (defn base-input-transport-transform
   "Base input transport logic that is used by most transport input processors.
   Assumes audio-input-raw frames that come in are 16kHz PCM mono. Conversion to
@@ -98,8 +101,7 @@
          :twilio/handle-event handle-event}))
 
 (def twilio-transport-in-describe
-  {:outs {:sys-out "Channel for system messages that have priority"
-          :out "Channel on which audio frames are put"}
+  {:outs base-transport-outs
    :params (into base-input-params
                  {:transport/in-ch "Channel from which input comes"
                   :twilio/handle-event "[DEPRECATED] Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"})})
@@ -186,3 +188,28 @@
    (mic-transport-in-transform state in msg)))
 
 (def microphone-transport-in (flow/process mic-transport-in-fn))
+
+;; Async transport in - Feed audio input frames through a core.async channel
+
+(def async-transport-in-describe
+  {:outs base-transport-outs
+   :params (into base-input-params {:transport/in-ch "Channel from which input comes. Input should be byte array"})})
+
+(defn async-transport-in-transition
+  [{::flow/keys [in-ports out-ports] :as state} transition]
+  (when (= transition ::flow/stop)
+    (doseq [port (remove nil? (concat (vals in-ports) (vals out-ports)))]
+      (a/close! port))
+    state))
+
+(defn async-transport-in-init!
+  [{:transport/keys [in-ch] :as state}]
+  (into state {::flow/in-ports {:in in-ch}}))
+
+(defn async-transport-in-fn
+  ([] async-transport-in-describe)
+  ([state] (async-transport-in-init! state))
+  ([state transition] (async-transport-in-transition state transition))
+  ([state in msg] (base-input-transport-transform state in msg)))
+
+(def async-transport-in-process (flow/process async-transport-in-fn))
