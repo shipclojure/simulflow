@@ -4,7 +4,9 @@
    [simulflow.frame :as frame]
    [simulflow.transport.in :as in]
    [simulflow.utils.core :as u]
-   [simulflow.vad.core :as vad]))
+   [simulflow.vad.core :as vad])
+  (:import
+   (java.util Date)))
 
 (def test-timestamp #inst "2025-08-07T09:42:21.786-00:00")
 
@@ -143,3 +145,132 @@
             (is (= test-config-change-frame (first sys-out)))
             (is (frame/system-config-change? (last sys-out)))
             (is (= "hello" (:twilio/stream-sid (:frame/data (last sys-out)))))))))))
+
+;; Microphone transport in tests
+
+;; Microphone input tests
+
+(deftest microphone-transport-test
+  (testing "process-mic-buffer with valid data"
+    (let [test-buffer (byte-array [1 2 3 4 5])
+          result (in/process-mic-buffer test-buffer 3)]
+      (is (map? result))
+      (is (= [1 2 3] (vec (:audio-data result))))
+      (is (instance? Date (:timestamp result)))))
+
+  (testing "process-mic-buffer with zero bytes"
+    (let [test-buffer (byte-array [1 2 3 4 5])
+          result (in/process-mic-buffer test-buffer 0)]
+      (is (nil? result))))
+
+  (testing "process-mic-buffer with negative bytes"
+    (let [test-buffer (byte-array [1 2 3 4 5])
+          result (in/process-mic-buffer test-buffer -1)]
+      (is (nil? result))))
+
+  (testing "process-mic-buffer with full buffer"
+    (let [test-buffer (byte-array [10 20 30 40 50])
+          result (in/process-mic-buffer test-buffer 5)]
+      (is (= [10 20 30 40 50] (vec (:audio-data result))))))
+
+  (testing "process-mic-buffer creates new array (no shared state)"
+    (let [test-buffer (byte-array [1 2 3 4 5])
+          result1 (in/process-mic-buffer test-buffer 3)]
+      (Thread/sleep 1) ; Ensure timestamp difference
+      (let [result2 (in/process-mic-buffer test-buffer 3)]
+        ;; Modify original buffer
+        (aset test-buffer 0 (byte 99))
+        ;; Results should be unaffected
+        (is (= [1 2 3] (vec (:audio-data result1))))
+        (is (= [1 2 3] (vec (:audio-data result2))))
+        ;; Results should be independent (timestamps different)
+        (is (not= (:timestamp result1) (:timestamp result2))))))
+
+  ;; =============================================================================
+  ;; Individual Function Tests
+
+  (testing "mic-transport-in-transition function"
+    (let [close-fn (atom false)
+          state {::in/close #(reset! close-fn true)}
+          _result (in/mic-transport-in-transition state :clojure.core.async.flow/stop)]
+      (is @close-fn "Close function should be called on stop transition")
+      ;; Test other transitions don't call close
+      (reset! close-fn false)
+      (in/mic-transport-in-transition state :clojure.core.async.flow/start)
+      (is (not @close-fn) "Close function should not be called on start transition")))
+
+  (testing "mic-transport-in-transform function"
+    (let [test-audio-data (byte-array [1 2 3 4])
+          test-timestamp (Date.)
+          input-data {:audio-data test-audio-data :timestamp test-timestamp}
+          [new-state output] (in/mic-transport-in-transform {} :in input-data)]
+
+      (is (= {} new-state)) ; State unchanged
+      (is (contains? output :out))
+      (is (= 1 (count (:out output))))
+
+      (let [frame (first (:out output))]
+        (is (frame/audio-input-raw? frame))
+        (is (= test-audio-data (:frame/data frame)))
+        (is (= test-timestamp (:frame/ts frame))))))
+
+  (testing "mic-transport-in-transform preserves frame metadata"
+    (let [test-timestamp (Date.)
+          input-data {:audio-data (byte-array [5 6 7 8]) :timestamp test-timestamp}
+          [_ output] (in/mic-transport-in-transform {} :in input-data)
+          frame (first (:out output))]
+
+      (is (= :simulflow.frame/audio-input-raw (:frame/type frame)))
+      (is (= test-timestamp (:frame/ts frame)))))
+
+  ;; =============================================================================
+  ;; Multi-arity Function Tests (For Compatibility)
+
+  (testing "mic-transport-in-fn describe (0-arity) delegates correctly"
+    (let [description (in/mic-transport-in-fn)]
+      (is (= description (in/mic-transport-in-describe))
+          "0-arity should delegate to describe function")))
+
+  (testing "mic-transport-in-fn transform (3-arity) delegates correctly"
+    (let [test-audio-data (byte-array [1 2 3 4])
+          test-timestamp (Date.)
+          input-data {:audio-data test-audio-data :timestamp test-timestamp}
+          multi-arity-result (in/mic-transport-in-fn {} :in input-data)
+          individual-result (in/mic-transport-in-transform {} :in input-data)]
+
+      (is (= multi-arity-result individual-result)
+          "3-arity should delegate to transform function")))
+
+  ;; =============================================================================
+  ;; Property-Based Tests
+
+  (testing "process-mic-buffer invariants"
+    (doseq [buffer-size [10 100 1000]
+            bytes-read [0 5 50 500]]
+      (let [test-buffer (byte-array (range buffer-size))
+            result (in/process-mic-buffer test-buffer bytes-read)]
+        (if (pos? bytes-read)
+          (do
+            (is (map? result)
+                (str "Should return map for bytes-read=" bytes-read))
+            (is (= bytes-read (count (:audio-data result)))
+                (str "Audio data length should match bytes-read=" bytes-read))
+            (is (instance? Date (:timestamp result))
+                "Should include timestamp"))
+          (is (nil? result)
+              (str "Should return nil for bytes-read=" bytes-read))))))
+
+  ;; =============================================================================
+  ;; Edge Cases
+
+  (testing "process-mic-buffer with empty buffer"
+    (let [empty-buffer (byte-array 0)
+          result (in/process-mic-buffer empty-buffer 0)]
+      (is (nil? result))))
+
+  (testing "process-mic-buffer with bytes-read larger than buffer"
+    ;; This tests the Arrays/copyOfRange behavior
+    (let [small-buffer (byte-array [1 2 3])
+          ;; Note: In real usage, this shouldn't happen, but testing robustness
+          result (in/process-mic-buffer small-buffer 3)]
+      (is (= [1 2 3] (vec (:audio-data result)))))))

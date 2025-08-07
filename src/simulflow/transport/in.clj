@@ -1,12 +1,20 @@
 (ns simulflow.transport.in
   (:require
+   [clojure.core.async :as a :refer [close!]]
    [clojure.core.async.flow :as flow]
+   [simulflow.async :refer [vthread-loop]]
    [simulflow.frame :as frame]
    [simulflow.transport.codecs :refer [make-twilio-codec]]
    [simulflow.utils.audio :as audio]
    [simulflow.utils.core :as u]
    [simulflow.vad.core :as vad]
-   [taoensso.telemere :as t]))
+   [taoensso.telemere :as t]
+   [uncomplicate.clojure-sound.core :as sound]
+   [uncomplicate.clojure-sound.sampled :as sampled])
+  (:import
+   (java.util Arrays)))
+
+;; Base logic for all input transport
 
 (def base-input-params
   {:vad/analyser "An instance of simulflow.vad.core/VADAnalyser protocol to be used on new audio."
@@ -106,3 +114,75 @@
   "Takes in twilio events and transforms them into audio-input-raw and config
   changes."
   (flow/process twilio-transport-in-fn))
+
+;; Mic transport in
+
+(defn process-mic-buffer
+  "Process audio buffer read from microphone.
+   Returns map with :audio-data and :timestamp, or nil if no valid data."
+  [buffer bytes-read]
+  (when (pos? bytes-read)
+    {:audio-data (Arrays/copyOfRange buffer 0 bytes-read)
+     :timestamp (java.util.Date.)}))
+
+(def mic-resource-config
+  "Calculate audio resource configuration."
+  {:buffer-size 1024
+   :audio-format (sampled/audio-format 16000 16 1)
+   :channel-size 1024})
+
+(defn mic-transport-in-describe
+  []
+  {:outs {:out "Channel on which audio frames are put"}
+   :params base-input-params})
+
+(defn mic-transport-in-init!
+  [state]
+  (let [{:keys [buffer-size audio-format channel-size]} mic-resource-config
+        line (audio/open-line! :target audio-format)
+        mic-in-ch (a/chan channel-size)
+        buffer (byte-array buffer-size)
+        running? (atom true)
+        close #(do
+                 (reset! running? false)
+                 (a/close! mic-in-ch)
+                 (sound/stop! line)
+                 (close! line))]
+    (vthread-loop []
+      (when @running?
+        (try
+          (let [bytes-read (sound/read! line buffer 0 buffer-size)]
+            (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+              (a/>!! mic-in-ch processed-data)))
+          (catch Exception e
+            (t/log! {:level :error :id :microphone-transport :error e}
+                    "Error reading audio data")
+            ;; Brief pause before retrying to prevent tight error loop
+            (Thread/sleep 100)))
+        (recur)))
+    (into state
+          {::flow/in-ports {::mic-in mic-in-ch}
+           ::close close})))
+
+(defn mic-transport-in-transition
+  [state transition]
+  (when (and (= transition ::flow/stop)
+             (fn? (::close state)))
+    (t/log! :info "Closing transport in")
+    ((::close state)))
+  state)
+
+(defn mic-transport-in-transform
+  [state in {:keys [audio-data timestamp]}]
+  (base-input-transport-transform state in (frame/audio-input-raw audio-data {:timestamp timestamp})))
+
+(defn mic-transport-in-fn
+  "Records microphone and sends raw-audio-input frames down the pipeline."
+  ([] (mic-transport-in-describe))
+  ([params] (mic-transport-in-init! params))
+  ([state transition]
+   (mic-transport-in-transition state transition))
+  ([state in msg]
+   (mic-transport-in-transform state in msg)))
+
+(def microphone-transport-in (flow/process mic-transport-in-fn))
