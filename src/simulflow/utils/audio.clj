@@ -194,6 +194,20 @@
     (.get fbuf flts)
     flts))
 
+(defn pcm-bytes->floats
+  "Convert byte array to float array (assuming 16-bit PCM little-endian)"
+  [^bytes audio-buffer]
+  (let [num-samples (/ (count audio-buffer) 2)
+        audio-float32 (float-array num-samples)]
+    (dotimes [i num-samples]
+      (let [low-byte (bit-and (aget audio-buffer (* i 2)) 0xff)
+            high-byte (aget audio-buffer (inc (* i 2)))]
+        ;; Combine bytes (little-endian) and normalize to [-1, 1]
+        (aset audio-float32 i
+              (/ (float (short (bit-or low-byte (bit-shift-left high-byte 8))))
+                 32768.0))))
+    audio-float32))
+
 (defn downsample
   "Convert the sound samples, `bs` from `from-sample-rate` to `to-sample-rate`.
 
@@ -209,7 +223,7 @@
                 (.order (ByteOrder/nativeOrder)))
         outbuf (doto (ByteBuffer/allocate (* 4 num-samples))
                  (.order (ByteOrder/nativeOrder)))]
-    (dotimes [i  num-samples]
+    (dotimes [i num-samples]
       (let [index (double (* i (/ from-sample-rate to-sample-rate)))
             i0 (long index)
             i1 (inc i0)
@@ -220,3 +234,143 @@
                       (* f (- (.getFloat inbuf (* 4 i1))
                               (.getFloat inbuf (* 4 i0))))))))
     (.array outbuf)))
+
+(defn calculate-volume
+  "Calculate volume level (RMS) for 16-bit PCM audio buffer.
+   Returns a value between 0.0 and 1.0."
+  [^bytes audio-buffer]
+  (if (or (nil? audio-buffer) (zero? (count audio-buffer)))
+    0.0
+    (let [;; Convert bytes to 16-bit signed integers more efficiently
+          num-samples (/ (count audio-buffer) 2)
+          sum-squares (loop [i 0
+                             sum 0.0]
+                        (if (< i (- (count audio-buffer) 1))
+                          (let [byte1 (aget audio-buffer i)
+                                byte2 (aget audio-buffer (inc i))
+                                ;; Combine bytes into 16-bit signed integer (little-endian)
+                                sample (unchecked-short (bit-or (bit-and byte1 0xff)
+                                                                (bit-shift-left byte2 8)))]
+                            (recur (+ i 2) (+ sum (* sample sample))))
+                          sum))
+          ;; Calculate RMS (Root Mean Square)
+          rms (Math/sqrt (/ sum-squares num-samples))
+          ;; Normalize to 0.0-1.0 range (32767 is max value for 16-bit signed)
+          normalized-volume (/ rms 32767.0)]
+      (min 1.0 normalized-volume))))
+
+(defn normalize-value
+  "Normalize a value to the range [0, 1] and clamp it to bounds.
+
+   Args:
+     value: The value to normalize
+     min-value: The minimum value of the input range
+     max-value: The maximum value of the input range
+
+   Returns:
+     Normalized value clamped to the range [0, 1]"
+  [value min-value max-value]
+  (let [normalized (/ (- value min-value) (- max-value min-value))
+        clamped (max 0.0 (min 1.0 normalized))]
+    clamped))
+
+(defn exp-smoothing
+  "Apply exponential smoothing to a value.
+
+   Exponential smoothing is used to reduce noise in time-series data by
+   giving more weight to recent values while still considering historical data.
+
+   Args:
+     value: The new value to incorporate
+     prev-value: The previous smoothed value
+     factor: Smoothing factor between 0 and 1. Higher values give more
+             weight to the new value
+
+   Returns:
+     The exponentially smoothed value"
+  [value prev-value factor]
+  (+ prev-value (* factor (- value prev-value))))
+
+;; Normal speech usually results in many samples between ±500 to ±5000, depending on loudness and mic gain.
+;; So we are using a threshold that is well below what real speech produces.
+(def ^:private speaking-threshold 20)
+
+(defn silence?
+  "Determine if an audio sample contains silence by checking amplitude levels.
+
+   This function analyzes raw PCM audio data to detect silence by comparing
+   the maximum absolute amplitude against a predefined threshold. The audio
+   is expected to be clean speech or complete silence without background noise.
+
+   Args:
+     pcm-bytes: Raw PCM audio data as bytes (16-bit signed integers)
+
+   Returns:
+     true if the audio sample is considered silence (below threshold),
+     false otherwise
+
+   Note:
+     Normal speech typically produces amplitude values between ±500 to ±5000,
+     depending on factors like loudness and microphone gain. The threshold
+     is set well below typical speech levels to reliably detect silence vs. speech."
+  [^bytes pcm-bytes]
+  (if (or (nil? pcm-bytes) (zero? (count pcm-bytes)))
+    true
+    (let [max-value (loop [i 0
+                           max-val 0]
+                      (if (< i (- (count pcm-bytes) 1))
+                        (let [byte1 (aget pcm-bytes i)
+                              byte2 (aget pcm-bytes (inc i))
+                              sample (Math/abs (int (unchecked-short
+                                                      (bit-or (bit-and byte1 0xff)
+                                                              (bit-shift-left byte2 8)))))]
+                          (recur (+ i 2) (max max-val sample)))
+                        max-val))]
+      (<= max-value speaking-threshold))))
+
+(defn mix-audio
+  "Mix two audio streams together by adding their samples.
+
+   Both audio streams are assumed to be 16-bit signed integer PCM data.
+   If the streams have different lengths, the shorter one is zero-padded
+   to match the longer stream.
+
+   Args:
+     audio1: First audio stream as raw bytes (16-bit signed integers)
+     audio2: Second audio stream as raw bytes (16-bit signed integers)
+
+   Returns:
+     Mixed audio data as raw bytes with samples clipped to 16-bit range"
+  [^bytes audio1 ^bytes audio2]
+  (let [len1 (count audio1)
+        len2 (count audio2)
+        max-len (max len1 len2)
+        ;; Ensure even number of bytes (complete 16-bit samples)
+        max-len (if (odd? max-len) (inc max-len) max-len)
+        result (byte-array max-len)]
+
+    (loop [i 0]
+      (when (< i (- max-len 1))
+        (let [;; Get samples from both streams (with zero padding)
+              sample1 (if (< i len1)
+                        (let [b1 (aget audio1 i)
+                              b2 (if (< (inc i) len1) (aget audio1 (inc i)) 0)]
+                          (unchecked-short (bit-or (bit-and b1 0xff)
+                                                   (bit-shift-left b2 8))))
+                        0)
+              sample2 (if (< i len2)
+                        (let [b1 (aget audio2 i)
+                              b2 (if (< (inc i) len2) (aget audio2 (inc i)) 0)]
+                          (unchecked-short (bit-or (bit-and b1 0xff)
+                                                   (bit-shift-left b2 8))))
+                        0)
+              ;; Mix samples and clamp to 16-bit range
+              mixed (+ (int sample1) (int sample2))
+              clamped (max -32768 (min 32767 mixed))
+              ;; Convert back to bytes (little-endian)
+              low-byte (unchecked-byte (bit-and clamped 0xff))
+              high-byte (unchecked-byte (bit-shift-right clamped 8))]
+          (aset result i low-byte)
+          (aset result (inc i) high-byte)
+          (recur (+ i 2)))))
+    result))

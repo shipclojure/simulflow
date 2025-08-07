@@ -457,3 +457,362 @@
         ;; Should process 100ms of audio in much less than 100ms (real-time constraint)
         (is (< processing-time-ms 50)
             (str "Processing time should be under 50ms, was: " processing-time-ms "ms"))))))
+
+ ;; Tests for new audio utility functions
+
+(defn- create-test-pcm-audio
+  "Create test PCM audio data with specific amplitude"
+  [amplitude num-samples]
+  (let [audio (byte-array (* num-samples 2))]
+    (dotimes [i num-samples]
+      (let [sample (short amplitude)
+            low-byte (unchecked-byte (bit-and sample 0xff))
+            high-byte (unchecked-byte (bit-shift-right sample 8))]
+        (aset audio (* i 2) low-byte)
+        (aset audio (inc (* i 2)) high-byte)))
+    audio))
+
+(deftest test-normalize-value
+  (testing "Value normalization and clamping"
+
+    (testing "Normal range normalization"
+      (is (= 0.5 (double (audio/normalize-value 50 0 100)))
+          "Mid-range value should normalize to 0.5")
+      (is (= 0.0 (double (audio/normalize-value 0 0 100)))
+          "Minimum value should normalize to 0.0")
+      (is (= 1.0 (double (audio/normalize-value 100 0 100)))
+          "Maximum value should normalize to 1.0")
+      (is (= 0.25 (double (audio/normalize-value 25 0 100)))
+          "Quarter value should normalize to 0.25"))
+
+    (testing "Clamping behavior"
+      (is (= 0.0 (audio/normalize-value -10 0 100))
+          "Below-minimum value should clamp to 0.0")
+      (is (= 1.0 (audio/normalize-value 150 0 100))
+          "Above-maximum value should clamp to 1.0"))
+
+    (testing "Negative range normalization"
+      (is (= 0.5 (double (audio/normalize-value 0 -50 50)))
+          "Zero in negative range should normalize to 0.5")
+      (is (= 0.75 (double (audio/normalize-value 25 -50 50)))
+          "Positive value in negative range should normalize correctly"))
+
+    (testing "Floating point precision"
+      (is (< (Math/abs (- 0.333333 (audio/normalize-value 33.3333 0 100))) 0.001)
+          "Should handle floating point values correctly"))))
+
+(deftest test-exp-smoothing
+  (testing "Exponential smoothing calculations"
+
+    (testing "Basic smoothing"
+      (is (= 6.5 (audio/exp-smoothing 10.0 5.0 0.3))
+          "Should calculate: 5.0 + 0.3 * (10.0 - 5.0) = 6.5")
+      (is (= 0.56 (audio/exp-smoothing 0.8 0.5 0.2))
+          "Should calculate: 0.5 + 0.2 * (0.8 - 0.5) = 0.56"))
+
+    (testing "Edge cases"
+      (is (= 5.0 (audio/exp-smoothing 5.0 5.0 0.5))
+          "Same values should return unchanged")
+      (is (= 10.0 (audio/exp-smoothing 10.0 5.0 1.0))
+          "Factor of 1.0 should return new value")
+      (is (= 5.0 (audio/exp-smoothing 10.0 5.0 0.0))
+          "Factor of 0.0 should return previous value"))
+
+    (testing "Smoothing sequence simulation"
+      (let [values [1.0 2.0 3.0 4.0 5.0]
+            factor 0.3
+            smoothed (reduce (fn [acc val]
+                               (conj acc (audio/exp-smoothing val (last acc) factor)))
+                             [0.0] ; initial value
+                             values)]
+        (is (= 6 (count smoothed)) "Should have initial + 5 values")
+        ;; Each smoothed value should be between previous smoothed and current raw value
+        (doseq [i (range 1 (count smoothed))]
+          (let [raw (nth values (dec i))
+                prev-smooth (nth smoothed (dec i))
+                curr-smooth (nth smoothed i)]
+            (is (or (<= prev-smooth curr-smooth raw)
+                    (<= raw curr-smooth prev-smooth))
+                (str "Smoothed value should be between previous and current for index " i))))))))
+
+(deftest test-silence-detection
+  (testing "Silence detection functionality"
+
+    (testing "Complete silence"
+      (let [quiet-audio (byte-array 1024 (byte 0))]
+        (is (audio/silence? quiet-audio)
+            "All-zero audio should be detected as silence")))
+
+    (testing "Very quiet audio (below threshold)"
+      (let [very-quiet (create-test-pcm-audio 10 256)] ; amplitude 10 < threshold 20
+        (is (audio/silence? very-quiet)
+            "Audio below threshold should be detected as silence")))
+
+    (testing "Speech-level audio (above threshold)"
+      (let [speech-audio (create-test-pcm-audio 1000 256)] ; amplitude 1000 > threshold 20
+        (is (not (audio/silence? speech-audio))
+            "Audio above threshold should not be detected as silence")))
+
+    (testing "Threshold boundary cases"
+      (let [at-threshold (create-test-pcm-audio 20 256) ; exactly at threshold
+            just-below (create-test-pcm-audio 19 256) ; just below threshold
+            just-above (create-test-pcm-audio 21 256)] ; just above threshold
+        (is (audio/silence? at-threshold)
+            "Audio exactly at threshold should be silence")
+        (is (audio/silence? just-below)
+            "Audio just below threshold should be silence")
+        (is (not (audio/silence? just-above))
+            "Audio just above threshold should not be silence")))
+
+    (testing "Edge cases"
+      (is (audio/silence? nil)
+          "Nil audio should be detected as silence")
+      (is (audio/silence? (byte-array 0))
+          "Empty audio should be detected as silence")
+      (is (audio/silence? (byte-array 1 (byte 0)))
+          "Single zero byte should be detected as silence"))
+
+    (testing "Mixed amplitude audio"
+      ;; Create audio with one loud sample among quiet ones
+      (let [mixed-audio (byte-array 100 (byte 0))]
+        ;; Insert one loud sample (1000 amplitude) at position 50
+        (aset mixed-audio 50 (unchecked-byte (bit-and 1000 0xff)))
+        (aset mixed-audio 51 (unchecked-byte (bit-shift-right 1000 8)))
+        (is (not (audio/silence? mixed-audio))
+            "Audio with any loud sample should not be silence")))))
+
+(deftest test-calculate-volume
+  (testing "Volume calculation functionality"
+
+    (testing "Silence has zero volume"
+      (let [quiet-audio (byte-array 1024 (byte 0))]
+        (is (= 0.0 (audio/calculate-volume quiet-audio))
+            "Complete silence should have zero volume")))
+
+    (testing "Maximum amplitude gives volume near 1.0"
+      (let [max-audio (create-test-pcm-audio 32767 512)] ; Max 16-bit signed value
+        (let [volume (audio/calculate-volume max-audio)]
+          (is (>= volume 0.99)
+              "Maximum amplitude should give volume near 1.0")
+          (is (<= volume 1.0)
+              "Volume should never exceed 1.0"))))
+
+    (testing "Mid-range amplitude"
+      (let [mid-audio (create-test-pcm-audio 16383 512)] ; Half of max amplitude
+        (let [volume (audio/calculate-volume mid-audio)]
+          (is (> volume 0.4)
+              "Mid amplitude should give reasonable volume")
+          (is (< volume 0.6)
+              "Mid amplitude volume should be in expected range"))))
+
+    (testing "Volume scaling relationship"
+      (let [volumes (for [amp [100 1000 5000 16000]]
+                      (audio/calculate-volume (create-test-pcm-audio amp 256)))]
+        ;; Each volume should be larger than the previous (monotonic increase)
+        (is (apply < volumes)
+            "Volume should increase monotonically with amplitude")))
+
+    (testing "Edge cases"
+      (is (= 0.0 (audio/calculate-volume nil))
+          "Nil audio should return zero volume")
+      (is (= 0.0 (audio/calculate-volume (byte-array 0)))
+          "Empty audio should return zero volume")
+      ;; Single sample
+      (let [single-sample (create-test-pcm-audio 1000 1)]
+        (is (> (audio/calculate-volume single-sample) 0.0)
+            "Single sample should have non-zero volume")))))
+
+(deftest test-mix-audio
+  (testing "Audio mixing functionality"
+
+    (testing "Mixing same-length audio streams"
+      (let [audio1 (create-test-pcm-audio 1000 256)
+            audio2 (create-test-pcm-audio 500 256)
+            mixed (audio/mix-audio audio1 audio2)]
+        (is (= (count audio1) (count mixed))
+            "Mixed audio should have same length as inputs")
+        ;; Volume of mixed should be higher than either input alone
+        (let [vol1 (audio/calculate-volume audio1)
+              vol2 (audio/calculate-volume audio2)
+              vol-mixed (audio/calculate-volume mixed)]
+          (is (> vol-mixed vol1)
+              "Mixed volume should be higher than first input")
+          (is (> vol-mixed vol2)
+              "Mixed volume should be higher than second input"))))
+
+    (testing "Mixing different-length streams"
+      (let [short-audio (create-test-pcm-audio 1000 128)
+            long-audio (create-test-pcm-audio 500 512)
+            mixed (audio/mix-audio short-audio long-audio)]
+        (is (= (count long-audio) (count mixed))
+            "Mixed audio should have length of longer input")
+        ;; The longer portion should still be audible
+        (is (> (audio/calculate-volume mixed) 0.0)
+            "Mixed audio should have non-zero volume")))
+
+    (testing "Clipping prevention"
+      ;; Mix two signals that would exceed 16-bit range without clipping
+      (let [loud1 (create-test-pcm-audio 25000 256)
+            loud2 (create-test-pcm-audio 25000 256)
+            mixed (audio/mix-audio loud1 loud2)]
+        ;; Check that no individual sample exceeds 16-bit signed range
+        (dotimes [i (/ (count mixed) 2)]
+          (let [byte1 (aget mixed (* i 2))
+                byte2 (aget mixed (inc (* i 2)))
+                sample (unchecked-short (bit-or (bit-and byte1 0xff)
+                                                (bit-shift-left byte2 8)))]
+            (is (>= sample -32768)
+                "Sample should not underflow 16-bit signed range")
+            (is (<= sample 32767)
+                "Sample should not overflow 16-bit signed range")))))
+
+    (testing "Mixing with silence"
+      (let [audio (create-test-pcm-audio 1000 256)
+            silence (byte-array 512 (byte 0))
+            mixed (audio/mix-audio audio silence)]
+        (is (= (count silence) (count mixed))
+            "Mixed audio should have length of longer input")
+        ;; First part should have the audio signal, rest should be silence
+        (let [first-half (byte-array 512)
+              _ (System/arraycopy mixed 0 first-half 0 512)
+              vol-first (audio/calculate-volume first-half)]
+          (is (> vol-first 0.0)
+              "First part should have non-zero volume"))))
+
+    (testing "Empty and nil inputs"
+      (let [audio (create-test-pcm-audio 1000 256)
+            empty (byte-array 0)]
+        (is (= (count audio) (count (audio/mix-audio audio empty)))
+            "Mixing with empty should return original length")
+        (is (= (count audio) (count (audio/mix-audio empty audio)))
+            "Mixing empty with audio should return audio length")))
+
+    (testing "Odd-length audio handling"
+      ;; Create audio with odd number of bytes (incomplete sample)
+      (let [odd-audio1 (byte-array 101 (byte 1)) ; 101 bytes = incomplete sample
+            odd-audio2 (byte-array 103 (byte 2)) ; 103 bytes = incomplete sample
+            mixed (audio/mix-audio odd-audio1 odd-audio2)]
+        ;; Should handle gracefully and ensure even number of bytes
+        (is (even? (count mixed))
+            "Mixed audio should have even number of bytes for complete samples")))))
+
+(deftest test-integration-scenarios
+  (testing "Integration scenarios with multiple functions"
+
+    (testing "VAD-like processing simulation"
+      (let [;; Simulate a sequence of audio chunks
+            chunks [(create-test-pcm-audio 10 256) ; quiet
+                    (create-test-pcm-audio 1000 256) ; speech start
+                    (create-test-pcm-audio 2000 256) ; loud speech
+                    (create-test-pcm-audio 500 256) ; quieter speech
+                    (create-test-pcm-audio 5 256)] ; silence
+            ;; Process each chunk: calculate volume and smooth it
+            initial-volume 0.0
+            smoothing-factor 0.2
+            processed (reduce (fn [{:keys [prev-volume results]} chunk]
+                                (let [raw-volume (audio/calculate-volume chunk)
+                                      smoothed (audio/exp-smoothing raw-volume prev-volume smoothing-factor)
+                                      is-silent (audio/silence? chunk)]
+                                  {:prev-volume smoothed
+                                   :results (conj results {:raw-volume raw-volume
+                                                           :smoothed-volume smoothed
+                                                           :is-silence is-silent})}))
+                              {:prev-volume initial-volume :results []}
+                              chunks)]
+
+        ;; Verify the processing results
+        (let [results (:results processed)]
+          (is (= 5 (count results)) "Should process all chunks")
+
+          ;; First chunk (quiet) should be detected as silence
+          (is (:is-silence (first results)) "First chunk should be silence")
+          (is (< (:raw-volume (first results)) 0.01) "First chunk should have low volume")
+
+          ;; Middle chunks (speech) should not be silence
+          (is (not (:is-silence (second results))) "Second chunk should not be silence")
+          (is (not (:is-silence (nth results 2))) "Third chunk should not be silence")
+
+          ;; Volume should increase through speech sequence
+          (let [speech-volumes (map :smoothed-volume (take 4 results))]
+            (is (< (first speech-volumes) (second speech-volumes))
+                "Smoothed volume should increase from quiet to speech"))
+
+          ;; Last chunk should return to silence
+          (is (:is-silence (last results)) "Last chunk should be silence"))))
+
+    (testing "Audio mixing with volume monitoring"
+      (let [;; Create two audio streams with different characteristics
+            stream1 (create-test-pcm-audio 800 512)
+            stream2 (create-test-pcm-audio 1200 512)
+
+            ;; Mix them
+            mixed (audio/mix-audio stream1 stream2)
+
+            ;; Calculate volumes
+            vol1 (audio/calculate-volume stream1)
+            vol2 (audio/calculate-volume stream2)
+            vol-mixed (audio/calculate-volume mixed)]
+
+        ;; Verify mixing behavior
+        (is (> vol-mixed vol1) "Mixed should be louder than stream1")
+        (is (> vol-mixed vol2) "Mixed should be louder than stream2")
+        (is (not (audio/silence? mixed)) "Mixed audio should not be silence")
+
+        ;; Verify normalization works on mixed result
+        (let [normalized-vol (audio/normalize-value vol-mixed 0.0 1.0)]
+          (is (<= 0.0 normalized-vol 1.0) "Normalized volume should be in [0,1] range"))))
+
+    (testing "Real-time processing simulation"
+      (let [;; Simulate incoming audio chunks with varying characteristics
+            chunk-sequence [(create-test-pcm-audio 5 128) ; silence
+                            (create-test-pcm-audio 100 128) ; very quiet
+                            (create-test-pcm-audio 500 128) ; quiet speech
+                            (create-test-pcm-audio 1500 128) ; normal speech
+                            (create-test-pcm-audio 3000 128) ; loud speech
+                            (create-test-pcm-audio 1000 128) ; medium speech
+                            (create-test-pcm-audio 100 128) ; very quiet
+                            (create-test-pcm-audio 5 128)] ; silence
+
+            ;; Process with smoothing
+            smoothing-factor 0.3
+            results (reduce (fn [acc chunk]
+                              (let [raw-vol (audio/calculate-volume chunk)
+                                    prev-smooth (or (:smoothed-volume (last acc)) 0.0)
+                                    smoothed (audio/exp-smoothing raw-vol prev-smooth smoothing-factor)
+                                    normalized (audio/normalize-value smoothed 0.0 1.0)
+                                    is-silent (audio/silence? chunk)]
+                                (conj acc {:raw-volume raw-vol
+                                           :smoothed-volume smoothed
+                                           :normalized-volume normalized
+                                           :is-silence is-silent})))
+                            []
+                            chunk-sequence)]
+
+        ;; Verify processing characteristics
+        (is (= 8 (count results)) "Should process all chunks")
+
+        ;; Check silence detection at beginning and end
+        (is (:is-silence (first results)) "First chunk should be silence")
+        (is (:is-silence (last results)) "Last chunk should be silence")
+
+        ;; Check that middle chunks show speech activity
+        (let [middle-chunks (take 6 (drop 1 results))]
+          (is (some #(not (:is-silence %)) middle-chunks)
+              "Some middle chunks should not be silence"))
+
+        ;; Verify smoothing reduces volatility
+        (let [raw-volumes (map :raw-volume results)
+              smoothed-volumes (map :smoothed-volume results)
+              raw-variance (let [mean (/ (reduce + raw-volumes) (count raw-volumes))]
+                             (/ (reduce + (map #(Math/pow (- % mean) 2) raw-volumes))
+                                (count raw-volumes)))
+              smoothed-variance (let [mean (/ (reduce + smoothed-volumes) (count smoothed-volumes))]
+                                  (/ (reduce + (map #(Math/pow (- % mean) 2) smoothed-volumes))
+                                     (count smoothed-volumes)))]
+          (is (< smoothed-variance raw-variance)
+              "Smoothed volumes should have less variance than raw volumes"))
+
+        ;; Check normalization bounds
+        (doseq [result results]
+          (is (<= 0.0 (:normalized-volume result) 1.0)
+              "All normalized volumes should be in [0,1] range"))))))

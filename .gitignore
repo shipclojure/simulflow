@@ -46,3 +46,4 @@
 !.clj-kondo/test/
 !.clj-kondo/macros/
 /.mcp.json
+/.clojure-mcp/

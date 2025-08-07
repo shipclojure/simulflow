@@ -1,6 +1,8 @@
 (ns simulflow.vad.silero
   (:require
    [simulflow.protocols :as p]
+   [simulflow.utils.audio :as audio]
+   [simulflow.vad.core :as vad]
    [taoensso.telemere :as t])
   (:import
    (ai.onnxruntime OnnxTensor OrtEnvironment OrtSession$SessionOptions)
@@ -9,7 +11,6 @@
 ;; Constants
 (def ^:private model-reset-time-ms 5000)
 (def ^:private supported-sample-rates #{8000 16000})
-(def ^:private threshold-gap 0.15)
 
 ;; ONNX Model wrapper
 (defn- create-session-options []
@@ -21,37 +22,34 @@
 (defn- validate-input
   "Validate and preprocess input audio data"
   [x sr]
-  (let [x (if (= (count (first x)) 1) x [x])]
+  ;; Handle 1D input by expanding dimensions
+  (let [x (if (vector? x)
+            (if (number? (first x)) ; 1D vector
+              [x] ; Wrap in outer dimension
+              x) ; Already 2D
+            x)]
+    ;; Check dimension constraint
     (when (> (count x) 2)
-      (throw (IllegalArgumentException. (str "Incorrect audio data dimension: " (count x)))))
-
+      (throw (IllegalArgumentException.
+               (str "Incorrect audio data dimension: " (count (first x))))))
     ;; Handle sample rate conversion if needed
-    (let [x (if (and (not= sr 16000) (zero? (mod sr 16000)))
-              (let [step (/ sr 16000)]
-                (mapv (fn [current]
-                        (let [indices (range 0 (count current) step)]
-                          (mapv #(nth current %) indices)))
-                      x))
-              x)
-          sr (if (and (not= sr 16000) (zero? (mod sr 16000))) 16000 sr)]
-
+    (let [[x sr] (if (and (not= sr 16000) (zero? (mod sr 16000)))
+                   (let [step (quot sr 16000)]
+                     [(mapv (fn [current]
+                              (vec (for [j (range 0 (count current) step)]
+                                     (nth current j))))
+                            x)
+                      16000])
+                   [x sr])]
+      ;; Validate sample rate
       (when-not (contains? supported-sample-rates sr)
         (throw (IllegalArgumentException.
-                 (str "Only supports sample rates " supported-sample-rates " (or multiples of 16000)"))))
-
+                 (str "Only supports sample rates " supported-sample-rates
+                      " (or multiples of 16000)"))))
+      ;; Check minimum audio length
       (when (> (/ (float sr) (count (first x))) 31.25)
         (throw (IllegalArgumentException. "Input audio is too short")))
-
-      [x sr])))
-
-(defn- reset-states!
-  "Reset the internal model states"
-  [model batch-size]
-  (-> model
-      (assoc :state (make-array Float/TYPE 2 batch-size 128))
-      (assoc :context (make-array Float/TYPE batch-size 0))
-      (assoc :last-sr 0)
-      (assoc :last-batch-size 0)))
+      {:x x :sr sr})))
 
 (defn- concatenate-arrays
   "Concatenate two 2D float arrays along the column axis"
@@ -77,17 +75,23 @@
       (System/arraycopy (nth array i) (- cols context-size) (nth result i) 0 context-size))
     result))
 
+(defn- to-float-array-2d
+  "Convert nested vectors to 2D float array"
+  [x]
+  (if (instance? (Class/forName "[[F") x)
+    x
+    (let [rows (count x)
+          cols (count (first x))
+          arr (make-array Float/TYPE rows cols)]
+      (dotimes [i rows]
+        (dotimes [j cols]
+          (aset arr i j (float (nth (nth x i) j)))))
+      arr)))
+
 (defprotocol SileroOnnxModel
   (call-model [this x sr] "Call the model for voice activity")
+  (reset-states! [this] [this batch-size] "Reset model states")
   (close-model! [this] "Close the model"))
-
-(defn reset-model-state
-  [state batch-size]
-  (-> state
-    (assoc :state (make-array Float/TYPE 2 batch-size 128))
-    (assoc :context (make-array Float/TYPE batch-size 0))
-    (assoc :last-sr 0)
-    (assoc :last-batch-size 0)))
 
 (defn- create-silero-onnx-model
   "Create a new Silero ONNX model instance"
@@ -96,63 +100,65 @@
     (let [env (OrtEnvironment/getEnvironment)
           opts (create-session-options)
           session (.createSession env model-path opts)
-          initial-state {:session session
-                         :state (make-array Float/TYPE 2 1 128)
-                         :context (make-array Float/TYPE 0 0)
-                         :last-sr 0
-                         :last-batch-size 0}
-          state (atom initial-state)
-          reset-states! #(swap! state reset-model-state %)]
+          state (atom {:state (make-array Float/TYPE 2 1 128)
+                       :context (make-array Float/TYPE 0 0)
+                       :last-sr 0
+                       :last-batch-size 0})]
       (reify SileroOnnxModel
+        (reset-states! [_]
+          (reset-states! _ 1))
+        (reset-states! [_ batch-size]
+          (reset! state {:state (make-array Float/TYPE 2 batch-size 128)
+                         :context (make-array Float/TYPE batch-size 0)
+                         :last-sr 0
+                         :last-batch-size 0}))
         (call-model [this x sr]
-          (let [[x sr] (validate-input x sr)
+          (let [{:keys [x sr]} (validate-input x sr)
                 number-samples (if (= sr 16000) 512 256)
                 batch-size (count x)
                 context-size (if (= sr 16000) 64 32)]
-
+            ;; Validate exact sample count
             (when (not= (count (first x)) number-samples)
               (throw (IllegalArgumentException.
                        (str "Provided number of samples is " (count (first x))
                             " (Supported values: 256 for 8000 sample rate, 512 for 16000)"))))
-
             ;; Handle state resets
-            (let [model-state (cond
-                                (zero? (:last-batch-size @state)) (reset-states! batch-size)
-                                (and (not= (:last-sr @state) 0) (not= (:last-sr this) sr)) (reset-states! batch-size)
-                                (and (not= (:last-batch-size @state) 0) (not= (:last-batch-size this) batch-size)) (reset-states! batch-size)
-                                :else @state)
-
-                  context (if (zero? (count (:context model-state)))
-                            (make-array Float/TYPE batch-size context-size)
-                            (:context model-state))
-
-                  x (concatenate-arrays context x)
-                  env (OrtEnvironment/getEnvironment)]
-
-              (with-open [input-tensor (OnnxTensor/createTensor env x)
-                          state-tensor (OnnxTensor/createTensor env (:state model-state))
-                          sr-tensor (OnnxTensor/createTensor env (long-array [sr]))]
-
-                (let [inputs (doto (HashMap.)
-                               (.put "input" input-tensor)
-                               (.put "state" state-tensor)
-                               (.put "sr" sr-tensor))]
-
-                  (with-open [outputs (.run (:session model-state) inputs)]
-                    (let [output (.getValue (.get outputs 0))
-                          new-state (.getValue (.get outputs 1))
-                          new-context (get-last-columns x context-size)
-                          updated-model (swap! state assoc
-                                               :state new-state
-                                               :context new-context
-                                               :last-sr sr
-                                               :last-batch-size batch-size)]
-                      [(first (first output)) updated-model])))))))
-
+            (let [current-state @state
+                  need-reset? (or (zero? (:last-batch-size current-state))
+                                  (and (not= (:last-sr current-state) 0)
+                                       (not= (:last-sr current-state) sr))
+                                  (and (not= (:last-batch-size current-state) 0)
+                                       (not= (:last-batch-size current-state) batch-size)))]
+              (when need-reset?
+                (reset-states! this batch-size))
+              ;; Re-read state after potential reset
+              (let [current-state @state
+                    context (if (zero? (count (:context current-state)))
+                              (make-array Float/TYPE batch-size context-size)
+                              (:context current-state))
+                    x-with-context (concatenate-arrays context (to-float-array-2d x))
+                    env (OrtEnvironment/getEnvironment)]
+                (with-open [input-tensor (OnnxTensor/createTensor env x-with-context)
+                            state-tensor (OnnxTensor/createTensor env (:state current-state))
+                            sr-tensor (OnnxTensor/createTensor env (long-array [sr]))]
+                  (let [inputs (doto (HashMap.)
+                                 (.put "input" input-tensor)
+                                 (.put "state" state-tensor)
+                                 (.put "sr" sr-tensor))]
+                    (with-open [outputs (.run session inputs)]
+                      (let [output (.getValue (.get outputs 0))
+                            new-state (.getValue (.get outputs 1))
+                            new-context (get-last-columns x-with-context context-size)]
+                        (swap! state assoc
+                               :state new-state
+                               :context new-context
+                               :last-sr sr
+                               :last-batch-size batch-size)
+                        ;; Return confidence for first batch item
+                        (aget output 0 0)))))))))
         (close-model! [_]
           (try
-            (when-let [s (:session @state)]
-              (.close s))
+            (.close session)
             (catch Exception e
               (t/log! {:level :warn
                        :id :silero-onnx
@@ -162,77 +168,113 @@
                :error e} "Failed to create Silero ONNX model")
       (throw e))))
 
-;; VAD Analyzer implementation
+;; VAD Analyzer implementation with audio accumulation
 (defn create-silero-vad
-  "Create a Silero VAD analyzer instance.
+  "Create a Silero VAD analyzer instance with audio accumulation.
    
    Options:
    - :model-path - Path to the silero_vad.onnx model file
    - :sample-rate - Audio sample rate (8000 or 16000 Hz, default: 16000)
-   - :threshold - Threshold for voice activity detection (default: 0.5)
+   - :min-confidence - Threshold for voice activity detection (default: 0.5)
    - :min-speech-duration-ms - Minimum speech duration in ms (default: 250)
    - :max-speech-duration-seconds - Maximum speech duration in seconds (default: infinity)
    - :min-silence-duration-ms - Minimum silence duration in ms (default: 100)
    - :speech-pad-ms - Speech padding in ms (default: 30)"
-
   ([] (create-silero-vad {}))
-
-  ([{:keys [model-path sample-rate threshold min-speech-duration-ms
-            max-speech-duration-seconds min-silence-duration-ms speech-pad-ms]
+  ([{:keys [model-path sample-rate]
+     :vad/keys [min-confidence min-speech-duration-ms min-silence-duration-ms min-volume]
      :or {sample-rate 16000
-          threshold 0.5
-          min-speech-duration-ms 250
-          max-speech-duration-seconds Float/POSITIVE_INFINITY
-          min-silence-duration-ms 100
-          speech-pad-ms 30}}]
-
+          min-speech-duration-ms (:vad/min-speech-duration-ms vad/default-params)
+          min-silence-duration-ms (:vad/min-silence-duration-ms vad/default-params)
+          min-volume (:vad/min-volume vad/default-params)
+          min-confidence (:vad/min-confidence vad/default-params)}}]
    (when-not (contains? supported-sample-rates sample-rate)
      (throw (IllegalArgumentException.
               (str "Sampling rate not supported, only available for " supported-sample-rates))))
-
    (let [model (create-silero-onnx-model model-path)
-         neg-threshold (- threshold threshold-gap)
-         min-speech-samples (* sample-rate (/ min-speech-duration-ms 1000.0))
-         speech-pad-samples (* sample-rate (/ speech-pad-ms 1000.0))
-         max-speech-samples (- (* sample-rate max-speech-duration-seconds)
-                               (if (= sample-rate 16000) 512 256)
-                               (* 2 speech-pad-samples))
-         min-silence-samples (* sample-rate (/ min-silence-duration-ms 1000.0))
-         min-silence-samples-at-max-speech (* sample-rate (/ 98 1000.0))
+         frames-required (if (= sample-rate 16000) 512 256)
+         bytes-per-frame 2 ; 16-bit PCM
+         bytes-required (* frames-required bytes-per-frame)
+         ;; Audio buffer for accumulation
+         audio-buffer (atom (byte-array 0))
+         ;; VAD state tracking
+         vad-state (atom {:state :vad/quiet
+                          :starting-count 0
+                          :stopping-count 0})
+         ;; Volume exponential smoothing state (like pipecat)
+         smoothing-factor 0.2
+         prev-volume (atom 0.0)
+         ;; Timing calculations
+         frames-per-sec (/ (float frames-required) sample-rate)
+         start-frames (Math/round (/ min-speech-duration-ms 1000.0 frames-per-sec))
+         stop-frames (Math/round (/ min-silence-duration-ms 1000.0 frames-per-sec))
+         ;; Reset timer
          last-reset-time (atom (System/currentTimeMillis))]
-
      (reify p/VADAnalyzer
-       (analyze-audio [this audio-buffer]
+       (analyze-audio [this audio-chunk]
          (try
-           (let [confidence (p/voice-confidence this audio-buffer)]
-             ;; Simple state machine based on confidence
-             (cond
-               (>= confidence threshold) :vad/speaking
-               (<= confidence neg-threshold) :vad/quiet
-               :else :vad/starting)) ; intermediate state
+           ;; Accumulate audio
+           (swap! audio-buffer #(byte-array (concat (seq %) (seq audio-chunk))))
+           ;; Process if we have enough data
+           (let [current-buffer @audio-buffer]
+             (if (>= (count current-buffer) bytes-required)
+               (let [;; Take exactly the required bytes
+                     process-bytes (byte-array bytes-required
+                                               (take bytes-required current-buffer))
+                     ;; Keep the rest for next time
+                     remaining (byte-array (drop bytes-required current-buffer))]
+                 ;; Update buffer with remaining data
+                 (reset! audio-buffer remaining)
+                 ;; Get confidence and calculate smoothed volume (like pipecat)
+                 (let [confidence (p/voice-confidence this process-bytes)
+                       raw-volume (audio/calculate-volume process-bytes)
+                       smoothed-volume (audio/exp-smoothing raw-volume @prev-volume smoothing-factor)
+                       _ (reset! prev-volume smoothed-volume)
+                       ;; Combined confidence and volume check (like pipecat)
+                       speaking? (and (>= confidence min-confidence)
+                                      (>= smoothed-volume min-volume))]
+                   ;; State machine logic
+                   (swap! vad-state
+                          (fn [state]
+                            (case (:state state)
+                              :vad/quiet
+                              (if speaking?
+                                (assoc state :state :vad/starting :starting-count 1)
+                                state)
+                              :vad/starting
+                              (if speaking?
+                                (if (>= (:starting-count state) start-frames)
+                                  (assoc state :state :vad/speaking :starting-count 0)
+                                  (update state :starting-count inc))
+                                (assoc state :state :vad/quiet :starting-count 0))
+                              :vad/speaking
+                              (if (not speaking?)
+                                (assoc state :state :vad/stopping :stopping-count 1)
+                                state)
+                              :vad/stopping
+                              (if speaking?
+                                (assoc state :state :vad/speaking :stopping-count 0)
+                                (if (>= (:stopping-count state) stop-frames)
+                                  (assoc state :state :vad/quiet :stopping-count 0)
+                                  (update state :stopping-count inc))))))
+                   (:state @vad-state)))
+               ;; Not enough data yet, return current state
+               (:state @vad-state)))
            (catch Exception e
              (t/log! {:level :error
                       :error e} "Error analyzing audio with Silero VAD")
              :vad/quiet)))
-
-       (voice-confidence [_this audio-buffer]
+       (voice-confidence [_ audio-buffer]
          (try
-           ;; Convert byte array to float array (assuming 16-bit PCM)
-           (let [audio-int16 (let [shorts (short-array (/ (count audio-buffer) 2))]
-                               (dotimes [i (count shorts)]
-                                 (let [low-byte (bit-and (nth audio-buffer (* i 2)) 0xff)
-                                       high-byte (nth audio-buffer (inc (* i 2)))]
-                                   (aset shorts i (short (bit-or low-byte (bit-shift-left high-byte 8))))))
-                               shorts)
-                 audio-float32 (mapv #(/ (float %) 32768.0) audio-int16)
-                 [confidence updated-model] (call-model model [audio-float32] sample-rate)]
-
+           (let [audio-float32 (audio/pcm-bytes->floats audio-buffer)
+                 ;; Call model with properly formatted input
+                 confidence (call-model model [audio-float32] sample-rate)
+                 current-time (System/currentTimeMillis)
+                 time-diff (- current-time @last-reset-time)]
              ;; Reset model periodically to prevent memory growth
-             (let [current-time (System/currentTimeMillis)
-                   time-diff (- current-time @last-reset-time)]
-               (when (>= time-diff model-reset-time-ms)
-                 (reset-states! updated-model 1)))
-
+             (when (>= time-diff model-reset-time-ms)
+               (reset-states! model 1)
+               (reset! last-reset-time current-time))
              confidence)
            (catch Exception e
              (t/log! {:level :error
