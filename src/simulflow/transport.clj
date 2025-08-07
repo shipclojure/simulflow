@@ -122,7 +122,7 @@
                                      (doseq [port (remove nil? (concat (vals in-ports) (vals out-ports)))]
                                        (a/close! port))))
 
-                     :init (fn [{:transport/keys [in-ch] :twilio/keys [handle-event]}]
+                     :init (fn [{:transport/keys [in-ch]}]
                              {::flow/in-ports {:in in-ch}})
 
                      :transform async-in-transform})))
