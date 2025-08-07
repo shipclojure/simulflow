@@ -1,28 +1,20 @@
 (ns simulflow.transport
-  (:require [clojure.core.async :as a]
-            [clojure.core.async.flow :as flow]
-            [simulflow.async :refer [vthread-loop]]
-            [simulflow.frame :as frame]
-            [simulflow.schema :as schema]
-            [simulflow.transport.out :as out]
-            [simulflow.transport.serializers :refer [make-twilio-serializer]]
-            [simulflow.utils.audio :as audio]
-            [simulflow.utils.core :as u :refer [defaliases]]
-            [taoensso.telemere :as t]
-            [uncomplicate.clojure-sound.core :as sound]
-            [uncomplicate.clojure-sound.sampled :as sampled]
-            [uncomplicate.commons.core :refer [close!]])
-  (:import (java.util Arrays)))
-
-(def AsyncOutputProcessorSchema
-  [:map
-   [:transport/sample-rate schema/SampleRate]
-   [:transport/sample-size-bits schema/SampleSizeBits]
-   [:transport/channels schema/AudioChannels]
-   [:transport/supports-interrupt? :boolean]
-   [:transport/audio-chunk-duration :int] ;; duration in ms for each audio chunk. Default 20ms
-   [:transport/audio-chunk-size :int]
-   [:transport/out-ch schema/CoreAsyncChannel]])
+  (:require
+   [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
+   [simulflow.async :refer [vthread-loop]]
+   [simulflow.frame :as frame]
+   [simulflow.transport.out :as out]
+   [simulflow.transport.serializers :refer [make-twilio-serializer]]
+   [simulflow.utils.audio :as audio]
+   [simulflow.utils.core :as u :refer [defaliases]]
+   [simulflow.vad.core :as vad]
+   [taoensso.telemere :as t]
+   [uncomplicate.clojure-sound.core :as sound]
+   [uncomplicate.clojure-sound.sampled :as sampled]
+   [uncomplicate.commons.core :refer [close!]])
+  (:import
+   (java.util Arrays)))
 
 (defn twilio-transport-in-transform
   [{:twilio/keys [handle-event] :as state} _ input]
@@ -32,13 +24,13 @@
     (condp = (:event data)
       "start" [state (if-let [stream-sid (:streamSid data)]
                        (out-frames {:sys-out [(frame/system-config-change
-                                               (u/without-nils {:twilio/stream-sid stream-sid
-                                                                :twilio/call-sid (get-in data [:start :callSid])
-                                                                :transport/serializer (make-twilio-serializer stream-sid)}))]})
+                                                (u/without-nils {:twilio/stream-sid stream-sid
+                                                                 :twilio/call-sid (get-in data [:start :callSid])
+                                                                 :transport/serializer (make-twilio-serializer stream-sid)}))]})
                        (out-frames {}))]
       "media"
       [state (out-frames {:out [(frame/audio-input-raw
-                                 (u/decode-base64 (get-in data [:media :payload])))]})]
+                                  (u/decode-base64 (get-in data [:media :payload])))]})]
 
       "close"
       [state (out-frames {:sys-out [(frame/system-stop true)]})]
@@ -72,6 +64,43 @@
      :audio-format (sampled/audio-format sample-rate sample-size-bits channels signed endian)
      :channel-size 1024}))
 
+(defn base-input-transport-transform
+  "Base input transport logic that is used by most transport input processors.
+  Assumes audio-input-raw frames that come in are 16kHz PCM mono. Conversion to
+  this format should be done beforehand."
+  [{:keys [pipeline/supports-interrupt?] :as state} _ msg]
+  (cond
+    (frame/audio-input-raw? msg)
+    (if-let [analyser (:vad/analyser state)]
+      (let [vad-state (vad/analyze-audio analyser (:frame/data msg))
+            prev-vad-state (:vad/state state :vad.state/quiet)
+            new-state (assoc state :vad/state vad-state)]
+        (if (and (not (vad/transition? vad-state))
+                 (not= vad-state prev-vad-state))
+          (if (= vad-state :vad.state/speaking)
+            (let [system-frames (into [(frame/vad-user-speech-start true)
+                                       (frame/user-speech-start true)]
+                                      (remove nil? [(when supports-interrupt? (frame/control-interrupt-start true))]))
+                  output {:out [msg]
+                          :sys-out system-frames}]
+              [new-state output])
+            (let [system-frames (into [(frame/vad-user-speech-stop true)
+                                       (frame/user-speech-stop true)]
+                                      (remove nil? [(when supports-interrupt? (frame/control-interrupt-stop true))]))
+                  output {:out [msg]
+                          :sys-out system-frames}]
+              [new-state output]))
+          [new-state {:out [msg]}]))
+      [state {:out [msg]}])
+
+    (frame/bot-interrupt? msg)
+    (if supports-interrupt?
+      [state {:sys-out [(frame/control-interrupt-start true)]}]
+      [state])
+
+    :else
+    [state]))
+
 ;; =============================================================================
 ;; Processors
 
@@ -104,9 +133,9 @@
   (assoc config :audio.out/chunk-size
          (or chunk-size
              (audio/audio-chunk-size {:sample-rate sample-rate
-                                   :sample-size-bits sample-size-bits
-                                   :channels channels
-                                   :duration-ms duration-ms}))))
+                                      :sample-size-bits sample-size-bits
+                                      :channels channels
+                                      :duration-ms duration-ms}))))
 
 (defn audio-splitter-fn
   "Audio splitter processor function with multi-arity support."
@@ -164,19 +193,18 @@
   "Takes in twilio events and transforms them into audio-input-raw and config
   changes."
   (flow/process
-   (flow/map->step {:describe (fn [] {:outs {:out "Channel on which audio frames are put"}
-                                      :params {:transport/in-ch "Channel from which input comes. Input should be byte array"}})
+    (flow/map->step {:describe (fn [] {:outs {:out "Channel on which audio frames are put"}
+                                       :params {:transport/in-ch "Channel from which input comes. Input should be byte array"}})
 
-                    :transition (fn [{::flow/keys [in-ports out-ports]} transition]
-                                  (when (= transition ::flow/stop)
-                                    (doseq [port (remove nil? (concat (vals in-ports) (vals out-ports)))]
-                                      (a/close! port))))
+                     :transition (fn [{::flow/keys [in-ports out-ports]} transition]
+                                   (when (= transition ::flow/stop)
+                                     (doseq [port (remove nil? (concat (vals in-ports) (vals out-ports)))]
+                                       (a/close! port))))
 
-                    :init (fn [{:transport/keys [in-ch] :twilio/keys [handle-event]}]
-                            {::flow/in-ports {:in in-ch}})
+                     :init (fn [{:transport/keys [in-ch] :twilio/keys [handle-event]}]
+                             {::flow/in-ports {:in in-ch}})
 
-                    :transform async-in-transform})))
-
+                     :transform async-in-transform})))
 
 (defn mic-transport-in-describe
   []

@@ -299,13 +299,33 @@
 ;;
 
 (defframe user-speech-start
-  "User started speaking"
+  "Frame denoting that User started speaking"
   {:type ::user-speech-start
    :schema :boolean})
 
 (defframe user-speech-stop
-  "User stopped speaking"
+  "Frame denoting that User stopped speaking"
   {:type ::user-speech-stop
+   :schema :boolean})
+
+(defframe vad-user-speech-start
+  "Frame denoting that a VAD model/system User started speaking. This is
+  different than user-speech-start/stop because the vad frames may not trigger
+  aggregation or pipeline interruption the same as the user-speech-start/stop
+  frames because there are scenarios where VAD conclusion can be overturned by a
+  more advanced turn detection model that still considers the user is still
+  speaking (for example). These frames are emitted for observability."
+  {:type ::vad-user-speech-start
+   :schema :boolean})
+
+(defframe vad-user-speech-stop
+  "Frame denoting that a VAD model/system User stopped speaking. This is
+  different than user-speech-start/stop because the vad frames may not trigger
+  aggregation or pipeline interruption the same as the user-speech-start/stop
+  frames because there are scenarios where VAD conclusion can be overturned by a
+  more advanced turn detection model that still considers the user is still
+  speaking (for example). These frames are emitted for observability."
+  {:type ::vad-user-speech-stop
    :schema :boolean})
 
 ;;
@@ -336,6 +356,19 @@
 (defframe control-interrupt-stop
   "Stop pipeline interruption"
   {:type ::control-interrupt-stop
+   :schema :boolean})
+
+(defframe bot-interrupt
+  "Frame that signals the pipeline should be interrupted. Usually the pipeline
+  interruption is the responsability of the transport input. The `bot-interrupt`
+  frame is emitted when we have interruptions based on strategies which usually
+  require access to transcriptions that are not available in the transport
+  input.
+
+  This frame is emitted usually by the user-context-aggregator to signal to the transport-in that it should emit a control-interrupt-start frame.
+
+  The flow works this way because the user-context-aggregator has access to the user transcriptions"
+  {:type ::bot-interrupt
    :schema :boolean})
 
 ;;

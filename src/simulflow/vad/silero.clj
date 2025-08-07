@@ -1,6 +1,5 @@
 (ns simulflow.vad.silero
   (:require
-   [simulflow.protocols :as p]
    [simulflow.utils.audio :as audio]
    [simulflow.vad.core :as vad]
    [taoensso.telemere :as t])
@@ -168,25 +167,73 @@
                :error e} "Failed to create Silero ONNX model")
       (throw e))))
 
+(comment
+
+  (defn test-model []
+    (let [model (create-silero-onnx-model "resources/silero_vad.onnx")
+          ;; Create 512 samples of silence
+          silence (float-array 512 0.0)
+          ;; Create 512 samples of noise
+          noise (float-array 512 (repeatedly 512 #(- (rand 2.0) 1.0)))]
+      (println "Silence confidence:" (call-model model [silence] 16000))
+      (println "Noise confidence:" (call-model model [noise] 16000))
+      (close-model! model)))
+
+  (test-model))
+
 ;; VAD Analyzer implementation with audio accumulation
+(defn update-vad-state
+  "Pure function to update VAD state based on speaking detection.
+
+   Args:
+     current-state: Current VAD state map with :vad/state, :vad/starting-count, :vad/stopping-count
+     speaking?: Boolean indicating if speech is currently detected
+     start-frames: Number of frames required to confirm speech start
+     stop-frames: Number of frames required to confirm speech stop
+
+   Returns:
+     Updated VAD state map"
+  [current-state speaking? start-frames stop-frames]
+  (case (:vad/state current-state)
+    :vad.state/quiet
+    (if speaking?
+      (assoc current-state :vad/state :vad.state/starting :vad/starting-count 1)
+      current-state)
+
+    :vad.state/starting
+    (if speaking?
+      (if (>= (:vad/starting-count current-state) start-frames)
+        (assoc current-state :vad/state :vad.state/speaking :vad/starting-count 0)
+        (update current-state :vad/starting-count inc))
+      (assoc current-state :vad/state :vad.state/quiet :vad/starting-count 0))
+
+    :vad.state/speaking
+    (if (not speaking?)
+      (assoc current-state :vad/state :vad.state/stopping :vad/stopping-count 1)
+      current-state)
+
+    :vad.state/stopping
+    (if speaking?
+      (assoc current-state :vad/state :vad.state/speaking :vad/stopping-count 0)
+      (if (>= (:vad/stopping-count current-state) stop-frames)
+        (assoc current-state :vad/state :vad.state/quiet :vad/stopping-count 0)
+        (update current-state :vad/stopping-count inc)))))
+
 (defn create-silero-vad
   "Create a Silero VAD analyzer instance with audio accumulation.
    
    Options:
    - :model-path - Path to the silero_vad.onnx model file
    - :sample-rate - Audio sample rate (8000 or 16000 Hz, default: 16000)
-   - :min-confidence - Threshold for voice activity detection (default: 0.5)
-   - :min-speech-duration-ms - Minimum speech duration in ms (default: 250)
-   - :max-speech-duration-seconds - Maximum speech duration in seconds (default: infinity)
-   - :min-silence-duration-ms - Minimum silence duration in ms (default: 100)
-   - :speech-pad-ms - Speech padding in ms (default: 30)"
+   - :vad/min-confidence - Threshold for voice activity detection (default: 0.7)
+   - :vad/min-speech-duration-ms - Minimum speech duration in ms (default: 200)
+   - :vad/min-silence-duration-ms - Minimum silence duration in ms (default: 800)"
   ([] (create-silero-vad {}))
   ([{:keys [model-path sample-rate]
-     :vad/keys [min-confidence min-speech-duration-ms min-silence-duration-ms min-volume]
+     :vad/keys [min-confidence min-speech-duration-ms min-silence-duration-ms]
      :or {sample-rate 16000
           min-speech-duration-ms (:vad/min-speech-duration-ms vad/default-params)
           min-silence-duration-ms (:vad/min-silence-duration-ms vad/default-params)
-          min-volume (:vad/min-volume vad/default-params)
           min-confidence (:vad/min-confidence vad/default-params)}}]
    (when-not (contains? supported-sample-rates sample-rate)
      (throw (IllegalArgumentException.
@@ -198,19 +245,16 @@
          ;; Audio buffer for accumulation
          audio-buffer (atom (byte-array 0))
          ;; VAD state tracking
-         vad-state (atom {:state :vad/quiet
-                          :starting-count 0
-                          :stopping-count 0})
-         ;; Volume exponential smoothing state (like pipecat)
-         smoothing-factor 0.2
-         prev-volume (atom 0.0)
+         vad-state (atom {:vad/state :vad.state/quiet
+                          :vad/starting-count 0
+                          :vad/stopping-count 0})
          ;; Timing calculations
          frames-per-sec (/ (float frames-required) sample-rate)
          start-frames (Math/round (/ min-speech-duration-ms 1000.0 frames-per-sec))
          stop-frames (Math/round (/ min-silence-duration-ms 1000.0 frames-per-sec))
          ;; Reset timer
          last-reset-time (atom (System/currentTimeMillis))]
-     (reify p/VADAnalyzer
+     (reify vad/VADAnalyzer
        (analyze-audio [this audio-chunk]
          (try
            ;; Accumulate audio
@@ -225,41 +269,15 @@
                      remaining (byte-array (drop bytes-required current-buffer))]
                  ;; Update buffer with remaining data
                  (reset! audio-buffer remaining)
-                 ;; Get confidence and calculate smoothed volume (like pipecat)
-                 (let [confidence (p/voice-confidence this process-bytes)
-                       raw-volume (audio/calculate-volume process-bytes)
-                       smoothed-volume (audio/exp-smoothing raw-volume @prev-volume smoothing-factor)
-                       _ (reset! prev-volume smoothed-volume)
-                       ;; Combined confidence and volume check (like pipecat)
-                       speaking? (and (>= confidence min-confidence)
-                                      (>= smoothed-volume min-volume))]
+                 ;; Get confidence and make speaking decision
+                 (let [confidence (vad/voice-confidence this process-bytes)
+                       speaking? (>= confidence min-confidence)]
                    ;; State machine logic
-                   (swap! vad-state
-                          (fn [state]
-                            (case (:state state)
-                              :vad/quiet
-                              (if speaking?
-                                (assoc state :state :vad/starting :starting-count 1)
-                                state)
-                              :vad/starting
-                              (if speaking?
-                                (if (>= (:starting-count state) start-frames)
-                                  (assoc state :state :vad/speaking :starting-count 0)
-                                  (update state :starting-count inc))
-                                (assoc state :state :vad/quiet :starting-count 0))
-                              :vad/speaking
-                              (if (not speaking?)
-                                (assoc state :state :vad/stopping :stopping-count 1)
-                                state)
-                              :vad/stopping
-                              (if speaking?
-                                (assoc state :state :vad/speaking :stopping-count 0)
-                                (if (>= (:stopping-count state) stop-frames)
-                                  (assoc state :state :vad/quiet :stopping-count 0)
-                                  (update state :stopping-count inc))))))
-                   (:state @vad-state)))
+                   ;; State machine logic using pure function
+                   (swap! vad-state update-vad-state speaking? start-frames stop-frames)
+                   (:vad/state @vad-state)))
                ;; Not enough data yet, return current state
-               (:state @vad-state)))
+               (:vad/state @vad-state)))
            (catch Exception e
              (t/log! {:level :error
                       :error e} "Error analyzing audio with Silero VAD")
