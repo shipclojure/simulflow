@@ -320,13 +320,13 @@
         (is (= [state {:sys-out [test-config-change-frame]}]
                (sut/twilio-transport-in-transform
                  state
-                 :twilio-in
+                 ::twilio-in
                  (u/json-str {:event "start"}))))
 
         (testing "Merges frames in the same array if more are generated"
           (let [[new-state {:keys [sys-out]}] (sut/twilio-transport-in-transform
                                                 state
-                                                :twilio-in
+                                                ::twilio-in
                                                 (u/json-str {:event "start"
                                                              :streamSid "hello"}))]
             (is (= state new-state))

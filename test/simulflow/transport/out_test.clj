@@ -1,9 +1,10 @@
 (ns simulflow.transport.out-test
-  (:require [clojure.test :refer [deftest is testing]]
-            [simulflow.frame :as frame]
-            [simulflow.transport.out :as sut]
-            [simulflow.transport.protocols :as tp]
-            [simulflow.utils.core :as u]))
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [simulflow.frame :as frame]
+   [simulflow.transport.out :as sut]
+   [simulflow.transport.protocols :as tp]
+   [simulflow.utils.core :as u]))
 
 (deftest process-realtime-out-audio-frame-test
   (testing "process-realtime-out-audio-frame with first audio frame"
@@ -60,7 +61,6 @@
       (is (contains? (:params description) :audio.out/sample-size-bits))
       (is (contains? (:params description) :audio.out/channels))
       (is (contains? (:params description) :audio.out/duration-ms)))))
-
 
 (deftest test-realtime-out-timer-handling
   (testing "timer tick when not speaking (no effect)"
@@ -122,7 +122,7 @@
 
 (deftest test-realtime-speakers-out-serializer-integration
   (testing "transform with serializer"
-    (let [mock-serializer (reify tp/FrameSerializer
+    (let [mock-serializer (reify tp/FrameCodec
                             (serialize-frame [_ frame]
                               ;; Serializer modifies the frame data
                               (assoc frame :frame/data [99 99 99])))
@@ -215,8 +215,8 @@
               timer-frame {:timer/tick true
                            :timer/timestamp (+ (::sut/last-send-time state2) 1000)}
               [state3 output3] (sut/realtime-out-transform
-                                (assoc state2 ::sut/silence-threshold 500)
-                                :timer-out timer-frame)]
+                                 (assoc state2 ::sut/silence-threshold 500)
+                                 :timer-out timer-frame)]
 
           ;; Verify state progression
           (is (false? (::sut/speaking? initial-state)))
@@ -241,18 +241,15 @@
           [new-state output] (sut/realtime-out-transform state :in frame)
           audio-write (first (:audio-write output))
           [next-state] (sut/realtime-out-transform (assoc new-state ::sut/now 1020) :in frame)
-          [next-state2] (sut/realtime-out-transform (assoc next-state ::sut/now 1025) :in frame)
-
-
-]
+          [next-state2] (sut/realtime-out-transform (assoc next-state ::sut/now 1025) :in frame)]
 
       (is (= current-time (:delay-until audio-write)))
       (is (= current-time (::sut/last-send-time new-state)))
-      (is (= next-state #::sut{:last-send-time 1025,
-                              :sending-interval 25,
-                              :speaking? true}))
-      (is (= next-state2 #::sut{:last-send-time 1050,
-                                :sending-interval 25,
+      (is (= next-state #::sut{:last-send-time 1025
+                               :sending-interval 25
+                               :speaking? true}))
+      (is (= next-state2 #::sut{:last-send-time 1050
+                                :sending-interval 25
                                 :speaking? true}))))
 
   (testing "silence threshold calculations"

@@ -4,8 +4,8 @@
    [clojure.core.async.flow :as flow]
    [simulflow.async :refer [vthread-loop]]
    [simulflow.frame :as frame]
+   [simulflow.transport.codecs :refer [make-twilio-codec]]
    [simulflow.transport.out :as out]
-   [simulflow.transport.serializers :refer [make-twilio-serializer]]
    [simulflow.utils.audio :as audio]
    [simulflow.utils.core :as u :refer [defaliases]]
    [simulflow.vad.core :as vad]
@@ -15,26 +15,6 @@
    [uncomplicate.commons.core :refer [close!]])
   (:import
    (java.util Arrays)))
-
-(defn twilio-transport-in-transform
-  [{:twilio/keys [handle-event] :as state} _ input]
-  (let [data (u/parse-if-json input)
-        output (if (fn? handle-event) (handle-event data) nil)
-        out-frames (partial merge-with into output)]
-    (condp = (:event data)
-      "start" [state (if-let [stream-sid (:streamSid data)]
-                       (out-frames {:sys-out [(frame/system-config-change
-                                                (u/without-nils {:twilio/stream-sid stream-sid
-                                                                 :twilio/call-sid (get-in data [:start :callSid])
-                                                                 :transport/serializer (make-twilio-serializer stream-sid)}))]})
-                       (out-frames {}))]
-      "media"
-      [state (out-frames {:out [(frame/audio-input-raw
-                                  (u/decode-base64 (get-in data [:media :payload])))]})]
-
-      "close"
-      [state (out-frames {:sys-out [(frame/system-stop true)]})]
-      [state])))
 
 (defn async-in-transform
   [state _ input]
@@ -100,6 +80,32 @@
 
     :else
     [state]))
+
+(defn twilio-transport-in-transform
+  [{:twilio/keys [handle-event] :as state} in input]
+  (if (= in ::twilio-in)
+    (let [data (u/parse-if-json input)
+          output (if (fn? handle-event) (handle-event data) nil)
+          out-frames (partial merge-with into output)]
+      (condp = (:event data)
+        "start" [state (if-let [stream-sid (:streamSid data)]
+                         (out-frames {:sys-out [(frame/system-config-change
+                                                  (u/without-nils {:twilio/stream-sid stream-sid
+                                                                   :twilio/call-sid (get-in data [:start :callSid])
+                                                                   :transport/serializer (make-twilio-codec stream-sid)}))]})
+                         (out-frames {}))]
+        "media"
+        (let [audio-frame (frame/audio-input-raw (-> data
+                                                     :media
+                                                     :payload
+                                                     u/decode-base64
+                                                     audio/ulaw->pcm16k))]
+          (base-input-transport-transform state in audio-frame))
+
+        "close"
+        [state (out-frames {:sys-out [(frame/system-stop true)]})]
+        [state]))
+    (base-input-transport-transform state in input)))
 
 ;; =============================================================================
 ;; Processors
@@ -168,7 +174,7 @@
 
 (defn twilio-transport-in-init!
   [{:transport/keys [in-ch] :twilio/keys [handle-event]}]
-  {::flow/in-ports {:twilio-in in-ch}
+  {::flow/in-ports {::twilio-in in-ch}
    :twilio/handle-event handle-event})
 
 (def twilio-transport-in-describe

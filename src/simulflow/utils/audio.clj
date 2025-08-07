@@ -169,6 +169,13 @@
               "Failed to resample audio data")
       audio-data)))
 
+(defn ulaw->pcm16k
+  [audio-data]
+  (resample-audio-data
+    audio-data
+    {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}
+    {:sample-rate 16000 :encoding :pcm-signed :channels 1 :sample-size-bits 16}))
+
 (defn pcms16->pcmf32
   "Convert a byte array of PCM signed shorts,
   return a byte array of pcm signed 32 bit floats.
