@@ -1,6 +1,6 @@
 (ns simulflow.protocols)
 
-(defprotocol VADAnalizer
+(defprotocol VADAnalyzer
   "The standard protocol for Voice Activity Detection Analizers."
   (analyze-audio [this audio-buffer]
     "Analize audio and give back the vad state associated with the current audio-buffer.

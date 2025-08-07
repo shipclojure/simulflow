@@ -193,3 +193,30 @@
                                 4))]
     (.get fbuf flts)
     flts))
+
+(defn downsample
+  "Convert the sound samples, `bs` from `from-sample-rate` to `to-sample-rate`.
+
+  The sound samples must be pcmf32."
+  [^bytes bs from-sample-rate to-sample-rate]
+  (assert (< to-sample-rate from-sample-rate))
+  (let [num-samples (dec
+                      (long
+                        (* (quot (alength bs) 4)
+                           (/ to-sample-rate
+                              from-sample-rate))))
+        inbuf (doto (ByteBuffer/wrap bs)
+                (.order (ByteOrder/nativeOrder)))
+        outbuf (doto (ByteBuffer/allocate (* 4 num-samples))
+                 (.order (ByteOrder/nativeOrder)))]
+    (dotimes [i  num-samples]
+      (let [index (double (* i (/ from-sample-rate to-sample-rate)))
+            i0 (long index)
+            i1 (inc i0)
+            f (- index (Math/floor index))]
+        #_(.putFloat outbuf (* 4 i) (.getFloat inbuf (* 4 i0)))
+        (.putFloat outbuf (* 4 i)
+                   (+ (.getFloat inbuf (* 4 i0))
+                      (* f (- (.getFloat inbuf (* 4 i1))
+                              (.getFloat inbuf (* 4 i0))))))))
+    (.array outbuf)))
