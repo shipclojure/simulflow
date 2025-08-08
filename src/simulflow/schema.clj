@@ -47,17 +47,17 @@
   [s]
   (assert (= :map (m/type s)) "Can only transform :map schemas to :describe parameter format")
   (reduce
-   (fn [acc [key-name props schema]]
-     (let [schema-type (describe-schema-type schema)
-           {:keys [description optional]} props
-           description (or description (:description props))]
-       (assoc acc key-name
-              (apply str (remove nil?
-                                 ["Type: " schema-type
-                                  (when optional "; Optional ")
-                                  (when description (str "; Description: " description))])))))
-   {}
-   (m/children s)))
+    (fn [acc [key-name props schema]]
+      (let [schema-type (describe-schema-type schema)
+            {:keys [description optional]} props
+            description (or description (:description props))]
+        (assoc acc key-name
+               (apply str (remove nil?
+                                  ["Type: " schema-type
+                                   (when optional "; Optional ")
+                                   (when description (str "; Description: " description))])))))
+    {}
+    (m/children s)))
 
 (defn get-required-fields
   "Extract required field keys from a Malli schema.
@@ -194,271 +194,271 @@
          :min 64}])
 
 (def AudioEndian
-  [:enum  {:description "Audio byte order (endianness)"
-           :default :little-endian
-           :title "Audio Endianness"
-           :json-schema/example :little-endian}
+  [:enum {:description "Audio byte order (endianness)"
+          :default :little-endian
+          :title "Audio Endianness"
+          :json-schema/example :little-endian}
    :little-endian :big-endian :little :big])
 
 (def Language
   (flex-enum
-   {:description "Language codes including regional variants"}
-   [;; Afrikaans
-    "af" "af-ZA"
+    {:description "Language codes including regional variants"}
+    [;; Afrikaans
+     "af" "af-ZA"
 
-     ;; Amharic
-    "am" "am-ET"
+      ;; Amharic
+     "am" "am-ET"
 
-     ;; Arabic
-    "ar" "ar-AE" "ar-BH" "ar-DZ" "ar-EG" "ar-IQ" "ar-JO" "ar-KW"
-    "ar-LB" "ar-LY" "ar-MA" "ar-OM" "ar-QA" "ar-SA" "ar-SY" "ar-TN" "ar-YE"
+      ;; Arabic
+     "ar" "ar-AE" "ar-BH" "ar-DZ" "ar-EG" "ar-IQ" "ar-JO" "ar-KW"
+     "ar-LB" "ar-LY" "ar-MA" "ar-OM" "ar-QA" "ar-SA" "ar-SY" "ar-TN" "ar-YE"
 
-     ;; Assamese
-    "as" "as-IN"
+      ;; Assamese
+     "as" "as-IN"
 
-     ;; Azerbaijani
-    "az" "az-AZ"
+      ;; Azerbaijani
+     "az" "az-AZ"
 
-     ;; Bulgarian
-    "bg" "bg-BG"
+      ;; Bulgarian
+     "bg" "bg-BG"
 
-     ;; Bengali
-    "bn" "bn-BD" "bn-IN"
+      ;; Bengali
+     "bn" "bn-BD" "bn-IN"
 
-     ;; Bosnian
-    "bs" "bs-BA"
+      ;; Bosnian
+     "bs" "bs-BA"
 
-     ;; Catalan
-    "ca" "ca-ES"
+      ;; Catalan
+     "ca" "ca-ES"
 
-     ;; Czech
-    "cs" "cs-CZ"
+      ;; Czech
+     "cs" "cs-CZ"
 
-     ;; Welsh
-    "cy" "cy-GB"
+      ;; Welsh
+     "cy" "cy-GB"
 
-     ;; Danish
-    "da" "da-DK"
+      ;; Danish
+     "da" "da-DK"
 
-     ;; German
-    "de" "de-AT" "de-CH" "de-DE"
+      ;; German
+     "de" "de-AT" "de-CH" "de-DE"
 
-     ;; Greek
-    "el" "el-GR"
+      ;; Greek
+     "el" "el-GR"
 
-     ;; English
-    "en" "en-AU" "en-CA" "en-GB" "en-HK" "en-IE" "en-IN" "en-KE"
-    "en-NG" "en-NZ" "en-PH" "en-SG" "en-TZ" "en-US" "en-ZA"
+      ;; English
+     "en" "en-AU" "en-CA" "en-GB" "en-HK" "en-IE" "en-IN" "en-KE"
+     "en-NG" "en-NZ" "en-PH" "en-SG" "en-TZ" "en-US" "en-ZA"
 
-     ;; Spanish
-    "es" "es-AR" "es-BO" "es-CL" "es-CO" "es-CR" "es-CU" "es-DO"
-    "es-EC" "es-ES" "es-GQ" "es-GT" "es-HN" "es-MX" "es-NI" "es-PA"
-    "es-PE" "es-PR" "es-PY" "es-SV" "es-US" "es-UY" "es-VE"
+      ;; Spanish
+     "es" "es-AR" "es-BO" "es-CL" "es-CO" "es-CR" "es-CU" "es-DO"
+     "es-EC" "es-ES" "es-GQ" "es-GT" "es-HN" "es-MX" "es-NI" "es-PA"
+     "es-PE" "es-PR" "es-PY" "es-SV" "es-US" "es-UY" "es-VE"
 
-     ;; Estonian
-    "et" "et-EE"
+      ;; Estonian
+     "et" "et-EE"
 
-     ;; Basque
-    "eu" "eu-ES"
+      ;; Basque
+     "eu" "eu-ES"
 
-     ;; Persian
-    "fa" "fa-IR"
+      ;; Persian
+     "fa" "fa-IR"
 
-     ;; Finnish
-    "fi" "fi-FI"
+      ;; Finnish
+     "fi" "fi-FI"
 
-     ;; Filipino
-    "fil" "fil-PH"
+      ;; Filipino
+     "fil" "fil-PH"
 
-     ;; French
-    "fr" "fr-BE" "fr-CA" "fr-CH" "fr-FR"
+      ;; French
+     "fr" "fr-BE" "fr-CA" "fr-CH" "fr-FR"
 
-     ;; Irish
-    "ga" "ga-IE"
+      ;; Irish
+     "ga" "ga-IE"
 
-     ;; Galician
-    "gl" "gl-ES"
+      ;; Galician
+     "gl" "gl-ES"
 
-     ;; Gujarati
-    "gu" "gu-IN"
+      ;; Gujarati
+     "gu" "gu-IN"
 
-     ;; Hebrew
-    "he" "he-IL"
+      ;; Hebrew
+     "he" "he-IL"
 
-     ;; Hindi
-    "hi" "hi-IN"
+      ;; Hindi
+     "hi" "hi-IN"
 
-     ;; Croatian
-    "hr" "hr-HR"
+      ;; Croatian
+     "hr" "hr-HR"
 
-     ;; Hungarian
-    "hu" "hu-HU"
+      ;; Hungarian
+     "hu" "hu-HU"
 
-     ;; Armenian
-    "hy" "hy-AM"
+      ;; Armenian
+     "hy" "hy-AM"
 
-     ;; Indonesian
-    "id" "id-ID"
+      ;; Indonesian
+     "id" "id-ID"
 
-     ;; Icelandic
-    "is" "is-IS"
+      ;; Icelandic
+     "is" "is-IS"
 
-     ;; Italian
-    "it" "it-IT"
+      ;; Italian
+     "it" "it-IT"
 
-     ;; Inuktitut
-    "iu-Cans" "iu-Cans-CA" "iu-Latn" "iu-Latn-CA"
+      ;; Inuktitut
+     "iu-Cans" "iu-Cans-CA" "iu-Latn" "iu-Latn-CA"
 
-     ;; Japanese
-    "ja" "ja-JP"
+      ;; Japanese
+     "ja" "ja-JP"
 
-     ; Javanese
-    "jv" "jv-ID"
+      ; Javanese
+     "jv" "jv-ID"
 
-     ;; Georgian
-    "ka" "ka-GE"
+      ;; Georgian
+     "ka" "ka-GE"
 
-     ;; Kazakh
-    "kk" "kk-KZ"
+      ;; Kazakh
+     "kk" "kk-KZ"
 
-     ;; Khmer
-    "km" "km-KH"
+      ;; Khmer
+     "km" "km-KH"
 
-     ;; Kannada
-    "kn" "kn-IN"
+      ;; Kannada
+     "kn" "kn-IN"
 
-     ;; Korean
-    "ko" "ko-KR"
+      ;; Korean
+     "ko" "ko-KR"
 
-     ;; Lao
-    "lo" "lo-LA"
+      ;; Lao
+     "lo" "lo-LA"
 
-     ;; Lithuanian
-    "lt" "lt-LT"
+      ;; Lithuanian
+     "lt" "lt-LT"
 
-     ;; Latvian
-    "lv" "lv-LV"
+      ;; Latvian
+     "lv" "lv-LV"
 
-     ;; Macedonian
-    "mk" "mk-MK"
+      ;; Macedonian
+     "mk" "mk-MK"
 
-     ;; Malayalam
-    "ml" "ml-IN"
+      ;; Malayalam
+     "ml" "ml-IN"
 
-     ;; Mongolian
-    "mn" "mn-MN"
+      ;; Mongolian
+     "mn" "mn-MN"
 
-     ;; Marathi
-    "mr" "mr-IN"
+      ;; Marathi
+     "mr" "mr-IN"
 
-     ;; Malay
-    "ms" "ms-MY"
+      ;; Malay
+     "ms" "ms-MY"
 
-     ;; Maltese
-    "mt" "mt-MT"
+      ;; Maltese
+     "mt" "mt-MT"
 
-     ;; Burmese
-    "my" "my-MM"
+      ;; Burmese
+     "my" "my-MM"
 
-     ;; Norwegian
-    "nb" "nb-NO" "no"
+      ;; Norwegian
+     "nb" "nb-NO" "no"
 
-     ;; Nepali
-    "ne" "ne-NP"
+      ;; Nepali
+     "ne" "ne-NP"
 
-     ;; Dutch
-    "nl" "nl-BE" "nl-NL"
+      ;; Dutch
+     "nl" "nl-BE" "nl-NL"
 
-     ;; Odia
-    "or" "or-IN"
+      ;; Odia
+     "or" "or-IN"
 
-     ;; Punjabi
-    "pa" "pa-IN"
+      ;; Punjabi
+     "pa" "pa-IN"
 
-     ;; Polish
-    "pl" "pl-PL"
+      ;; Polish
+     "pl" "pl-PL"
 
-     ;; Pashto
-    "ps" "ps-AF"
+      ;; Pashto
+     "ps" "ps-AF"
 
-     ;; Portuguese
-    "pt" "pt-BR" "pt-PT"
+      ;; Portuguese
+     "pt" "pt-BR" "pt-PT"
 
-     ;; Romanian
-    "ro" "ro-RO"
+      ;; Romanian
+     "ro" "ro-RO"
 
-     ;; Russian
-    "ru" "ru-RU"
+      ;; Russian
+     "ru" "ru-RU"
 
-     ;; Sinhala
-    "si" "si-LK"
+      ;; Sinhala
+     "si" "si-LK"
 
-     ;; Slovak
-    "sk" "sk-SK"
+      ;; Slovak
+     "sk" "sk-SK"
 
-     ;; Slovenian
-    "sl" "sl-SI"
+      ;; Slovenian
+     "sl" "sl-SI"
 
-     ;; Somali
-    "so" "so-SO"
+      ;; Somali
+     "so" "so-SO"
 
-     ;; Albanian
-    "sq" "sq-AL"
+      ;; Albanian
+     "sq" "sq-AL"
 
-     ;; Serbian
-    "sr" "sr-RS" "sr-Latn" "sr-Latn-RS"
+      ;; Serbian
+     "sr" "sr-RS" "sr-Latn" "sr-Latn-RS"
 
-     ;; Sundanese
-    "su" "su-ID"
+      ;; Sundanese
+     "su" "su-ID"
 
-     ;; Swedish
-    "sv" "sv-SE"
+      ;; Swedish
+     "sv" "sv-SE"
 
-     ;; Swahili
-    "sw" "sw-KE" "sw-TZ"
+      ;; Swahili
+     "sw" "sw-KE" "sw-TZ"
 
-     ;; Tagalog
-    "tl"
+      ;; Tagalog
+     "tl"
 
-     ;; Tamil
-    "ta" "ta-IN" "ta-LK" "ta-MY" "ta-SG"
+      ;; Tamil
+     "ta" "ta-IN" "ta-LK" "ta-MY" "ta-SG"
 
-     ;; Telugu
-    "te" "te-IN"
+      ;; Telugu
+     "te" "te-IN"
 
-     ;; Thai
-    "th" "th-TH"
+      ;; Thai
+     "th" "th-TH"
 
-     ;; Turkish
-    "tr" "tr-TR"
+      ;; Turkish
+     "tr" "tr-TR"
 
-     ;; Ukrainian
-    "uk" "uk-UA"
+      ;; Ukrainian
+     "uk" "uk-UA"
 
-     ;; Urdu
-    "ur" "ur-IN" "ur-PK"
+      ;; Urdu
+     "ur" "ur-IN" "ur-PK"
 
-     ;; Uzbek
-    "uz" "uz-UZ"
+      ;; Uzbek
+     "uz" "uz-UZ"
 
-     ;; Vietnamese
-    "vi" "vi-VN"
+      ;; Vietnamese
+     "vi" "vi-VN"
 
-     ;; Wu Chinese
-    "wuu" "wuu-CN"
+      ;; Wu Chinese
+     "wuu" "wuu-CN"
 
-     ;; Yue Chinese
-    "yue" "yue-CN"
+      ;; Yue Chinese
+     "yue" "yue-CN"
 
-     ;; Chinese
-    "zh" "zh-CN" "zh-CN-guangxi" "zh-CN-henan" "zh-CN-liaoning"
-    "zh-CN-shaanxi" "zh-CN-shandong" "zh-CN-sichuan" "zh-HK" "zh-TW"
+      ;; Chinese
+     "zh" "zh-CN" "zh-CN-guangxi" "zh-CN-henan" "zh-CN-liaoning"
+     "zh-CN-shaanxi" "zh-CN-shandong" "zh-CN-sichuan" "zh-HK" "zh-TW"
 
-     ;; Xhosa
-    "xh"
+      ;; Xhosa
+     "xh"
 
-     ;; Zulu
-    "zu" "zu-ZA"]))
+      ;; Zulu
+     "zu" "zu-ZA"]))
 
 ;;; LLM Chat messages
 (def LLMMessageContentType
@@ -632,12 +632,12 @@
 
 (def LLMFunctionToolDefinitionWithHandling
   (mu/merge
-   LLMFunctionToolDefinition
-   [:map {:closed true}
-    [:function
-     [:map
-      [:handler [:=> [:cat :map] :any]]
-      [:transition-cb {:optional true} [:=> :cat :nil]]]]]))
+    LLMFunctionToolDefinition
+    [:map {:closed true}
+     [:function
+      [:map
+       [:handler [:=> [:cat :map] :any]]
+       [:transition-cb {:optional true} [:=> :cat :nil]]]]]))
 
 (def TransitionTo
   [:or
@@ -710,13 +710,13 @@
 (def CommandKind
   "Types of commands that processors can generate"
   (flex-enum
-   {:description "Command type identifier"
-    :error/message "Must be a valid command kind"}
-   [:command/sse-request ;; Server-sent events streaming request
-    :command/http-request ;; Regular HTTP request
-    :command/websocket-send ;; WebSocket message send
-    :command/timer-start ;; Start a timer
-    :command/timer-stop])) ;; Stop a timer
+    {:description "Command type identifier"
+     :error/message "Must be a valid command kind"}
+    [:command/sse-request ;; Server-sent events streaming request
+     :command/http-request ;; Regular HTTP request
+     :command/websocket-send ;; WebSocket message send
+     :command/timer-start ;; Start a timer
+     :command/timer-stop])) ;; Stop a timer
 
 (def SSERequestCommand
   "Command for making server-sent events requests (streaming)"

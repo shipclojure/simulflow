@@ -1,8 +1,10 @@
 (ns simulflow.processors.elevenlabs-test
-  (:require [clojure.test :refer [deftest is testing]]
-            [simulflow.frame :as frame]
-            [simulflow.processors.elevenlabs :as elevenlabs]
-            [simulflow.utils.core :as u]))
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [simulflow.frame :as frame]
+   [simulflow.processors.elevenlabs :as elevenlabs]
+   [simulflow.schema :as schema]
+   [simulflow.utils.core :as u]))
 
 (def audio-base-64 (u/encode-base64 (byte-array (range 20))))
 
@@ -16,9 +18,10 @@
 
 (def current-time #inst "2025-06-27T13:04:02.717-00:00")
 
-(deftest tts-schema
-  (testing "TTS schema validation"
-    (is (true? true)))) ; Placeholder test - this should be implemented with actual schema validation
+(def default-params (schema/parse-with-defaults
+                      elevenlabs/ElevenLabsTTSConfig
+                      {:elevenlabs/api-key "test-api-key-*********************************************"
+                       :elevenlabs/voice-id "test-voice-id*******"}))
 
 (deftest elevenlabs-tts
   (testing "Sends speak frames as json payloads to the websocket connection for generating speech"
@@ -29,11 +32,11 @@
            [{::elevenlabs/accumulator incomplete-result-json} {}])))
   (testing "Parses completed JSON results and sends results to out"
     (let [[state {[audio-out-frame xi-frame] :out}] (elevenlabs/elevenlabs-tts-transform
-                                                     {::elevenlabs/accumulator incomplete-result-json
-                                                      :now current-time}
-                                                     ::elevenlabs/ws-read
-                                                     rest-of-json)]
-      (is (= state {::elevenlabs/accumulator "" :now current-time}))
+                                                      (into default-params {::elevenlabs/accumulator incomplete-result-json
+                                                                            :now current-time})
+                                                      ::elevenlabs/ws-read
+                                                      rest-of-json)]
+      (is (= state (into default-params {::elevenlabs/accumulator "" :now current-time})))
       (is (= xi-frame (frame/xi-audio-out test-result {:timestamp current-time})))
       (is (update-in audio-out-frame [:frame/data] vec) {:frame/type ::frame/audio-output-raw
                                                          :frame/ts current-time
@@ -55,21 +58,6 @@
   (testing "handles invalid JSON gracefully"
     (is (= (elevenlabs/accumulate-json-response "" "not json")
            ["not json" nil]))))
-
-(deftest test-process-completed-json
-  (testing "creates audio frames from valid JSON"
-    (let [json {:audio "dGVzdA==" :alignment nil :isFinal true}
-          timestamp #inst "2025-01-01"
-          [audio-frame xi-frame] (elevenlabs/process-completed-json json timestamp)]
-      (is (= (:frame/type audio-frame) :simulflow.frame/audio-output-raw))
-      (is (= (vec (:frame/data audio-frame)) [116 101 115 116])) ; "test" in bytes
-      (is (= (:frame/ts audio-frame) timestamp))
-      (is (= (:frame/type xi-frame) :simulflow.frame/xi-audio-out))
-      (is (= (:frame/data xi-frame) json))))
-
-  (testing "returns nil for JSON without audio"
-    (is (nil? (elevenlabs/process-completed-json {} #inst "2025-01-01")))
-    (is (nil? (elevenlabs/process-completed-json {:other "data"} #inst "2025-01-01")))))
 
 (deftest test-process-speak-frame
   (testing "converts speak frame to WebSocket message"
@@ -116,10 +104,15 @@
 
     ;; Test WebSocket message processing
     (let [ws-msg "{\"audio\": \"dGVzdA==\", \"alignment\": null, \"isFinal\": true}"
-          state {::elevenlabs/accumulator "" :now #inst "2025-01-01"}
-          [new-state output] (elevenlabs/elevenlabs-tts-transform state ::elevenlabs/ws-read ws-msg)]
+          state (into default-params {::elevenlabs/accumulator "" :now #inst "2025-01-01"})
+          [new-state output] (elevenlabs/elevenlabs-tts-transform state ::elevenlabs/ws-read ws-msg)
+          [audio-out xi-out] (:out output)]
       (is (= (::elevenlabs/accumulator new-state) ""))
-      (is (= (count (:out output)) 2)))
+      (is (= (count (:out output)) 2))
+      (is (= (update (:frame/data audio-out)  :audio vec)
+             {:audio (vec (-> ws-msg (u/parse-if-json) :audio u/decode-base64))
+              :sample-rate (:audio.out/sample-rate state)}))
+      (is (frame/xi-audio-out? xi-out)))
 
     ;; Test unknown input port
     (let [[state output] (elevenlabs/elevenlabs-tts-transform {} :unknown-port "message")]

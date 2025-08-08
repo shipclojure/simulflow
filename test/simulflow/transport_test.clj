@@ -49,58 +49,33 @@
     (let [chunks (sut/split-audio-into-chunks (byte-array 0) 10)]
       (is (nil? chunks)))))
 
-(deftest test-audio-splitter-config-chunk-size
-  (testing "uses provided chunk size"
-    (let [config (sut/audio-splitter-config {:audio.out/chunk-size 1024})]
-      (is (= 1024 (:audio.out/chunk-size config)))))
+(deftest test-audio-splitter-config-duration-ms
+  (testing "uses provided duration-ms"
+    (let [config (sut/audio-splitter-config {:audio.out/duration-ms 25})]
+      (is (= 25 (:audio.out/duration-ms config)))))
+
+  (testing "applies default duration-ms when not provided"
+    (let [config (sut/audio-splitter-config {})]
+      (is (= 40 (:audio.out/duration-ms config)))))
 
   (testing "preserves other config values"
-    (let [input {:audio.out/chunk-size 512 :other/key "value"}
+    (let [input {:audio.out/duration-ms 30 :other/key "value"}
           config (sut/audio-splitter-config input)]
-      (is (= 512 (:audio.out/chunk-size config)))
+      (is (= 30 (:audio.out/duration-ms config)))
       (is (= "value" (:other/key config))))))
 
-(deftest test-audio-splitter-config-calculation
-  (testing "calculates chunk size from audio parameters"
-    (let [config (sut/audio-splitter-config
-                   {:audio.out/sample-rate 16000
-                    :audio.out/sample-size-bits 16
-                    :audio.out/channels 1
-                    :audio.out/duration-ms 20})]
-      (is (= 640 (:audio.out/chunk-size config)))))
-
-  (testing "calculates different chunk sizes for different parameters"
-    (let [config1 (sut/audio-splitter-config
-                    {:audio.out/sample-rate 44100
-                     :audio.out/sample-size-bits 16
-                     :audio.out/channels 2
-                     :audio.out/duration-ms 10})
-          config2 (sut/audio-splitter-config
-                    {:audio.out/sample-rate 8000
-                     :audio.out/sample-size-bits 8
-                     :audio.out/channels 1
-                     :audio.out/duration-ms 50})]
-      (is (= 1764 (:audio.out/chunk-size config1)))
-      (is (= 400 (:audio.out/chunk-size config2))))))
-
 (deftest test-audio-splitter-config-validation
-  (testing "throws when neither chunk-size nor audio params provided"
-    (is (thrown? AssertionError
-                 (sut/audio-splitter-config {}))))
+  (testing "validates duration-ms range - minimum"
+    (is (thrown? Exception
+                 (sut/audio-splitter-config {:audio.out/duration-ms 0}))))
 
-  (testing "throws when audio params incomplete"
-    (is (thrown? AssertionError
-                 (sut/audio-splitter-config
-                   {:audio.out/sample-rate 16000
-                    :audio.out/sample-size-bits 16}))))
-  ;; missing channels and duration-ms
+  (testing "validates duration-ms range - maximum"
+    (is (thrown? Exception
+                 (sut/audio-splitter-config {:audio.out/duration-ms 2000}))))
 
-  (testing "accepts complete audio parameters"
-    (is (map? (sut/audio-splitter-config
-                {:audio.out/sample-rate 16000
-                 :audio.out/sample-size-bits 16
-                 :audio.out/channels 1
-                 :audio.out/duration-ms 20})))))
+  (testing "accepts valid duration-ms values"
+    (is (map? (sut/audio-splitter-config {:audio.out/duration-ms 20})))
+    (is (map? (sut/audio-splitter-config {:audio.out/duration-ms 100})))))
 
 (deftest test-audio-splitter-fn-multi-arity
   (testing "0-arity returns description"
@@ -111,74 +86,98 @@
       (is (= "Channel for raw audio frames" (get-in desc [:ins :in])))))
 
   (testing "1-arity initializes state"
-    (let [config {:audio.out/chunk-size 512}
+    (let [config {:audio.out/duration-ms 25}
           state (sut/audio-splitter-fn config)]
-      (is (= 512 (:audio.out/chunk-size state)))))
+      (is (= 25 (:audio.out/duration-ms state)))))
 
   (testing "2-arity handles transitions"
-    (let [state {:audio.out/chunk-size 256}
+    (let [state {:audio.out/duration-ms 30}
           result (sut/audio-splitter-fn state :clojure.core.async.flow/stop)]
       (is (= state result))))
 
   (testing "3-arity transforms audio frames"
-    (let [state {:audio.out/chunk-size 50}
-          frame (frame/audio-output-raw (byte-array (range 120)))
+    (let [state {:audio.out/duration-ms 20}
+          ;; Create proper audio-output-raw frame with sample rate
+          audio-data (byte-array (range 120))
+          frame (frame/audio-output-raw {:audio audio-data :sample-rate 16000})
           [new-state output] (sut/audio-splitter-fn state :in frame)]
       (is (= state new-state))
-      (is (= 3 (count (:out output))))
+      ;; With 20ms at 16kHz: chunk size = 16000 * 1 * 2 * 0.02 = 640 bytes
+      ;; 120 bytes / 640 = 0.1875, so we get 1 chunk of 120 bytes
+      (is (= 1 (count (:out output))))
       (is (every? frame/audio-output-raw? (:out output)))
-      (is (= [50 50 20] (mapv #(count (:frame/data %)) (:out output))))))
+      (is (= [120] (mapv #(count (:audio (:frame/data %))) (:out output))))
+      ;; Check sample rate is preserved
+      (is (every? #(= 16000 (:sample-rate (:frame/data %))) (:out output)))))
 
   (testing "3-arity ignores non-audio frames"
-    (let [state {:audio.out/chunk-size 100}
+    (let [state {:audio.out/duration-ms 25}
           non-audio-frame {:frame/type :other}
           [new-state output] (sut/audio-splitter-fn state :in non-audio-frame)]
       (is (= state new-state))
       (is (empty? output)))))
 
 (deftest test-audio-splitter-property-based
-  (testing "chunk size calculation invariants"
-    (doseq [sample-rate [8000 16000 44100 48000]
-            channels [1 2]
-            sample-size-bits [8 16 24]
-            duration-ms [10 20 25 50]]
-      (let [config (sut/audio-splitter-config
-                     {:audio.out/sample-rate sample-rate
-                      :audio.out/sample-size-bits sample-size-bits
-                      :audio.out/channels channels
-                      :audio.out/duration-ms duration-ms})
-            chunk-size (:audio.out/chunk-size config)]
-        (is (pos? chunk-size))
-        (is (integer? chunk-size))
-        ;; Verify formula: sample-rate * channels * (bits/8) * (ms/1000)
-        (let [expected (* sample-rate channels (/ sample-size-bits 8) (/ duration-ms 1000))]
-          (is (= (int expected) chunk-size)))))))
+  (testing "chunk size calculation with different sample rates and durations"
+    (doseq [sample-rate [8000 16000 24000 44100 48000]
+            duration-ms [10 20 25 40 50]]
+      (let [;; Create test audio frame
+            test-audio (byte-array 5000)
+            frame (frame/audio-output-raw {:audio test-audio :sample-rate sample-rate})
+            ;; Configure splitter 
+            config {:audio.out/duration-ms duration-ms}
+            state (sut/audio-splitter-config config)
+            ;; Process frame
+            [_ output] (sut/audio-splitter-fn state :in frame)]
+
+        ;; Verify chunks were created
+        (is (seq (:out output))
+            (str "Should create chunks for " sample-rate "Hz, " duration-ms "ms"))
+
+        ;; Verify sample rates are preserved
+        (is (every? #(= sample-rate (:sample-rate (:frame/data %))) (:out output))
+            "Sample rates should be preserved in all chunks")
+
+        ;; Calculate expected chunk size and verify first chunk
+        (let [expected-chunk-size (* sample-rate 1 2 (/ duration-ms 1000.0))
+              first-chunk-size (count (:audio (:frame/data (first (:out output)))))]
+          (is (or (= (int expected-chunk-size) first-chunk-size)
+                  (< first-chunk-size (int expected-chunk-size)))
+              (str "First chunk size should match expected size for "
+                   sample-rate "Hz, " duration-ms "ms")))))))
 
 (deftest test-audio-splitter-integration
-  (testing "complete audio splitting workflow"
-    (let [;; Create test audio data (500 bytes)
-          audio-data (byte-array (range 500))
-          frame (frame/audio-output-raw audio-data)
+  (testing "complete audio splitting workflow with new API"
+    (let [;; Create test audio data (2000 bytes)
+          audio-data (byte-array (range 2000))
+          frame (frame/audio-output-raw {:audio audio-data :sample-rate 16000})
 
-          ;; Initialize splitter with 150-byte chunks
-          config {:audio.out/chunk-size 150}
-          state (sut/audio-splitter-fn config)
+          ;; Configure splitter for 20ms chunks at 16kHz
+          ;; Expected chunk size: 16000 * 1 * 2 * 0.02 = 640 bytes
+          config {:audio.out/duration-ms 20}
+          state (sut/audio-splitter-config config)
 
           ;; Process the frame
           [final-state output] (sut/audio-splitter-fn state :in frame)]
 
       ;; Verify processing
       (is (= state final-state))
+      ;; 2000 bytes / 640 bytes per chunk = 3.125, so 4 chunks total
       (is (= 4 (count (:out output))))
 
-      ;; Verify chunk sizes
-      (let [chunk-sizes (mapv #(count (:frame/data %)) (:out output))]
-        (is (= [150 150 150 50] chunk-sizes)))
+      ;; Verify chunk sizes: [640, 640, 640, 80]
+      (let [chunk-sizes (mapv #(count (:audio (:frame/data %))) (:out output))]
+        (is (= [640 640 640 80] chunk-sizes)))
+
+      ;; Verify sample rates are preserved
+      (is (every? #(= 16000 (:sample-rate (:frame/data %))) (:out output))
+          "All chunks should preserve the original sample rate")
 
       ;; Verify data integrity
       (let [reconstructed-data (vec (apply concat
-                                           (map #(vec (:frame/data %)) (:out output))))]
-        (is (= (vec audio-data) reconstructed-data))))))
+                                           (map #(vec (:audio (:frame/data %))) (:out output))))]
+        (is (= (vec audio-data) reconstructed-data)
+            "Audio data should be preserved through splitting")))))
 
 (deftest test-audio-splitter-performance
   (testing "handles large audio efficiently"
@@ -205,18 +204,15 @@
           ;; Simulate 200ms of audio at 16kHz, 16-bit, mono (10 chunks)
           ;; 200ms = 0.2 seconds * 16000 samples/sec * 2 bytes = 6,400 bytes
           large-audio-data (byte-array 6400 (byte 42)) ; Fill with test pattern
-          llm-audio-frame (frame/audio-output-raw large-audio-data)
+          llm-audio-frame (frame/audio-output-raw {:audio large-audio-data :sample-rate 16000})
 
           ;; =============================================================================
           ;; Step 2: Audio splitter configuration for 20ms chunks
           ;; =============================================================================
 
-          ;; 20ms chunks at 16kHz, 16-bit, mono = 640 bytes per chunk
-          splitter-config {:audio.out/sample-rate 16000
-                           :audio.out/sample-size-bits 16
-                           :audio.out/channels 1
-                           :audio.out/duration-ms 20}
-          splitter-state (sut/audio-splitter-fn splitter-config)
+          ;; Configure splitter for 20ms chunks (will calculate chunk size based on frame's sample rate)
+          splitter-config {:audio.out/duration-ms 20}
+          splitter-state (sut/audio-splitter-config splitter-config)
 
           ;; Split the large frame into chunks
           [_ splitter-output] (sut/audio-splitter-fn splitter-state :in llm-audio-frame)
@@ -254,14 +250,14 @@
 
                     (let [;; Process through realtime speakers transform
                           [new-state output] (out/realtime-out-transform
-                                               current-state :in chunk)]
+                                              current-state :in chunk)]
 
                       ;; Store results for analysis
                       (swap! results conj {:chunk-index chunk-index
                                            :state-before current-state
                                            :state-after new-state
                                            :output output
-                                           :chunk-size (count (:frame/data chunk))})
+                                           :chunk-size (count (:audio (:frame/data chunk)))})
 
                       ;; Update state for next iteration
                       new-state))
@@ -278,9 +274,13 @@
             "Should create 10 chunks of 20ms each")
 
         ;; Verify chunk sizes (all should be 640 bytes)
-        (let [chunk-sizes (mapv #(count (:frame/data %)) audio-chunks)]
+        (let [chunk-sizes (mapv #(count (:audio (:frame/data %))) audio-chunks)]
           (is (every? #(= 640 %) chunk-sizes)
-              "All chunks should be exactly 640 bytes")))
+              "All chunks should be exactly 640 bytes"))
+
+        ;; Verify sample rates are preserved
+        (is (every? #(= 16000 (:sample-rate (:frame/data %))) audio-chunks)
+            "All chunks should preserve the original 16kHz sample rate"))
 
       (testing "First chunk triggers bot-speech-start event"
         (let [first-result (first @results)

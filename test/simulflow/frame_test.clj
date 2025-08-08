@@ -133,7 +133,8 @@
         (is (not (frame/audio-output-raw? frame)))))
 
     (testing "audio-output-raw"
-      (let [frame (frame/audio-output-raw test-audio-data)]
+      (let [frame (frame/audio-output-raw {:audio test-audio-data
+                                           :sample-rate 16000})]
         (is (frame/frame? frame))
         (is (= :simulflow.frame/audio-output-raw (:frame/type frame)))
         (is (frame/audio-output-raw? frame))
@@ -343,7 +344,8 @@
 
     (testing "audio processing flow"
       (let [input-frame (frame/audio-input-raw test-audio-data)
-            output-frame (frame/audio-output-raw test-audio-data)]
+            output-frame (frame/audio-output-raw {:audio test-audio-data
+                                                  :sample-rate 16000})]
 
         (is (frame/audio-input-raw? input-frame))
         (is (frame/audio-output-raw? output-frame))

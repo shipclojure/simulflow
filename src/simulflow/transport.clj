@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async.flow :as flow]
    [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
    [simulflow.transport.in :as in]
    [simulflow.transport.out :as out]
    [simulflow.utils.audio :as audio]
@@ -9,6 +10,18 @@
 
 ;; =============================================================================
 ;; Processors
+
+;; =============================================================================
+;; Schemas
+
+(def AudioSplitterConfig
+  "Configuration for audio splitter processor"
+  [:map
+   [:audio.out/duration-ms {:default 40
+                            :description "Duration in milliseconds of each audio chunk"}
+    [:int {:min 1 :max 1000}]]])
+
+;; ============================================================================= 
 
 (defn split-audio-into-chunks
   "Split audio byte array into chunks of specified size.
@@ -31,27 +44,15 @@
           (conj chunks chunk))))))
 
 (defn audio-splitter-config
-  "Calculate and validate audio splitter configuration.
-   Returns map with validated :audio.out/chunk-size."
-  [{:audio.out/keys [chunk-size sample-rate sample-size-bits channels duration-ms] :as config}]
-  (assert (or chunk-size (and sample-rate sample-size-bits channels duration-ms))
-          "Either provide :audio.out/chunk-size or sample-rate, sample-size-bits, channels and chunk duration for the size to be computed")
-  (assoc config :audio.out/chunk-size
-         (or chunk-size
-             (audio/audio-chunk-size {:sample-rate sample-rate
-                                      :sample-size-bits sample-size-bits
-                                      :channels channels
-                                      :duration-ms duration-ms}))))
+  "Validate and apply defaults to audio splitter configuration."
+  [config]
+  (schema/parse-with-defaults AudioSplitterConfig config))
 
 (defn audio-splitter-fn
   "Audio splitter processor function with multi-arity support."
   ([] {:ins {:in "Channel for raw audio frames"}
        :outs {:out "Channel for audio frames split by chunk size"}
-       :params {:audio.out/chunk-size "The chunk size by which to split each audio frame. Specify either this or the other parameters so that chunk size can be computed"
-                :audio.out/sample-rate "Sample rate of the output audio"
-                :audio.out/sample-size-bits "Size in bits for each sample"
-                :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
-                :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"}})
+       :params (schema/->describe-parameters AudioSplitterConfig)})
   ([config]
    (audio-splitter-config config))
   ([state _]
@@ -60,10 +61,19 @@
   ([state _ frame]
    (cond
      (frame/audio-output-raw? frame)
-     (let [{:audio.out/keys [chunk-size]} state
-           audio-data (:frame/data frame)]
-       (if-let [chunks (split-audio-into-chunks audio-data chunk-size)]
-         [state {:out (mapv frame/audio-output-raw chunks)}]
+     (let [{:audio.out/keys [duration-ms]} state
+           {:keys [audio sample-rate]} (:frame/data frame)
+           ;; Calculate chunk size based on frame's sample rate and configured duration
+           chunk-size (audio/audio-chunk-size {:sample-rate sample-rate
+                                               :channels 1 ; PCM is mono
+                                               :sample-size-bits 16 ; PCM is 16-bit
+                                               :duration-ms duration-ms})]
+       (if-let [chunks (split-audio-into-chunks audio chunk-size)]
+         ;; Create new frames preserving the sample rate from original frame
+         [state {:out (mapv (fn [chunk-audio]
+                              (frame/audio-output-raw {:audio chunk-audio
+                                                       :sample-rate sample-rate}))
+                            chunks)}]
          [state]))
      :else [state])))
 

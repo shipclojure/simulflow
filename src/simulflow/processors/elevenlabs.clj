@@ -74,8 +74,8 @@
    [:elevenlabs/model-id {:default :eleven_flash_v2_5
                           :description "ElevenLabs model identifier"}
     (schema/flex-enum
-     [:eleven_multilingual_v2 :eleven_turbo_v2_5 :eleven_turbo_v2 :eleven_monolingual_v1
-      :eleven_multilingual_v1 :eleven_multilingual_sts_v2 :eleven_flash_v2 :eleven_flash_v2_5 :eleven_english_sts_v2])]
+      [:eleven_multilingual_v2 :eleven_turbo_v2_5 :eleven_turbo_v2 :eleven_monolingual_v1
+       :eleven_multilingual_v1 :eleven_multilingual_sts_v2 :eleven_flash_v2 :eleven_flash_v2_5 :eleven_english_sts_v2])]
    [:elevenlabs/voice-id
     [:string
      {:min 20 ;; ElevenLabs voice IDs are fixed length
@@ -92,10 +92,11 @@
      {:min 0.0
       :max 1.0}]]
    [:voice/use-speaker-boost? {:default true
-                               :description "Whether to enable speaker beoost enhancement"}
+                               :description "Whether to enable speaker boost enhancement"}
     :boolean]
-   [:audio.out/encoding {:default :pcm-signed} schema/AudioEncoding]
-   [:audio.out/sample-rate {:default 16000} schema/SampleRate]])
+   [:audio.out/sample-rate {:default 24000
+                            :description "The sample rate at which elevenlabs will generate audio"}
+    [:enum 8000 16000 22050 24000 44100]]])
 
 (defn accumulate-json-response
   "Pure function to accumulate JSON response fragments.
@@ -106,14 +107,6 @@
     (if (map? parsed)
       ["" parsed] ; Successfully parsed, reset accumulator
       [combined nil]))) ; Still accumulating
-
-(defn process-completed-json
-  "Pure function to process completed JSON response into frames.
-   Returns seq of frames or nil if no audio data."
-  [json-response timestamp]
-  (when-let [audio (:audio json-response)]
-    [(frame/audio-output-raw (u/decode-base64 audio) {:timestamp timestamp})
-     (frame/xi-audio-out json-response {:timestamp timestamp})]))
 
 (defn process-speak-frame
   "Pure function to process speak frame into WebSocket message.
@@ -130,7 +123,11 @@
     (if parsed-json
       ;; JSON parsing complete
       (let [new-state (assoc state ::accumulator new-accumulator)
-            frames (process-completed-json parsed-json timestamp)]
+            frames (when-let [audio (:audio parsed-json)]
+                     [(frame/audio-output-raw {:audio (u/decode-base64 audio)
+                                               :sample-rate (:audio.out/sample-rate state)}
+                                              {:timestamp timestamp})
+                      (frame/xi-audio-out parsed-json {:timestamp timestamp})])]
         [new-state (when frames {:out frames})])
       ;; Still accumulating
       [(assoc state ::accumulator new-accumulator) {}])))
@@ -202,11 +199,12 @@
         (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
         (ws/send! ws-conn keep-alive-message)
         (recur)))
-    {:websocket/conn ws-conn
-     :websocket/alive? alive?
-     ::flow/in-ports {::ws-read ws-read}
-     ::flow/out-ports {::ws-write ws-write}
-     ::accumulator ""}))
+    (into args
+          {:websocket/conn ws-conn
+           :websocket/alive? alive?
+           ::flow/in-ports {::ws-read ws-read}
+           ::flow/out-ports {::ws-write ws-write}
+           ::accumulator ""})))
 
 (defn elevenlabs-tts-transition
   [{:websocket/keys [conn] ::flow/keys [in-ports out-ports] :as state} transition]

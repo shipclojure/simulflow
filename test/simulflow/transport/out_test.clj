@@ -11,7 +11,7 @@
     (let [state {::sut/speaking? false
                  ::sut/last-send-time 0
                  ::sut/sending-interval 20}
-          frame (frame/audio-output-raw (byte-array [1 2 3]))
+          frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})
           current-time 2000
           [new-state output] (sut/process-realtime-out-audio-frame state frame current-time)]
 
@@ -24,7 +24,7 @@
 (deftest realtime-out-transform-test
   (testing "transform with audio frame"
     (let [state {::sut/speaking? false ::sut/sending-interval 25}
-          frame (frame/audio-output-raw (byte-array [1 2 3]))
+          frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})
           [new-state output] (sut/realtime-out-transform state :in frame)]
 
       (is (true? (::sut/speaking? new-state)))
@@ -130,7 +130,7 @@
                  ::sut/last-send-time 0
                  ::sut/sending-interval 20
                  :transport/serializer mock-serializer}
-          frame (frame/audio-output-raw (byte-array [1 2 3]))]
+          frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})]
       (with-redefs [u/mono-time (constantly 1000)]
         (let [[_ output] (sut/realtime-out-transform state :in frame)
               audio-write (first (:audio-write output))]
@@ -142,7 +142,7 @@
                  ::sut/last-send-time 0
                  ::sut/sending-interval 20
                  :transport/serializer nil}
-          frame (frame/audio-output-raw (byte-array [1 2 3]))]
+          frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})]
       (with-redefs [u/mono-time (constantly 1000)]
         (let [[_ output] (sut/realtime-out-transform state :in frame)
               audio-write (first (:audio-write output))]
@@ -200,8 +200,8 @@
     (let [initial-state {::sut/speaking? false
                          ::sut/last-send-time 0
                          ::sut/sending-interval 20}
-          frame1 (frame/audio-output-raw (byte-array [1 2 3]))
-          frame2 (frame/audio-output-raw (byte-array [4 5 6]))]
+          frame1 (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})
+          frame2 (frame/audio-output-raw {:audio (byte-array [4 5 6]) :sample-rate 16000})]
 
       (with-redefs [u/mono-time (let [counter (atom 0)]
                                   #(swap! counter + 100))] ; Increment by 100ms each call
@@ -215,8 +215,8 @@
               timer-frame {:timer/tick true
                            :timer/timestamp (+ (::sut/last-send-time state2) 1000)}
               [state3 output3] (sut/realtime-out-transform
-                                 (assoc state2 ::sut/silence-threshold 500)
-                                 :timer-out timer-frame)]
+                                (assoc state2 ::sut/silence-threshold 500)
+                                :timer-out timer-frame)]
 
           ;; Verify state progression
           (is (false? (::sut/speaking? initial-state)))
@@ -237,7 +237,7 @@
                  ::sut/last-send-time 0
                  ::sut/sending-interval sending-interval
                  ::sut/now current-time}
-          frame (frame/audio-output-raw (byte-array [1 2 3]))
+          frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})
           [new-state output] (sut/realtime-out-transform state :in frame)
           audio-write (first (:audio-write output))
           [next-state] (sut/realtime-out-transform (assoc new-state ::sut/now 1020) :in frame)

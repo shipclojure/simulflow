@@ -12,7 +12,6 @@
    [uncomplicate.clojure-sound.sampled :as sampled]
    [uncomplicate.commons.core :refer [close!]]))
 
-
 (def realtime-speakers-out-describe
   {:ins {:in "Channel for audio output frames"
          :sys-in "Channel for system messages"}
@@ -62,7 +61,6 @@
     ;; Audio writer process - handles only audio I/O side effects
     (vthread-loop []
       (when-let [audio-command (<!! audio-write-ch)]
-
         (when (= (:command audio-command) :write-audio)
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)
@@ -108,7 +106,6 @@
     ;; Audio writer process - handles only audio I/O side effects
     (vthread-loop []
       (when-let [audio-command (<!! audio-write-ch)]
-
         (when (= (:command audio-command) :write-audio)
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)
@@ -169,10 +166,16 @@
                  [(frame/bot-speech-start true)]
                  [])
 
+        ;; Extract audio data from the new frame format
+        frame-data (:frame/data frame)
+        audio-data (if (map? frame-data)
+                     (:audio frame-data) ; New format: {:audio bytes :sample-rate hz}
+                     frame-data) ; Fallback for old format
+
         ;; Generate audio write command
         audio-frame (if serializer
                       (tp/serialize-frame serializer frame)
-                      (:frame/data frame))
+                      audio-data)
         audio-command {:command :write-audio
                        :data audio-frame
                        :delay-until next-send-time}]
