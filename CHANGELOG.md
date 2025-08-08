@@ -1,6 +1,19 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+## Unreleased
+
+### Added
+- Voice Activity Detection protocols that the transport-in processors can use. [See protocol here](./src/simulflow/vad/core.clj)
+- [Silero Voice Activity Detection model](./src/simulflow/vad/silero.clj) running through Onnx Runtime
+- parameter `:vad/analyser` to all transport-in processor params to pass a VAD analyser like Silero to be ran on each new audio chunk. This is useful for logic that handles AI interruptions and improves turn taking.
+- Added malli schema for `audio-output-raw` frames
+
+### Changed
+- Made 16kHz PCM mono audio be the default audio that runs through the pipeline. All `audio-input-raw` frames that come through pe pipeline are expected to be this way.
+- **POTENTIAL BREAKING** `frame/audio-output-raw` are now expected to contain the sample-rate of the audio. The sample rate will be used for chunking and final output conversion. If you have custom Text to speech generators, you need to update them to use it.
+
+
 ## [0.1.5-alpha] - 2025-07-24
 
 ### Added

@@ -11,10 +11,10 @@
    [simulflow.processors.openai :as openai]
    [simulflow.secrets :refer [secret]]
    [simulflow.transport :as transport]
+   [simulflow.transport.in :as transport-in]
+   [simulflow.transport.out :as transport-out]
    [simulflow.utils.core :as u]
    [taoensso.telemere :as t]))
-
-
 
 (defn make-local-flow
   "This example showcases a voice AI agent for the local computer.  Audio is
@@ -26,7 +26,7 @@
   "
   ([] (make-local-flow {}))
   ([{:keys [llm-context extra-procs extra-conns encoding debug?
-            sample-rate language sample-size-bits channels chunk-duration-ms]
+            language chunk-duration-ms]
      :or {llm-context {:messages
                        [{:role "system"
                          :content "You are a voice agent operating via phone. Be
@@ -47,13 +47,9 @@
                                        :additionalProperties false}
                           :strict true}}]}
 
-          encoding :pcm-signed
-          sample-rate 16000
-          sample-size-bits 16
-          channels 1
-          chunk-duration-ms 20
           language :en
           debug? false
+          chunk-duration-ms 20
           extra-procs {}
           extra-conns []}}]
 
@@ -61,22 +57,19 @@
      {:procs
       (u/deep-merge
         {;; Capture audio from microphone and send raw-audio-input frames further in the pipeline
-         :transport-in {:proc transport/microphone-transport-in
-                        :args {:audio-in/sample-rate sample-rate
-                               :audio-in/channels channels
-                               :audio-in/sample-size-bits sample-size-bits}}
+         :transport-in {:proc transport-in/microphone-transport-in
+                        :args {}}
          ;; raw-audio-input -> transcription frames
          :transcriptor {:proc deepgram/deepgram-processor
                         :args {:transcription/api-key (secret [:deepgram :api-key])
                                :transcription/interim-results? true
                                :transcription/punctuate? false
-                               :transcription/vad-events? true
+                               :transcription/vad-events? false
                                :transcription/smart-format? true
                                :transcription/model :nova-2
                                :transcription/utterance-end-ms 1000
                                :transcription/language language
-                               :transcription/encoding encoding
-                               :transcription/sample-rate sample-rate}}
+                               :transcription/encoding encoding}}
 
          ;; user transcription & llm message frames -> llm-context frames
          ;; responsible for keeping the full conversation history
@@ -105,22 +98,15 @@
                       :voice/similarity-boost 0.8
                       :voice/use-speaker-boost? true
                       :flow/language language
-                      :audio.out/encoding encoding
-                      :audio.out/sample-rate sample-rate}}
+                      :audio.out/encoding encoding}}
 
          ;; audio-output-raw -> smaller audio-output-raw frames (used for sending audio in realtime)
          :audio-splitter {:proc transport/audio-splitter
-                          :args {:audio.out/sample-rate sample-rate
-                                 :audio.out/sample-size-bits sample-size-bits
-                                 :audio.out/channels channels
-                                 :audio.out/duration-ms chunk-duration-ms}}
+                          :args {:audio.out/duration-ms chunk-duration-ms}}
 
          ;; speakers out
-         :transport-out {:proc transport/realtime-speakers-out-processor
-                         :args {:audio.out/sample-rate sample-rate
-                                :audio.out/sample-size-bits sample-size-bits
-                                :audio.out/channels channels
-                                :audio.out/sending-interval chunk-duration-ms
+         :transport-out {:proc transport-out/realtime-speakers-out-processor
+                         :args {:audio.out/sending-interval chunk-duration-ms
                                 :audio.out/duration-ms chunk-duration-ms}}
          :prn-sink {:proc (flow/process (fn
                                           ([] {:ins {:in "gimme stuff to print!"}})
