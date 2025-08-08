@@ -45,9 +45,7 @@
   (cond
     (frame/audio-input-raw? msg)
     (if-let [analyser (:vad/analyser state)]
-      (let [_ (t/log! {:id :transport-in :level :debug :msg "Running VAD Analyser"})
-            vad-state (vad/analyze-audio analyser (:frame/data msg))
-            _ (t/log! {:id :transport-in :level :debug :msg ["New vad result" vad-state]})
+      (let [vad-state (vad/analyze-audio analyser (:frame/data msg))
             prev-vad-state (:vad/state state :vad.state/quiet)
             new-state (assoc state :vad/state vad-state)]
         (log-vad-state! prev-vad-state vad-state)
@@ -94,9 +92,9 @@
       (condp = (:event data)
         "start" [state (if-let [stream-sid (:streamSid data)]
                          (out-frames {:sys-out [(frame/system-config-change
-                                                 (u/without-nils {:twilio/stream-sid stream-sid
-                                                                  :twilio/call-sid (get-in data [:start :callSid])
-                                                                  :transport/serializer (make-twilio-serializer stream-sid)}))]})
+                                                  (u/without-nils {:twilio/stream-sid stream-sid
+                                                                   :twilio/call-sid (get-in data [:start :callSid])
+                                                                   :transport/serializer (make-twilio-serializer stream-sid)}))]})
                          (out-frames {}))]
         "media"
         (let [audio-frame (frame/audio-input-raw (-> data
@@ -176,7 +174,7 @@
                       (catch Exception e
                         (t/log! {:level :error :id :microphone-transport :error e}
                                 "Error reading audio data")
-            ;; Brief pause before retrying to prevent tight error loop
+                        ;; Brief pause before retrying to prevent tight error loop
                         (Thread/sleep 100)))
                     (recur)))
     (into state

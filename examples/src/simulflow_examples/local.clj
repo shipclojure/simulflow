@@ -28,7 +28,7 @@
   these are the defaults. See each process for details
   "
   ([] (make-local-flow {}))
-  ([{:keys [llm-context extra-procs extra-conns debug?
+  ([{:keys [llm-context extra-procs extra-conns debug? vad-analyser
             language chunk-duration-ms]
      :or {llm-context {:messages
                        [{:role "system"
@@ -51,6 +51,7 @@
                           :strict true}}]}
 
           language :en
+
           debug? false
           chunk-duration-ms 40
           extra-procs {}
@@ -61,7 +62,7 @@
       (u/deep-merge
         {;; Capture audio from microphone and send raw-audio-input frames further in the pipeline
          :transport-in {:proc transport-in/microphone-transport-in
-                        :args {:vad/analyzer (silero/create-silero-vad)}}
+                        :args {:vad/analyser vad-analyser}}
          ;; raw-audio-input -> transcription frames
          :transcriptor {:proc deepgram/deepgram-processor
                         :args {:transcription/api-key (secret [:deepgram :api-key])
@@ -145,7 +146,7 @@
 
 (comment
 
-  (def local-ai (make-local-flow))
+  (def local-ai (make-local-flow {:vad-analyser (silero/create-silero-vad)}))
 
   (defonce flow-started? (atom false))
 
