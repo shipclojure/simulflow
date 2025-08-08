@@ -232,6 +232,7 @@
   ([{:keys [model-path sample-rate]
      :vad/keys [min-confidence min-speech-duration-ms min-silence-duration-ms]
      :or {sample-rate 16000
+          model-path "resources/silero_vad.onnx"
           min-speech-duration-ms (:vad/min-speech-duration-ms vad/default-params)
           min-silence-duration-ms (:vad/min-silence-duration-ms vad/default-params)
           min-confidence (:vad/min-confidence vad/default-params)}}]

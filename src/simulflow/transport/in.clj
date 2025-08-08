@@ -23,6 +23,15 @@
 (def base-transport-outs {:sys-out "Channel for system messages that have priority"
                           :out "Channel on which audio frames are put"})
 
+(defn log-vad-state!
+  [prev-vad-state vad-state]
+  (when (not= prev-vad-state vad-state)
+    (t/log! {:level :debug
+             :id :transport-in
+             :msg "Changed vad state"
+             :data {:vad/prev-state prev-vad-state
+                    :vad/state vad-state}})))
+
 (defn base-input-transport-transform
   "Base input transport logic that is used by most transport input processors.
   Assumes audio-input-raw frames that come in are 16kHz PCM mono. Conversion to
@@ -34,6 +43,7 @@
       (let [vad-state (vad/analyze-audio analyser (:frame/data msg))
             prev-vad-state (:vad/state state :vad.state/quiet)
             new-state (assoc state :vad/state vad-state)]
+        (log-vad-state! prev-vad-state vad-state)
         (if (and (not (vad/transition? vad-state))
                  (not= vad-state prev-vad-state))
           (if (= vad-state :vad.state/speaking)
