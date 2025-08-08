@@ -2,11 +2,12 @@
   (:require
    [clojure.core.async.flow :as flow]
    [clojure.string :as str]
-   [clojure.test :refer [deftest is testing]]
+
    [simulflow.frame :as frame]
    [simulflow.processors.deepgram :as deepgram]
    [simulflow.schema :as schema]
-   [simulflow.utils.core :as u]))
+   [simulflow.utils.core :as u]
+   [clojure.test :refer [deftest is testing]]))
 
 (def current-time #inst "2025-06-27T06:13:35.236-00:00")
 
@@ -44,24 +45,22 @@
 
   (testing "WebSocket URL with optional parameters"
     (let [config {:transcription/api-key "test-key"
-                  :transcription/sample-rate 44100
                   :transcription/model :nova-2-meeting
                   :transcription/language :es
                   :transcription/interim-results? true
                   :transcription/punctuate? true
                   :transcription/vad-events? true
                   :transcription/smart-format? false
-                  :transcription/channels 2
                   :transcription/utterance-end-ms 2000}
           url (deepgram/make-websocket-url config)]
-      (is (str/includes? url "sample_rate=44100"))
+      (is (str/includes? url "sample_rate=16000"))
       (is (str/includes? url "model=nova-2-meeting"))
       (is (str/includes? url "language=es"))
       (is (str/includes? url "interim_results=true"))
       (is (str/includes? url "punctuate=true"))
       (is (str/includes? url "vad_events=true"))
       (is (str/includes? url "smart_format=false"))
-      (is (str/includes? url "channels=2"))
+      (is (str/includes? url "channels=1"))
       (is (str/includes? url "utterance_end_ms=2000"))))
 
   (testing "WebSocket URL excludes nil values"
@@ -201,13 +200,12 @@
           result (schema/parse-with-defaults deepgram/DeepgramConfig config)]
       (is (map? result))
       (is (= "test-key-12345" (:transcription/api-key result)))
-      (is (= 16000 (:transcription/sample-rate result)))
+
       ;; Check defaults are applied
       (is (= :nova-2-general (:transcription/model result)))
       (is (= false (:transcription/interim-results? result)))
       (is (= true (:transcription/smart-format? result)))
-      (is (= :en (:transcription/language result)))
-      (is (= 1 (:transcription/channels result)))))
+      (is (= :en (:transcription/language result)))))
 
   (testing "Configuration with utterance-end-ms requires interim-results"
     (let [config {:transcription/api-key "test-key-12345"
@@ -215,9 +213,9 @@
                   :transcription/utterance-end-ms 2000
                   :transcription/interim-results? false}]
       (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo
-           #"Parameters invalid after applying defaults"
-           (schema/parse-with-defaults deepgram/DeepgramConfig config)))))
+            clojure.lang.ExceptionInfo
+            #"Parameters invalid after applying defaults"
+            (schema/parse-with-defaults deepgram/DeepgramConfig config)))))
 
   (testing "Valid configuration with utterance-end-ms and interim-results"
     (let [config {:transcription/api-key "test-key-12345"
@@ -235,32 +233,32 @@
                   :transcription/smart-format? true
                   :transcription/punctuate? true}]
       (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo
-           #"Parameters invalid after applying defaults"
-           (schema/parse-with-defaults deepgram/DeepgramConfig config)))))
+            clojure.lang.ExceptionInfo
+            #"Parameters invalid after applying defaults"
+            (schema/parse-with-defaults deepgram/DeepgramConfig config)))))
 
   (testing "Missing required field throws error"
     (let [config {:transcription/sample-rate 16000}]
       (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo
-           #"Missing required parameters"
-           (schema/parse-with-defaults deepgram/DeepgramConfig config))))))
+            clojure.lang.ExceptionInfo
+            #"Missing required parameters"
+            (schema/parse-with-defaults deepgram/DeepgramConfig config))))))
 
 (deftest init-validation-test
   (testing "Init with invalid config throws error"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo
-         #"Parameters invalid after applying defaults"
-         (deepgram/init! {:transcription/api-key "test-key"
-                          :transcription/sample-rate 16000
-                          :transcription/smart-format? true
-                          :transcription/punctuate? true}))))
+          clojure.lang.ExceptionInfo
+          #"Parameters invalid after applying defaults"
+          (deepgram/init! {:transcription/api-key "test-key"
+                           :transcription/sample-rate 16000
+                           :transcription/smart-format? true
+                           :transcription/punctuate? true}))))
 
   (testing "Init with missing required field throws error"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo
-         #"Missing required parameters"
-         (deepgram/init! {:transcription/sample-rate 16000})))))
+          clojure.lang.ExceptionInfo
+          #"Missing required parameters"
+          (deepgram/init! {:transcription/sample-rate 16000})))))
 
 (deftest processor-fn-test
   (testing "0 arity describe"
@@ -269,29 +267,26 @@
                   :in "Channel for audio input frames (from transport-in)"}
             :outs {:sys-out "Channel for system messages that have priority"
                    :out "Channel on which transcription frames are put"}
-            :params #:transcription{:model "Type: :enum",
-                                    :utterance-end-ms "Type: integer; Optional ",
-                                    :punctuate? "Type: boolean",
-                                    :smart-format? "Type: boolean; Optional ",
-                                    :language "Type: :enum",
-                                    :interim-results? "Type: boolean; Optional ",
-                                    :sample-rate "Type: :enum",
-                                    :api-key "Type: string",
-                                    :encoding "Type: :enum",
-                                    :channels "Type: :enum",
-                                    :vad-events? "Type: boolean; Optional ",
-                                    :supports-interrupt? "Type: boolean; Optional ",
+            :params #:transcription{:model "Type: :enum"
+                                    :utterance-end-ms "Type: integer; Optional "
+                                    :punctuate? "Type: boolean"
+                                    :smart-format? "Type: boolean; Optional "
+                                    :language "Type: :enum"
+                                    :interim-results? "Type: boolean; Optional "
+                                    :api-key "Type: string"
+                                    :vad-events? "Type: boolean; Optional "
+                                    :supports-interrupt? "Type: boolean; Optional "
                                     :profanity-filter? "Type: boolean; Optional "}
             :workload :io})))
 
   (testing "1 arity init throws on invalid config"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo
-         #"Parameters invalid after applying defaults"
-         (deepgram/processor-fn {:transcription/api-key "test-key"
-                                 :transcription/sample-rate 16000
-                                 :transcription/smart-format? true
-                                 :transcription/punctuate? true}))))
+          clojure.lang.ExceptionInfo
+          #"Parameters invalid after applying defaults"
+          (deepgram/processor-fn {:transcription/api-key "test-key"
+                                  :transcription/sample-rate 16000
+                                  :transcription/smart-format? true
+                                  :transcription/punctuate? true}))))
 
   (testing "2 arity transition"
     (let [alive-atom (atom true)

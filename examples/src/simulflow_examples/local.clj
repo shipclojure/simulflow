@@ -14,6 +14,7 @@
    [simulflow.transport.in :as transport-in]
    [simulflow.transport.out :as transport-out]
    [simulflow.utils.core :as u]
+   [simulflow.vad.silero :as silero]
    [taoensso.telemere :as t]))
 
 (defn make-local-flow
@@ -58,7 +59,7 @@
       (u/deep-merge
         {;; Capture audio from microphone and send raw-audio-input frames further in the pipeline
          :transport-in {:proc transport-in/microphone-transport-in
-                        :args {}}
+                        :args {:vad/analyzer (silero/create-silero-vad)}}
          ;; raw-audio-input -> transcription frames
          :transcriptor {:proc deepgram/deepgram-processor
                         :args {:transcription/api-key (secret [:deepgram :api-key])

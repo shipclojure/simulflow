@@ -22,17 +22,16 @@
    :alaw :alaw})
 
 (defn make-websocket-url
-  [{:transcription/keys [interim-results? punctuate? model sample-rate utterance-end-ms language vad-events? smart-format? encoding channels]
+  [{:transcription/keys [interim-results? punctuate? model utterance-end-ms language vad-events? smart-format?]
     :or {interim-results? false
-         punctuate? false
-         channels 1}}]
+         punctuate? false}}]
   (u/append-search-params deepgram-url
-                          (u/without-nils {:encoding (deepgram-encoding encoding encoding)
+                          (u/without-nils {:encoding :linear16
                                            :language language
-                                           :sample_rate sample-rate
+                                           :sample_rate 16000
                                            :model model
                                            :smart_format smart-format?
-                                           :channels channels
+                                           :channels 1
                                            :vad_events vad-events?
                                            :utterance_end_ms utterance-end-ms
                                            :interim_results interim-results?
@@ -64,9 +63,6 @@
 (def close-connection-payload (u/json-str {:type "CloseStream"}))
 
 (def keep-alive-payload (u/json-str {:type "KeepAlive"}))
-
-(def code-reason
-  {1011 :timeout})
 
 (defn deepgram-event->frames
   [event & {:keys [send-interrupt? supports-interrupt?]}]
@@ -100,7 +96,6 @@
     (flex-enum (into [:nova-2] (map #(str "nova-2-" %) #{"general" "meeting" "phonecall" "voicemail" "finance" "conversationalai" "video" "medical" "drivethru" "automotive" "atc"})))]
    [:transcription/interim-results? {:default false
                                      :optional true} :boolean]
-   [:transcription/channels {:default 1} [:enum 1 2]]
    [:transcription/smart-format? {:default true
                                   :optional true} :boolean]
    [:transcription/profanity-filter? {:default true
@@ -110,8 +105,6 @@
    [:transcription/vad-events? {:default false
                                 :optional true} :boolean]
    [:transcription/utterance-end-ms {:optional true} :int]
-   [:transcription/sample-rate schema/SampleRate]
-   [:transcription/encoding {:default :pcm-signed} schema/AudioEncoding]
    [:transcription/language {:default :en} schema/Language]
    [:transcription/punctuate? {:default false} :boolean]])
 
