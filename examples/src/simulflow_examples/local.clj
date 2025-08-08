@@ -25,7 +25,7 @@
   these are the defaults. See each process for details
   "
   ([] (make-local-flow {}))
-  ([{:keys [llm-context extra-procs extra-conns encoding debug?
+  ([{:keys [llm-context extra-procs extra-conns debug?
             language chunk-duration-ms]
      :or {llm-context {:messages
                        [{:role "system"
@@ -49,7 +49,7 @@
 
           language :en
           debug? false
-          chunk-duration-ms 20
+          chunk-duration-ms 40
           extra-procs {}
           extra-conns []}}]
 
@@ -68,8 +68,7 @@
                                :transcription/smart-format? true
                                :transcription/model :nova-2
                                :transcription/utterance-end-ms 1000
-                               :transcription/language language
-                               :transcription/encoding encoding}}
+                               :transcription/language language}}
 
          ;; user transcription & llm message frames -> llm-context frames
          ;; responsible for keeping the full conversation history
@@ -97,8 +96,7 @@
                       :voice/stability 0.5
                       :voice/similarity-boost 0.8
                       :voice/use-speaker-boost? true
-                      :flow/language language
-                      :audio.out/encoding encoding}}
+                      :flow/language language}}
 
          ;; audio-output-raw -> smaller audio-output-raw frames (used for sending audio in realtime)
          :audio-splitter {:proc transport/audio-splitter

@@ -16,10 +16,7 @@
   {:ins {:in "Channel for audio output frames"
          :sys-in "Channel for system messages"}
    :outs {:out "Channel for bot speech status frames"}
-   :params {:audio.out/sample-rate "Sample rate of the output audio"
-            :audio.out/sample-size-bits "Size in bits for each sample"
-            :audio.out/channels "Number of channels. 1 or 2 (mono or stereo audio)"
-            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
+   :params {:audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
             :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
             :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
 
@@ -88,8 +85,8 @@
     :activity-detection/keys [silence-threshold-ms]}]
   (let [;; Configuration
         duration (or duration-ms 20)
-        sending-interval (or sending-interval (/ duration 2))
-        silence-threshold (or silence-threshold-ms (* 4 duration))
+        sending-interval (or sending-interval duration)
+        silence-threshold (or silence-threshold-ms (* 8 duration))
 
         ;; Channels following activity monitor pattern
         timer-in-ch (a/chan 1024)
