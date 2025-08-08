@@ -13,30 +13,23 @@
 
 (def ^:private xi-tts-websocket-url "wss://api.elevenlabs.io/v1/text-to-speech/%s/stream-input")
 
-(def elevenlabs-encoding
-  "Mapping from clojure sound encoding to elevenlabs format"
-  {:ulaw :ulaw
-   :mp3 :mp3
-   :pcm-signed :pcm
-   :pcm-unsigned :pcm
-   :pcm-float :pcm})
-
 (defn encoding->elevenlabs
-  [format sample-rate]
-  (keyword (str (name (elevenlabs-encoding format)) "_" sample-rate)))
+  [sample-rate]
+  (keyword (str  "pcm_" sample-rate)))
 
 (defn make-elevenlabs-ws-url
   [args]
-  (let [{:audio.out/keys [encoding sample-rate]
+  (let [{:audio.out/keys [sample-rate]
          :flow/keys [language]
          :elevenlabs/keys [model-id voice-id]
-         :or {model-id "eleven_flash_v2_5"}}
+         :or {model-id "eleven_flash_v2_5"
+              sample-rate 24000}}
         args]
     (assert voice-id "Voice ID is required")
     (u/append-search-params (format xi-tts-websocket-url voice-id)
                             {:model_id model-id
                              :language_code language
-                             :output_format (encoding->elevenlabs encoding sample-rate)})))
+                             :output_format (encoding->elevenlabs sample-rate)})))
 
 (defn begin-stream-message
   [{:voice/keys [stability similarity-boost use-speaker-boost?]

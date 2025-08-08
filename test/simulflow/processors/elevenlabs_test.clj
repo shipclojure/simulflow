@@ -79,7 +79,7 @@
       (is (= output {}))))
 
   (testing "completes and processes full JSON"
-    (let [state {::elevenlabs/accumulator "{\"audio\": \"dGVz"}
+    (let [state (into default-params {::elevenlabs/accumulator "{\"audio\": \"dGVz"})
           completion "dA==\", \"alignment\": null, \"isFinal\": true}"
           timestamp #inst "2025-01-01"
           [new-state output] (elevenlabs/process-websocket-message state completion timestamp)]
@@ -88,7 +88,7 @@
       (is (= (:frame/type (first (:out output))) :simulflow.frame/audio-output-raw))))
 
   (testing "processes complete JSON in single message"
-    (let [state {::elevenlabs/accumulator ""}
+    (let [state (into default-params {::elevenlabs/accumulator ""})
           complete-msg "{\"audio\": \"dGVzdA==\", \"alignment\": null, \"isFinal\": true}"
           timestamp #inst "2025-01-01"
           [new-state output] (elevenlabs/process-websocket-message state complete-msg timestamp)]
