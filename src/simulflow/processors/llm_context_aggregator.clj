@@ -57,7 +57,7 @@
   "
   [state _ frame]
   (when (:aggregator/debug? state)
-    (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)}))
+    (t/log! {:level :debug :id :llm-context} {:type (:frame/type frame) :data (:frame/data frame)}))
 
   (let [debug? (:aggregator/debug? state)
         {:llm/keys [context]
@@ -150,7 +150,7 @@
 (defn context-aggregator-transform
   [state _ frame]
   (when (:aggregator/debug? state)
-    (t/log! {:level :debug :id :aggregator} {:type (:frame/type frame) :data (:frame/data frame)}))
+    (t/log! {:level :debug :id :llm-context} {:type (:frame/type frame) :data (:frame/data frame)}))
 
   (let [debug? (:aggregator/debug? state)
         {:llm/keys [context]} state

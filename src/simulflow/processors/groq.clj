@@ -45,10 +45,8 @@
   (map u/token-content (a/<!! (a/into [] (stream-groq-chat-completion
                                           {:model "llama-3.3-70b-versatile"
                                            :api-key (secret [:groq :api-key])
-                                           :messages [{:role "system" :content  "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}
-                                                      {:role "user" :content "Salutare ma auzi?"}]}))))
-
-  ,)
+                                           :messages [{:role "system" :content "Ești un agent vocal care funcționează prin telefon. Răspunde doar în limba română și fii succint. Inputul pe care îl primești vine dintr-un sistem de speech to text (transcription) care nu este intotdeauna eficient și poate trimite text neclar. Cere clarificări când nu ești sigur pe ce a spus omul."}
+                                                      {:role "user" :content "Salutare ma auzi?"}]})))))
 
 (comment
 
@@ -58,8 +56,7 @@
        :body
        u/parse-if-json
        :data
-       (map :id))
-  ,)
+       (map :id)))
 
 (def delta (comp :delta first :choices))
 
@@ -109,7 +106,7 @@
                                                               :messages (:messages context)
                                                               :tools (mapv u/->tool-fn (:tools context))}))
                          (catch Exception e
-                           (t/log! :error e)))]
+                           (t/log! {:level :error :id :groq} ["Stream completion error" e])))]
 
       (a/go-loop []
         (when-let [chunk (a/<! stream-ch)]
@@ -119,7 +116,7 @@
               (do
                 (if-let [tool-call (first (:tool_calls d))]
                   (do
-                    (t/log! ["SENDING TOOL CALL" tool-call])
+                    (t/log! {:level :debug :id :groq} ["Sending tool call" tool-call])
                     (a/>! out-c (frame/llm-tool-call-chunk tool-call)))
                   (when-let [c (:content d)]
                     (a/>! out-c (frame/llm-text-chunk c))))
@@ -160,12 +157,12 @@
                    write-to-llm #(loop []
                                    (if-let [frame (a/<!! llm-write)]
                                      (do
-                                       (t/log! :info ["AI REQUEST" (:frame/data frame)])
+                                       (t/log! {:level :info :id :groq} ["Processing request" (:frame/data frame)])
                                        (assert (or (frame/llm-context? frame)
                                                    (frame/control-interrupt-start? frame)) "Invalid frame sent to LLM. Only llm-context or interrupt-start")
                                        (flow-do-completion! state llm-read (:frame/data frame))
                                        (recur))
-                                     (t/log! {:level :info :id :llm} "Closing llm loop")))]
+                                     (t/log! {:level :info :id :groq} "Closing LLM loop")))]
                ((flow/futurize write-to-llm :exec :io))
                {::flow/in-ports {:llm-read llm-read}
                 ::flow/out-ports {:llm-write llm-write}}))

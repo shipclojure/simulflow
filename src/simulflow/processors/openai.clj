@@ -112,9 +112,9 @@
 (defn handle-response
   [in-ch out-ch]
   (vthread-loop []
-    (when-let [chunk (a/<!! in-ch)]
-      (a/>!! out-ch chunk)
-      (recur))))
+                (when-let [chunk (a/<!! in-ch)]
+                  (a/>!! out-ch chunk)
+                  (recur))))
 
 (defn init!
   [params]
@@ -122,16 +122,16 @@
         llm-write (a/chan 100)
         llm-read (a/chan 1024)]
     (vthread-loop []
-      (when-let [command (a/<!! llm-write)]
-        (try
-          (t/log! :info ["AI REQUEST COMMAND" command])
-          (assert (= (:command/kind command) :command/sse-request)
-                  "OpenAI processor only supports SSE request commands")
+                  (when-let [command (a/<!! llm-write)]
+                    (try
+                      (t/log! {:level :info :id :openai} ["Processing request command" command])
+                      (assert (= (:command/kind command) :command/sse-request)
+                              "OpenAI processor only supports SSE request commands")
           ;; Execute the command and handle the streaming response
-          (handle-response (command/handle-command command) llm-read)
-          (catch Exception e
-            (t/log! {:level :error :id :openai-command-error :error e} "Error processing command")))
-        (recur)))
+                      (handle-response (command/handle-command command) llm-read)
+                      (catch Exception e
+                        (t/log! {:level :error :id :openai :error e} "Error processing command")))
+                    (recur)))
 
     (merge parsed-config
            {::flow/in-ports {::llm-read llm-read}

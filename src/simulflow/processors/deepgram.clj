@@ -140,16 +140,16 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
         alive? (atom true)
         conn-config {:headers {"Authorization" (str "Token " (:transcription/api-key validated-args))}
                      :on-open (fn [_]
-                                (t/log! :info "Deepgram websocket connection open"))
+                                (t/log! {:level :info :id :deepgram} "Websocket connection open"))
                      :on-message (fn [_ws ^HeapCharBuffer data _last?]
                                    (a/put! ws-read-chan (str data)))
                      :on-error (fn [_ e]
-                                 (t/log! {:level :error :id :deepgram-transcriptor} ["Error" e]))
+                                 (t/log! {:level :error :id :deepgram} ["Websocket error" e]))
                      :on-close (fn [_ws code reason]
                                  (reset! alive? false)
-                                 (t/log! {:level :info :id :deepgram-transcriptor} ["Deepgram websocket connection closed" "Code:" code "Reason:" reason]))}
+                                 (t/log! {:level :info :id :deepgram} ["Websocket connection closed" "Code:" code "Reason:" reason]))}
 
-        _ (t/log! {:level :info :id :deepgram-transcriptor} ["Connecting to transcription websocket" websocket-url])
+        _ (t/log! {:level :info :id :deepgram} ["Connecting to websocket" websocket-url])
         ws-conn @(ws/websocket websocket-url conn-config)]
 
     ;; Audio message processing loop
@@ -177,7 +177,7 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
   [{:websocket/keys [conn]
     ::flow/keys [in-ports out-ports] :as state} transition]
   (when (= transition ::flow/stop)
-    (t/log! {:id :deepgram-transcriptor :level :info} "Closing transcription websocket connection")
+    (t/log! {:id :deepgram :level :info} "Closing websocket connection")
     (when (:websocket/alive? state)
       (reset! (:websocket/alive? state) false))
     (when conn

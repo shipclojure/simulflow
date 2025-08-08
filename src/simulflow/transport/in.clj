@@ -37,10 +37,17 @@
   Assumes audio-input-raw frames that come in are 16kHz PCM mono. Conversion to
   this format should be done beforehand."
   [{:keys [pipeline/supports-interrupt?] :as state} _ msg]
+  (t/log! {:id :transport-in
+           :msg "Processing frame"
+           :data (:frame/type msg)
+           :level :debug
+           :sample 0.01})
   (cond
     (frame/audio-input-raw? msg)
     (if-let [analyser (:vad/analyser state)]
-      (let [vad-state (vad/analyze-audio analyser (:frame/data msg))
+      (let [_ (t/log! {:id :transport-in :level :debug :msg "Running VAD Analyser"})
+            vad-state (vad/analyze-audio analyser (:frame/data msg))
+            _ (t/log! {:id :transport-in :level :debug :msg ["New vad result" vad-state]})
             prev-vad-state (:vad/state state :vad.state/quiet)
             new-state (assoc state :vad/state vad-state)]
         (log-vad-state! prev-vad-state vad-state)
@@ -79,7 +86,7 @@
           output (if (fn? handle-event)
                    (do
                      (t/log! {:level :warn
-                              :id  :twilio-transport-in}
+                              :id :twilio-transport-in}
                              "`:twilio/handle-event` is deprecated. Use core.async.flow/inject instead")
                      (handle-event data))
                    nil)
@@ -87,9 +94,9 @@
       (condp = (:event data)
         "start" [state (if-let [stream-sid (:streamSid data)]
                          (out-frames {:sys-out [(frame/system-config-change
-                                                  (u/without-nils {:twilio/stream-sid stream-sid
-                                                                   :twilio/call-sid (get-in data [:start :callSid])
-                                                                   :transport/serializer (make-twilio-serializer stream-sid)}))]})
+                                                 (u/without-nils {:twilio/stream-sid stream-sid
+                                                                  :twilio/call-sid (get-in data [:start :callSid])
+                                                                  :transport/serializer (make-twilio-serializer stream-sid)}))]})
                          (out-frames {}))]
         "media"
         (let [audio-frame (frame/audio-input-raw (-> data
@@ -161,17 +168,17 @@
                  (sound/stop! line)
                  (close! line))]
     (vthread-loop []
-      (when @running?
-        (try
-          (let [bytes-read (sound/read! line buffer 0 buffer-size)]
-            (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
-              (a/>!! mic-in-ch processed-data)))
-          (catch Exception e
-            (t/log! {:level :error :id :microphone-transport :error e}
-                    "Error reading audio data")
+                  (when @running?
+                    (try
+                      (let [bytes-read (sound/read! line buffer 0 buffer-size)]
+                        (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+                          (a/>!! mic-in-ch processed-data)))
+                      (catch Exception e
+                        (t/log! {:level :error :id :microphone-transport :error e}
+                                "Error reading audio data")
             ;; Brief pause before retrying to prevent tight error loop
-            (Thread/sleep 100)))
-        (recur)))
+                        (Thread/sleep 100)))
+                    (recur)))
     (into state
           {::flow/in-ports {::mic-in mic-in-ch}
            ::close close})))
@@ -180,7 +187,8 @@
   [state transition]
   (when (and (= transition ::flow/stop)
              (fn? (::close state)))
-    (t/log! :info "Closing transport in")
+    (t/log! {:level :info
+             :id :transport-in} "Closing input")
     ((::close state)))
   state)
 

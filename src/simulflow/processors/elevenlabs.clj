@@ -15,7 +15,7 @@
 
 (defn encoding->elevenlabs
   [sample-rate]
-  (keyword (str  "pcm_" sample-rate)))
+  (keyword (str "pcm_" sample-rate)))
 
 (defn make-elevenlabs-ws-url
   [args]
@@ -134,14 +134,14 @@
   [args ws-read ws-write]
   (let [configuration-msg (begin-stream-message args)]
     {:on-open (fn [ws]
-                (t/log! :debug ["Elevenlabs websocket connection open. Sending configuration message" configuration-msg])
+                (t/log! {:level :debug :id :elevenlabs} ["Websocket connection open. Sending configuration message" configuration-msg])
                 (ws/send! ws configuration-msg))
      :on-message (fn [_ws ^HeapCharBuffer data _last?]
                    (a/put! ws-read (str data)))
      :on-error (fn [_ e]
-                 (t/log! :error ["Elevenlabs websocket error" (ex-message e)]))
+                 (t/log! {:level :error :id :elevenlabs} ["Websocket error" (ex-message e)]))
      :on-close (fn [_ws code reason]
-                 (t/log! :debug ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason]))}))
+                 (t/log! {:level :debug :id :elevenlabs} ["Websocket connection closed" "Code:" code "Reason:" reason]))}))
 
 (defn elevenlabs-tts-transform
   "Modular transform function using pure helper functions"
@@ -177,21 +177,21 @@
         conf (assoc (create-websocket-config args ws-read ws-write)
                     :on-close (fn [_ws code reason]
                                 (reset! alive? false)
-                                (t/log! :debug ["Elevenlabs websocket connection closed" "Code:" code "Reason:" reason])))
-        _ (t/log! {:level :debug :id :elevenlabs} "Connecting to transcription websocket")
+                                (t/log! {:level :debug :id :elevenlabs} ["Websocket connection closed" "Code:" code "Reason:" reason])))
+        _ (t/log! {:level :debug :id :elevenlabs} "Connecting to TTS websocket")
         ws-conn @(ws/websocket url conf)]
     (vthread-loop []
-      (when @alive?
-        (when-let [msg (a/<!! ws-write)]
-          (when @alive?
-            (ws/send! ws-conn msg))
-          (recur))))
+                  (when @alive?
+                    (when-let [msg (a/<!! ws-write)]
+                      (when @alive?
+                        (ws/send! ws-conn msg))
+                      (recur))))
     (vthread-loop []
-      (when @alive?
-        (a/<!! (a/timeout 3000))
-        (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
-        (ws/send! ws-conn keep-alive-message)
-        (recur)))
+                  (when @alive?
+                    (a/<!! (a/timeout 3000))
+                    (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
+                    (ws/send! ws-conn keep-alive-message)
+                    (recur)))
     (into args
           {:websocket/conn ws-conn
            :websocket/alive? alive?
@@ -202,7 +202,7 @@
 (defn elevenlabs-tts-transition
   [{:websocket/keys [conn] ::flow/keys [in-ports out-ports] :as state} transition]
   (when (= transition ::flow/stop)
-    (t/log! {:id :elevenlabs :level :info} "Closing tts websocket connection")
+    (t/log! {:id :elevenlabs :level :info} "Closing websocket connection")
     (reset! (:websocket/alive? state) false)
     (when conn
       (ws/send! conn close-stream-message)

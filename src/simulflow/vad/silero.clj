@@ -239,7 +239,7 @@
    (when-not (contains? supported-sample-rates sample-rate)
      (throw (IllegalArgumentException.
               (str "Sampling rate not supported, only available for " supported-sample-rates))))
-   (let [model (create-silero-onnx-model model-path)
+   (let [model (create-silero-onnx-model (or model-path "resources/silero_vad.onnx"))
          frames-required (if (= sample-rate 16000) 512 256)
          bytes-per-frame 2 ; 16-bit PCM
          bytes-required (* frames-required bytes-per-frame)
@@ -257,6 +257,10 @@
          last-reset-time (atom (System/currentTimeMillis))]
      (reify vad/VADAnalyzer
        (analyze-audio [this audio-chunk]
+         (t/log! {:id :silero-vad
+                  :msg "Analysing audio chunk"
+                  :level :debug
+                  :sample 0.01})
          (try
            ;; Accumulate audio
            (swap! audio-buffer #(byte-array (concat (seq %) (seq audio-chunk))))
