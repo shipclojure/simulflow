@@ -4,7 +4,7 @@
    [clojure.core.async.flow :as flow]
    [simulflow.async :refer [vthread-loop]]
    [simulflow.frame :as frame]
-   [simulflow.transport.codecs :refer [make-twilio-codec]]
+   [simulflow.transport.codecs :refer [make-twilio-serializer]]
    [simulflow.utils.audio :as audio]
    [simulflow.utils.core :as u]
    [simulflow.vad.core :as vad]
@@ -79,7 +79,7 @@
                          (out-frames {:sys-out [(frame/system-config-change
                                                   (u/without-nils {:twilio/stream-sid stream-sid
                                                                    :twilio/call-sid (get-in data [:start :callSid])
-                                                                   :transport/serializer (make-twilio-codec stream-sid)}))]})
+                                                                   :transport/serializer (make-twilio-serializer stream-sid)}))]})
                          (out-frames {}))]
         "media"
         (let [audio-frame (frame/audio-input-raw (-> data

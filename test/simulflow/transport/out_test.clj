@@ -1,10 +1,11 @@
 (ns simulflow.transport.out-test
   (:require
-   [clojure.test :refer [deftest is testing]]
+
    [simulflow.frame :as frame]
    [simulflow.transport.out :as sut]
    [simulflow.transport.protocols :as tp]
-   [simulflow.utils.core :as u]))
+   [simulflow.utils.core :as u]
+   [clojure.test :refer [deftest is testing]]))
 
 (deftest process-realtime-out-audio-frame-test
   (testing "process-realtime-out-audio-frame with first audio frame"
@@ -57,9 +58,6 @@
       (is (contains? (:outs description) :out))
 
       ;; Verify required parameters
-      (is (contains? (:params description) :audio.out/sample-rate))
-      (is (contains? (:params description) :audio.out/sample-size-bits))
-      (is (contains? (:params description) :audio.out/channels))
       (is (contains? (:params description) :audio.out/duration-ms)))))
 
 (deftest test-realtime-out-timer-handling
@@ -122,7 +120,7 @@
 
 (deftest test-realtime-speakers-out-serializer-integration
   (testing "transform with serializer"
-    (let [mock-serializer (reify tp/FrameCodec
+    (let [mock-serializer (reify tp/FrameSerializer
                             (serialize-frame [_ frame]
                               ;; Serializer modifies the frame data
                               (assoc frame :frame/data [99 99 99])))
@@ -215,8 +213,8 @@
               timer-frame {:timer/tick true
                            :timer/timestamp (+ (::sut/last-send-time state2) 1000)}
               [state3 output3] (sut/realtime-out-transform
-                                (assoc state2 ::sut/silence-threshold 500)
-                                :timer-out timer-frame)]
+                                 (assoc state2 ::sut/silence-threshold 500)
+                                 :timer-out timer-frame)]
 
           ;; Verify state progression
           (is (false? (::sut/speaking? initial-state)))

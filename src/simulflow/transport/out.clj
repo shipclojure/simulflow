@@ -30,18 +30,15 @@
             :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
 
 (defn realtime-speakers-out-init!
-  [{:audio.out/keys [duration-ms sample-rate sample-size-bits channels sending-interval]
-    :activity-detection/keys [silence-threshold-ms]
-    :or {sample-rate 16000
-         channels 1
-         sample-size-bits 16}}]
+  [{:audio.out/keys [duration-ms sending-interval]
+    :activity-detection/keys [silence-threshold-ms]}]
   (let [;; Configuration
         duration (or duration-ms 20)
         sending-interval (or sending-interval (/ duration 2))
         silence-threshold (or silence-threshold-ms (* 4 duration))
 
         ;; Audio line setup
-        line (open-line! :source (sampled/audio-format sample-rate sample-size-bits channels))
+        line (open-line! :source (sampled/audio-format 16000 16))
 
         ;; Channels following activity monitor pattern
         timer-in-ch (chan 1024)
