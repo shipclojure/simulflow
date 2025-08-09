@@ -5,7 +5,9 @@
    [malli.core :as m]
    [malli.error :as me]
    [malli.transform :as mt]
-   [malli.util :as mu]))
+   [malli.util :as mu]
+   [simulflow.transport.protocols :as transport-protocols]
+   [simulflow.vad.core :as vad-core]))
 
 (defn parse-schema
   [s]
@@ -206,258 +208,258 @@
     [;; Afrikaans
      "af" "af-ZA"
 
-      ;; Amharic
+     ;; Amharic
      "am" "am-ET"
 
-      ;; Arabic
+     ;; Arabic
      "ar" "ar-AE" "ar-BH" "ar-DZ" "ar-EG" "ar-IQ" "ar-JO" "ar-KW"
      "ar-LB" "ar-LY" "ar-MA" "ar-OM" "ar-QA" "ar-SA" "ar-SY" "ar-TN" "ar-YE"
 
-      ;; Assamese
+     ;; Assamese
      "as" "as-IN"
 
-      ;; Azerbaijani
+     ;; Azerbaijani
      "az" "az-AZ"
 
-      ;; Bulgarian
+     ;; Bulgarian
      "bg" "bg-BG"
 
-      ;; Bengali
+     ;; Bengali
      "bn" "bn-BD" "bn-IN"
 
-      ;; Bosnian
+     ;; Bosnian
      "bs" "bs-BA"
 
-      ;; Catalan
+     ;; Catalan
      "ca" "ca-ES"
 
-      ;; Czech
+     ;; Czech
      "cs" "cs-CZ"
 
-      ;; Welsh
+     ;; Welsh
      "cy" "cy-GB"
 
-      ;; Danish
+     ;; Danish
      "da" "da-DK"
 
-      ;; German
+     ;; German
      "de" "de-AT" "de-CH" "de-DE"
 
-      ;; Greek
+     ;; Greek
      "el" "el-GR"
 
-      ;; English
+     ;; English
      "en" "en-AU" "en-CA" "en-GB" "en-HK" "en-IE" "en-IN" "en-KE"
      "en-NG" "en-NZ" "en-PH" "en-SG" "en-TZ" "en-US" "en-ZA"
 
-      ;; Spanish
+     ;; Spanish
      "es" "es-AR" "es-BO" "es-CL" "es-CO" "es-CR" "es-CU" "es-DO"
      "es-EC" "es-ES" "es-GQ" "es-GT" "es-HN" "es-MX" "es-NI" "es-PA"
      "es-PE" "es-PR" "es-PY" "es-SV" "es-US" "es-UY" "es-VE"
 
-      ;; Estonian
+     ;; Estonian
      "et" "et-EE"
 
-      ;; Basque
+     ;; Basque
      "eu" "eu-ES"
 
-      ;; Persian
+     ;; Persian
      "fa" "fa-IR"
 
-      ;; Finnish
+     ;; Finnish
      "fi" "fi-FI"
 
-      ;; Filipino
+     ;; Filipino
      "fil" "fil-PH"
 
-      ;; French
+     ;; French
      "fr" "fr-BE" "fr-CA" "fr-CH" "fr-FR"
 
-      ;; Irish
+     ;; Irish
      "ga" "ga-IE"
 
-      ;; Galician
+     ;; Galician
      "gl" "gl-ES"
 
-      ;; Gujarati
+     ;; Gujarati
      "gu" "gu-IN"
 
-      ;; Hebrew
+     ;; Hebrew
      "he" "he-IL"
 
-      ;; Hindi
+     ;; Hindi
      "hi" "hi-IN"
 
-      ;; Croatian
+     ;; Croatian
      "hr" "hr-HR"
 
-      ;; Hungarian
+     ;; Hungarian
      "hu" "hu-HU"
 
-      ;; Armenian
+     ;; Armenian
      "hy" "hy-AM"
 
-      ;; Indonesian
+     ;; Indonesian
      "id" "id-ID"
 
-      ;; Icelandic
+     ;; Icelandic
      "is" "is-IS"
 
-      ;; Italian
+     ;; Italian
      "it" "it-IT"
 
-      ;; Inuktitut
+     ;; Inuktitut
      "iu-Cans" "iu-Cans-CA" "iu-Latn" "iu-Latn-CA"
 
-      ;; Japanese
+     ;; Japanese
      "ja" "ja-JP"
 
-      ; Javanese
+     ; Javanese
      "jv" "jv-ID"
 
-      ;; Georgian
+     ;; Georgian
      "ka" "ka-GE"
 
-      ;; Kazakh
+     ;; Kazakh
      "kk" "kk-KZ"
 
-      ;; Khmer
+     ;; Khmer
      "km" "km-KH"
 
-      ;; Kannada
+     ;; Kannada
      "kn" "kn-IN"
 
-      ;; Korean
+     ;; Korean
      "ko" "ko-KR"
 
-      ;; Lao
+     ;; Lao
      "lo" "lo-LA"
 
-      ;; Lithuanian
+     ;; Lithuanian
      "lt" "lt-LT"
 
-      ;; Latvian
+     ;; Latvian
      "lv" "lv-LV"
 
-      ;; Macedonian
+     ;; Macedonian
      "mk" "mk-MK"
 
-      ;; Malayalam
+     ;; Malayalam
      "ml" "ml-IN"
 
-      ;; Mongolian
+     ;; Mongolian
      "mn" "mn-MN"
 
-      ;; Marathi
+     ;; Marathi
      "mr" "mr-IN"
 
-      ;; Malay
+     ;; Malay
      "ms" "ms-MY"
 
-      ;; Maltese
+     ;; Maltese
      "mt" "mt-MT"
 
-      ;; Burmese
+     ;; Burmese
      "my" "my-MM"
 
-      ;; Norwegian
+     ;; Norwegian
      "nb" "nb-NO" "no"
 
-      ;; Nepali
+     ;; Nepali
      "ne" "ne-NP"
 
-      ;; Dutch
+     ;; Dutch
      "nl" "nl-BE" "nl-NL"
 
-      ;; Odia
+     ;; Odia
      "or" "or-IN"
 
-      ;; Punjabi
+     ;; Punjabi
      "pa" "pa-IN"
 
-      ;; Polish
+     ;; Polish
      "pl" "pl-PL"
 
-      ;; Pashto
+     ;; Pashto
      "ps" "ps-AF"
 
-      ;; Portuguese
+     ;; Portuguese
      "pt" "pt-BR" "pt-PT"
 
-      ;; Romanian
+     ;; Romanian
      "ro" "ro-RO"
 
-      ;; Russian
+     ;; Russian
      "ru" "ru-RU"
 
-      ;; Sinhala
+     ;; Sinhala
      "si" "si-LK"
 
-      ;; Slovak
+     ;; Slovak
      "sk" "sk-SK"
 
-      ;; Slovenian
+     ;; Slovenian
      "sl" "sl-SI"
 
-      ;; Somali
+     ;; Somali
      "so" "so-SO"
 
-      ;; Albanian
+     ;; Albanian
      "sq" "sq-AL"
 
-      ;; Serbian
+     ;; Serbian
      "sr" "sr-RS" "sr-Latn" "sr-Latn-RS"
 
-      ;; Sundanese
+     ;; Sundanese
      "su" "su-ID"
 
-      ;; Swedish
+     ;; Swedish
      "sv" "sv-SE"
 
-      ;; Swahili
+     ;; Swahili
      "sw" "sw-KE" "sw-TZ"
 
-      ;; Tagalog
+     ;; Tagalog
      "tl"
 
-      ;; Tamil
+     ;; Tamil
      "ta" "ta-IN" "ta-LK" "ta-MY" "ta-SG"
 
-      ;; Telugu
+     ;; Telugu
      "te" "te-IN"
 
-      ;; Thai
+     ;; Thai
      "th" "th-TH"
 
-      ;; Turkish
+     ;; Turkish
      "tr" "tr-TR"
 
-      ;; Ukrainian
+     ;; Ukrainian
      "uk" "uk-UA"
 
-      ;; Urdu
+     ;; Urdu
      "ur" "ur-IN" "ur-PK"
 
-      ;; Uzbek
+     ;; Uzbek
      "uz" "uz-UZ"
 
-      ;; Vietnamese
+     ;; Vietnamese
      "vi" "vi-VN"
 
-      ;; Wu Chinese
+     ;; Wu Chinese
      "wuu" "wuu-CN"
 
-      ;; Yue Chinese
+     ;; Yue Chinese
      "yue" "yue-CN"
 
-      ;; Chinese
+     ;; Chinese
      "zh" "zh-CN" "zh-CN-guangxi" "zh-CN-henan" "zh-CN-liaoning"
      "zh-CN-shaanxi" "zh-CN-shandong" "zh-CN-sichuan" "zh-HK" "zh-TW"
 
-      ;; Xhosa
+     ;; Xhosa
      "xh"
 
-      ;; Zulu
+     ;; Zulu
      "zu" "zu-ZA"]))
 
 ;;; LLM Chat messages
@@ -681,28 +683,6 @@
     :description "core.async channel"}
    #(satisfies? impl/Channel %)])
 
-(def PipelineConfigSchema
-  [:map
-   [:audio-in/sample-rate {:default 16000} SampleRate]
-   [:audio-in/channels {:default 1} AudioChannels]
-   [:audio-in/encoding {:default :pcm-signed} AudioEncoding]
-   [:audio-in/sample-size-bits {:default 16} SampleSizeBits]
-   [:audio-out/sample-rate {:default 16000} SampleRate]
-   [:audio-out/channels {:default 1} AudioChannels]
-   [:audio-out/encoding {:default :pcm-signed} AudioEncoding]
-   [:audio-out/sample-size-bits {:default 16} SampleSizeBits]
-   [:pipeline/language Language]
-   [:pipeline/supports-interrupt? {:default false
-                                   :optional true} :boolean]
-   [:llm/context LLMContext]
-   [:llm/registered-functions {:optional true} RegisteredFunctions]
-   [:transport/in-ch CoreAsyncChannel]
-   [:transport/out-ch CoreAsyncChannel]
-   [:twilio/call-sid :string]
-   [:twilio/stream-sid :string]])
-
-(def PartialConfigSchema (mu/optional-keys PipelineConfigSchema))
-
 ;; Command System Schemas
 ;; Commands allow transform functions to generate pure data that describe
 ;; side effects, which are then executed by init! functions
@@ -744,3 +724,133 @@
    [:command/kind CommandKind]
    [:command/data CommandData] ; Simplified for now
    [:command/id {:optional true} [:maybe :string]]])
+
+;; Transport Serializer Schemas
+
+(def FrameSerializer
+  "Schema for objects implementing the FrameSerializer protocol"
+  [:fn
+   {:description "Object implementing simulflow.transport.protocols/FrameSerializer"
+    :error/message "Must implement FrameSerializer protocol"}
+   (fn [obj]
+     (and (some? obj)
+          (satisfies? transport-protocols/FrameSerializer obj)))])
+
+(def FrameDeserializer
+  "Schema for objects implementing the FrameDeserializer protocol"
+  [:fn
+   {:description "Object implementing simulflow.transport.protocols/FrameDeserializer"
+    :error/message "Must implement FrameDeserializer protocol"}
+   (fn [obj]
+     (and (some? obj)
+          (satisfies? transport-protocols/FrameDeserializer obj)))])
+
+(def TwilioSerializerConfig
+  "Schema for Twilio serializer configuration"
+  [:map
+   {:description "Configuration for Twilio frame serializer"}
+   [:stream-sid {:description "Twilio stream ID"} :string]])
+
+;; VAD (Voice Activity Detection) Schemas
+
+(def VADState
+  "Schema for Voice Activity Detection states"
+  [:enum
+   {:description "VAD state values representing voice activity transitions"
+    :error/message "Invalid VAD state"}
+   :vad.state/speaking ; Currently detecting voice activity
+   :vad.state/starting ; Transition from quiet to speaking
+   :vad.state/quiet ; No voice activity detected
+   :vad.state/stopping]) ; Transition from speaking to quiet
+
+(def VADConfidence
+  "Schema for voice confidence score"
+  [:double
+   {:description "Voice confidence score between 0.0 and 1.0"
+    :min 0.0
+    :max 1.0
+    :error/message "Confidence must be between 0.0 and 1.0"}])
+
+(def VADAnalyzerProtocol
+  "Schema for objects implementing the VADAnalyzer protocol"
+  [:fn
+   {:description "Object implementing simulflow.vad.core/VADAnalyzer protocol"
+    :error/message "Must implement VADAnalyzer protocol"}
+   (fn [obj]
+     (and (some? obj)
+          (satisfies? vad-core/VADAnalyzer obj)))])
+
+(def VADParams
+  "Schema for VAD parameters"
+  [:map
+   {:description "Voice Activity Detection configuration parameters"}
+   [:vad/min-confidence
+    {:description "Minimum confidence threshold for voice detection"
+     :default 0.7}
+    VADConfidence]
+   [:vad/min-speech-duration-ms
+    {:description "Duration to wait before confirming voice start"
+     :default 200}
+    [:int {:min 0}]]
+   [:vad/min-silence-duration-ms
+    {:description "Duration to wait before confirming voice end"
+     :default 800}
+    [:int {:min 0}]]])
+
+(def AudioBuffer
+  "Schema for audio buffer used in VAD analysis"
+  [:and
+   ByteArray
+   {:description "Byte array representing 16kHz PCM mono audio"}])
+
+(def SileroVADConfig
+  "Schema for Silero VAD implementation configuration"
+  [:map
+   {:description "Configuration for Silero VAD implementation"}
+   [:model-path {:optional true
+                 :description "Path to ONNX model file"} :string]
+   [:sample-rate {:optional true
+                  :description "Audio sample rate (must be supported)"
+                  :default 16000}
+    [:enum 8000 16000]]
+   [:reset-time-ms {:optional true
+                    :description "Model reset interval in milliseconds"
+                    :default 5000}
+    [:int {:min 1000}]]
+   ;; Merge with VADParams
+   [:vad/min-confidence
+    {:description "Minimum confidence threshold for voice detection"
+     :default 0.7}
+    VADConfidence]
+   [:vad/min-speech-duration-ms
+    {:description "Duration to wait before confirming voice start"
+     :default 200}
+    [:int {:min 0}]]
+   [:vad/min-silence-duration-ms
+    {:description "Duration to wait before confirming voice end"
+     :default 800}
+    [:int {:min 0}]]])
+
+(def PipelineConfigSchema
+  [:map
+   [:audio-in/sample-rate {:default 16000} SampleRate]
+   [:audio-in/channels {:default 1} AudioChannels]
+   [:audio-in/encoding {:default :pcm-signed} AudioEncoding]
+   [:audio-in/sample-size-bits {:default 16} SampleSizeBits]
+   [:audio-out/sample-rate {:default 16000} SampleRate]
+   [:audio-out/channels {:default 1} AudioChannels]
+   [:audio-out/encoding {:default :pcm-signed} AudioEncoding]
+   [:audio-out/sample-size-bits {:default 16} SampleSizeBits]
+   [:pipeline/language Language]
+   [:pipeline/supports-interrupt? {:default false
+                                   :optional true} :boolean]
+
+   [:llm/context LLMContext]
+   [:llm/registered-functions {:optional true} RegisteredFunctions]
+   [:transport/in-ch CoreAsyncChannel]
+   [:transport/out-ch CoreAsyncChannel]
+   [:transport/serializer FrameSerializer]
+   [:twilio/call-sid :string]
+   [:twilio/stream-sid :string]])
+
+(def PartialConfigSchema (mu/optional-keys PipelineConfigSchema))

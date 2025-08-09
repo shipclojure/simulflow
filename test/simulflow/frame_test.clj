@@ -1,8 +1,9 @@
 (ns simulflow.frame-test
   "Comprehensive tests for the simulflow.frame namespace"
   (:require
-   [clojure.test :refer [are deftest is testing]]
-   [simulflow.frame :as frame])
+
+   [simulflow.frame :as frame]
+   [clojure.test :refer [are deftest is testing]])
   (:import
    (java.util Date)))
 
@@ -90,6 +91,11 @@
       frame/user-speech-stop true true
       frame/control-interrupt-start true true
       frame/control-interrupt-stop true true
+      frame/bot-speech-start true true
+      frame/bot-speech-stop true true
+      frame/vad-user-speech-start true true
+      frame/vad-user-speech-stop true true
+      frame/system-config-change {:pipeline/language :es} true
       ;; Non-system frames
       frame/audio-input-raw test-audio-data false
       frame/llm-text-chunk "test" false

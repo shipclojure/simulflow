@@ -57,17 +57,6 @@
                :frame/data data
                :frame/ts (timestamp->date (or timestamp (java.util.Date.)))} {:type ::frame})))
 
-(defn system-frame?
-  "Returns true if the frame is a system frame that should be processed immediately"
-  [frame]
-  (let [frame-type (:frame/type frame)]
-    (or (= frame-type ::system-start)
-        (= frame-type ::system-stop)
-        (= frame-type ::user-speech-start)
-        (= frame-type ::user-speech-stop)
-        (= frame-type ::control-interrupt-start)
-        (= frame-type ::control-interrupt-stop))))
-
 (defmacro defframe
   "Define a frame creator function and its predicate with schema validation.
    Usage: (defframe audio-input
@@ -387,3 +376,23 @@
 (defframe text-input
   "Text input frame for LLM processing"
   {:type ::text-input})
+
+(def system-frames #{::system-start
+                     ::system-stop
+                     ::system-config-change
+                     ::user-speech-start
+                     ::user-speech-stop
+                     ::bot-speech-stop
+                     ::bot-speech-start
+                     ::vad-user-speech-stop
+                     ::vad-user-speech-start
+                     ::bot-interrupt
+                     ::control-interrupt-start
+                     ::control-interrupt-stop})
+
+(defn system-frame?
+  "Returns true if the frame is a system frame that should be processed immediately"
+  [frame]
+  (and
+    (frame? frame)
+    (contains? system-frames (:frame/type frame))))
