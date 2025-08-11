@@ -32,6 +32,27 @@ Key frame types include:
 - `:simulflow.frame/llm-text-chunk`, `:simulflow.frame/llm-tool-call-chunk` - LLM response chunks
 - `:simulflow.frame/system-start`, `:simulflow.frame/system-stop` - Control signals
 
+#### System Frame Routing
+
+The framework maintains strict separation between **system frames** (priority control messages) and regular frames:
+
+- **System Frames**: `::system-start`, `::system-stop`, `::user-speech-start/stop`, `::bot-speech-start/stop`, `::control-interrupt-start/stop`, etc.
+- **System frames** are automatically routed to `:sys-out` channels for priority processing
+- **Regular frames** go to `:out` channels for normal data flow
+
+**Automatic Frame Routing with `frame/send`**:
+
+```clojure
+;; Automatically routes frames to correct channels based on type
+(frame/send 
+  (frame/user-speech-start true)     ; → :sys-out (system frame)
+  (frame/transcription "hello")      ; → :out (regular frame)
+  (frame/bot-speech-stop true))      ; → :sys-out (system frame)
+
+;; Returns: {:sys-out [user-speech-start bot-speech-stop]
+;;          :out [transcription]}
+```
+
 ### Flow-Based Processing
 
 Processors are connected in graphs using `core.async.flow`, allowing for:
@@ -39,12 +60,13 @@ Processors are connected in graphs using `core.async.flow`, allowing for:
 - Declarative pipeline configuration
 - Robust lifecycle management
 - Composable and reusable components
+- **Priority system frame routing** through dedicated `:sys-out`/`:sys-in` channels
 
 ## Key File Paths
 
 ### Core Framework
 
-- `src/simulflow/frame.clj` - Frame definitions, constructors, and schemas
+- `src/simulflow/frame.clj` - Frame definitions, constructors, schemas, and **system frame routing utilities**
 - `src/simulflow/schema.clj` - Malli schemas for validation and type safety
 - `src/simulflow/transport.clj` - Transport layer for audio I/O and serialization
 - `src/simulflow/async.clj` - Core.async utilities and virtual thread loops
@@ -59,11 +81,14 @@ Processors are connected in graphs using `core.async.flow`, allowing for:
 - `src/simulflow/processors/llm_context_aggregator.clj` - Conversation context management
 - `src/simulflow/processors/activity_monitor.clj` - Audio activity detection
 - `src/simulflow/processors/audio_resampler.clj` - Audio format conversion and resampling processor
+- `src/simulflow/processors/system_frame_router.clj` - **System frame fan-out router for N×N connections**
 
 ### Transport Layer
 
 - `src/simulflow/transport/protocols.clj` - Transport protocols and abstractions
-- `src/simulflow/transport/serializers.clj` - Frame serialization for different providers
+- `src/simulflow/transport/in.clj` - **Input transport with VAD and system frame generation**
+- `src/simulflow/transport/out.clj` - **Output transport with bot speech event generation**
+- `src/simulflow/transport/codecs.clj` - Frame serialization for different providers
 
 ### Configuration & Utilities
 
@@ -128,7 +153,9 @@ Processors are connected in graphs using `core.async.flow`, allowing for:
            :args {:openai/api-key "key"}}}
      :conns
      [[[:transport-in :out] [:transcriptor :in]]
-      [[:transcriptor :out] [:llm :in]]]}))
+      [[:transport-in :sys-out] [:transcriptor :sys-in]]  ; System frame routing
+      [[:transcriptor :out] [:llm :in]]
+      [[:transcriptor :sys-out] [:llm :sys-in]]]}))       ; System frame routing
 
 ;; Start the flow
 (flow/start my-flow)
@@ -195,16 +222,16 @@ All processors follow the `core.async.flow` transform pattern:
 ```clojure
 (defn my-processor []
   (flow/process
-    {:describe (fn [] {:ins {:in "Input channel"}
-                      :outs {:out "Output channel"}})
+    {:describe (fn [] {:ins {:in "Input channel" :sys-in "System input"}
+                      :outs {:out "Output channel" :sys-out "System output"}})
      :init identity
      :transform (fn [state in msg]
-                  [state {:out [(process-message msg)]}])}))
+                  [state (frame/send (process-message msg))])}))  ; Automatic routing
 ```
 
-### Frame-Based Communication
+### Frame-Based Communication with System Priority
 
-Inter-processor communication uses typed frames:
+Inter-processor communication uses typed frames with automatic priority routing:
 
 ```clojure
 (defframe audio-input-raw
@@ -213,6 +240,27 @@ Inter-processor communication uses typed frames:
    :schema [:map
            [:data [:fn bytes?]]
            [:timestamp :int]]})
+
+;; System frames for priority control
+(defframe user-speech-start
+  "User started speaking - system priority"
+  {:type ::user-speech-start
+   :schema :boolean})
+```
+
+### Automatic Frame Routing
+
+The `frame/send` utility automatically routes frames to appropriate channels:
+
+```clojure
+;; In processor transform functions
+(defn transform [state input-port data]
+  (let [frames (process-data data)]
+    [state (apply frame/send frames)]))  ; Automatic :out/:sys-out routing
+
+;; Mixed frame and custom channel output
+(-> (frame/send system-frame regular-frame)
+    (assoc :audio-write [audio-command]))
 ```
 
 ### Schema Validation
@@ -259,7 +307,7 @@ A key architectural pattern that moves business logic from `init!` background lo
           should-emit-stop? (and (::speaking? state)
                                  (> silence-duration (::silence-threshold state)))]
       [(if should-emit-stop? (assoc state ::speaking? false) state)
-       {:out (if should-emit-stop? [(frame/bot-speech-stop true)] [])}])))
+       (frame/send (when should-emit-stop? (frame/bot-speech-stop true)))])))  ; Auto-routing
 
 ;; Minimal init! - only resource setup, no business logic
 (defn realtime-speakers-out-init! [params]
@@ -286,6 +334,7 @@ The transform function becomes a **state mapping function over time** - it takes
 - Side effects isolated to minimal background processes
 - State transitions are clear and debuggable
 - Follows functional programming principles with explicit state over time
+- **Automatic system frame routing** simplifies output handling
 
 ### Pure Function Extraction Pattern
 
@@ -304,17 +353,18 @@ Complex processors are refactored to separate pure data transformation from side
    :audio-format (audio-format sample-rate channels)
    :channel-size 1024})
 
-;; Pure function for audio processing
+;; Pure function for audio processing with automatic frame routing
 (defn process-realtime-out-audio-frame [state frame serializer current-time]
   (let [updated-state (-> state
                           (assoc ::speaking? true)
                           (assoc ::last-audio-time current-time)
                           (assoc ::next-send-time (+ current-time (::sending-interval state))))
-        events (if (not (::speaking? state)) [(frame/bot-speech-start true)] [])
+        should-emit-start? (not (::speaking? state))
         audio-command {:command :write-audio
                        :data (:frame/data (if serializer (tp/serialize-frame serializer frame) frame))
-                       :delay-until (::next-send-time updated-state)}]
-    [updated-state {:out events :audio-write [audio-command]}]))
+                       :delay-until (::next-send-time updated-state)}
+        frame-output (frame/send (when should-emit-start? (frame/bot-speech-start true)))]
+    [updated-state (assoc frame-output :audio-write [audio-command])]))
 
 ;; Used in processor with side effects
 (vthread-loop []
@@ -336,10 +386,34 @@ Processors use multi-arity functions for better flow integration:
 
 ```clojure
 (defn processor-fn
-  ([] {:outs {:out "Description"} :params {...}})  ; 0-arity: describe
-  ([config] {...})                                  ; 1-arity: init
-  ([state transition] {...})                        ; 2-arity: transition
-  ([state input-port data] [state {...}]))          ; 3-arity: transform
+  ([] {:ins {:in "Input" :sys-in "System input"}      ; 0-arity: describe
+       :outs {:out "Output" :sys-out "System output"} 
+       :params {...}})  
+  ([config] {...})                                     ; 1-arity: init
+  ([state transition] {...})                          ; 2-arity: transition
+  ([state input-port data] [state {...}]))            ; 3-arity: transform
+```
+
+### System Frame Router Pattern
+
+For complex flows with multiple system frame producers/consumers:
+
+```clojure
+;; Use the system-frame-router to fan-out system frames
+{:procs 
+ {:system-router {:proc system-frame-router-process}
+  :producer1 {:proc some-producer}
+  :producer2 {:proc another-producer}
+  :consumer1 {:proc some-consumer}
+  :consumer2 {:proc another-consumer}}
+ :conns
+ [;; System frames flow through router
+  [[:producer1 :sys-out] [:system-router :sys-in]]
+  [[:producer2 :sys-out] [:system-router :sys-in]]
+  [[:system-router :sys-out] [:consumer1 :sys-in]]
+  [[:system-router :sys-out] [:consumer2 :sys-in]]
+  ;; Regular frames direct connection
+  [[:producer1 :out] [:consumer1 :in]]]}
 ```
 
 ## Development Workflow
@@ -366,6 +440,10 @@ Processors use multi-arity functions for better flow integration:
 (process-mic-buffer (byte-array [1 2 3]) 0)
 ;; => nil
 
+;; Test frame routing
+(frame/send (frame/user-speech-start true) (frame/transcription "test"))
+;; => {:sys-out [user-speech-start], :out [transcription]}
+
 ;; Test multi-arity processor functions
 (mic-transport-in-fn)  ; 0-arity: get description
 (mic-transport-in-fn {} :in {:audio-data (byte-array [1 2]) :timestamp (Date.)})  ; 3-arity: transform
@@ -383,6 +461,7 @@ This approach enables rapid iteration and verification of component behavior wit
 - **Edge Case Testing** - Boundary conditions and error scenario validation
 - **Schema Validation Testing** - Frame and configuration validation
 - **Realistic Pipeline Testing** - End-to-end integration tests simulating LLM → audio splitter → speakers
+- **System Frame Routing Testing** - Verify frames reach correct channels (`:out` vs `:sys-out`)
 
 #### Comprehensive Test Coverage Example
 
@@ -400,6 +479,15 @@ Transport layer testing demonstrates extensive coverage patterns:
   (testing "returns nil for zero bytes"
     (is (nil? (process-mic-buffer (byte-array [1 2 3]) 0)))))
 
+;; System frame routing testing
+(deftest test-deepgram-transform-system-frames
+  (testing "system frames go to :sys-out, regular frames to :out"
+    (let [state {}
+          json-msg (json/encode {:type "SpeechStarted"})
+          [new-state output] (deepgram/transform state :ws-read json-msg)]
+      (is (= 1 (count (:sys-out output))))
+      (is (frame/user-speech-start? (first (:sys-out output)))))))
+
 ;; Property-based testing across parameter ranges
 (testing "mic-resource-config invariants"
   (doseq [sample-rate [8000 16000 44100 48000]
@@ -407,34 +495,6 @@ Transport layer testing demonstrates extensive coverage patterns:
     (let [config (mic-resource-config {:sample-rate sample-rate :channels channels})]
       (is (pos? (:buffer-size config)))
       (is (= 1024 (:channel-size config))))))
-
-;; Realistic integration testing
-(deftest test-realistic-llm-audio-pipeline-with-timing
-  (testing "LLM generates large audio frame → audio splitter → realtime speakers"
-    (let [;; Simulate 200ms of audio (10 chunks of 20ms each)
-          large-audio-data (byte-array 6400 (byte 42))
-          llm-audio-frame (frame/audio-output-raw large-audio-data)
-
-          ;; Audio splitter processes into chunks
-          splitter-config {:audio.out/sample-rate 16000
-                          :audio.out/sample-size-bits 16
-                          :audio.out/channels 1
-                          :audio.out/duration-ms 20}
-          splitter-state (sut/audio-splitter-fn splitter-config)
-          [_ splitter-output] (sut/audio-splitter-fn splitter-state :in llm-audio-frame)
-          audio-chunks (:out splitter-output)]
-
-      ;; Verify proper chunking
-      (is (= 10 (count audio-chunks)))
-      (is (every? #(= 640 (count (:frame/data %))) audio-chunks))
-
-      ;; Process through realtime speakers with timing simulation
-      (let [speakers-state {...}
-            results (process-chunks-with-timing audio-chunks speakers-state)]
-        ;; Verify bot speech events, timing accuracy, data integrity
-        (is (frame/bot-speech-start? (first-event results)))
-        (is (accurate-timing? results))
-        (is (data-integrity-preserved? results))))))
 
 ;; Data Centric Async Processor Pattern testing
 (deftest test-realtime-speakers-out-timer-handling
@@ -446,15 +506,17 @@ Transport layer testing demonstrates extensive coverage patterns:
           [new-state output] (sut/realtime-speakers-out-transform state :timer-out timer-frame)]
 
       (is (false? (::sut/speaking? new-state)))
-      (is (= 1 (count (:out output))))
-      (is (frame/bot-speech-stop? (first (:out output)))))))
+      (is (= 1 (count (:sys-out output))))  ; System frame routing
+      (is (frame/bot-speech-stop? (first (:sys-out output)))))))
 ```
 
 #### Test Coverage Statistics
 
 Current test coverage demonstrates comprehensive validation:
+- **92 tests, 3600+ assertions** across the entire codebase  
 - **Transport Layer**: 24 tests, 590 assertions covering microphone transport, audio splitter, and realtime speakers
 - **Frame System**: 2150+ assertions covering frame creation, validation, and type safety
+- **System Frame Routing**: Complete verification of `:out` vs `:sys-out` channel routing
 - **Activity Monitor**: Complete pure function testing with mock data
 - **Integration Tests**: Realistic pipeline scenarios with timing validation
 - **Audio Processing**: Comprehensive tests for audio format conversions, resampling, and chunk size calculations
@@ -462,15 +524,17 @@ Current test coverage demonstrates comprehensive validation:
 
 #### Bot Speech Events Testing
 
-Tests validate that `bot-speech-stop` events are properly generated by timer tick processing:
+Tests validate that `bot-speech-stop` events are properly generated by timer tick processing and routed to `:sys-out`:
 
 ```clojure
-(testing "bot-speech-stop generation"
+(testing "bot-speech-stop generation and routing"
   ;; Verify that speech stop events come from timer-based silence detection
   ;; using Data Centric Async Processor Pattern (state mapping over time)
+  ;; and are routed to :sys-out for priority handling
   (let [silence-duration (- timer-timestamp last-audio-time)]
     (when (> silence-duration silence-threshold)
-      (is (frame/bot-speech-stop? generated-event)))))
+      (is (frame/bot-speech-stop? generated-event))
+      (is (contains? output :sys-out)))))  ; System frame routing verification
 ```
 
 ### Configuration Management
@@ -480,6 +544,37 @@ Tests validate that `bot-speech-stop` events are properly generated by timer tic
 - Schema-validated configurations
 
 ## Recent Architectural Improvements
+
+### System Frame Routing Consistency (Latest)
+
+The framework now enforces **consistent system frame routing** across all processors:
+
+**Key Changes:**
+- Added `frame/send` utility with automatic system/regular frame routing
+- Updated all processors to use consistent `:sys-out` channels for system frames
+- Added `(:refer-clojure :exclude [send])` to eliminate compiler warnings
+- Comprehensive test coverage for system frame routing
+
+**System Frame Types:**
+```clojure
+(def system-frames #{::system-start ::system-stop ::system-config-change
+                     ::user-speech-start ::user-speech-stop
+                     ::bot-speech-start ::bot-speech-stop
+                     ::vad-user-speech-start ::vad-user-speech-stop
+                     ::bot-interrupt
+                     ::control-interrupt-start ::control-interrupt-stop})
+```
+
+**Automatic Routing Logic:**
+```clojure
+(defn send [& frames]
+  (->> frames
+       (remove nil?)
+       (group-by out-channel)))  ; Routes to :sys-out or :out based on frame type
+
+;; Usage in processors
+[state (apply frame/send frames)]  ; Automatic routing
+```
 
 ### Data Centric Async Processor Pattern Implementation
 
@@ -519,7 +614,7 @@ The framework has adopted the **Data Centric Async Processor Pattern** as a key 
     (let [silence-duration (- (:timer/timestamp frame) (::last-audio-time state))
           should-stop? (and (::speaking? state) (> silence-duration (::silence-threshold state)))]
       [(if should-stop? (assoc state ::speaking? false) state)  ; State mapping
-       {:out (if should-stop? [(frame/bot-speech-stop true)] [])}])))  ; Output generation
+       (frame/send (when should-stop? (frame/bot-speech-stop true)))])))  ; Auto-routing to :sys-out
 ```
 
 ### Key Discoveries
@@ -531,6 +626,7 @@ The framework has adopted the **Data Centric Async Processor Pattern** as a key 
 - **Transform Function**: Pure state mapping logic compares current time vs last audio time
 - **Event Generation**: Emits `bot-speech-stop` when silence threshold exceeded (state-driven output)
 - **State Mapping**: Each transform call maps `state(t) -> state(t+1)` based on input events
+- **System Routing**: `frame/send` automatically routes system frames to `:sys-out`
 
 #### Timing Behavior in Testing
 Realistic integration testing requires **simulated chunk arrival timing**, not instant processing:
@@ -541,7 +637,7 @@ Realistic integration testing requires **simulated chunk arrival timing**, not i
           (when (> chunk-index 0)
             (Thread/sleep 5))  ; Simulate processing delay
           (let [[new-state output] (transform state :in chunk)]
-            ;; ... verify timing behavior ...
+            ;; ... verify timing behavior and system frame routing ...
             new-state))
         initial-state
         (map-indexed vector audio-chunks))
@@ -572,9 +668,10 @@ The framework underwent a significant migration where v2 implementations became 
 
 The project maintains **high-quality, comprehensive test coverage**:
 
-- **88+ tests, 3300+ assertions** across the entire codebase
+- **92 tests, 3606 assertions** across the entire codebase
 - **24 tests, 590 assertions** for transport layer alone
 - **2150+ assertions** for frame system validation
+- **System Frame Routing**: Complete verification across all processors
 - **Comprehensive audio processing tests** covering format conversions, resampling, and edge cases
 - **Realistic integration tests** simulating complete LLM → audio processing pipelines
 - **Pure function testing** enabling instant REPL validation
@@ -588,21 +685,36 @@ Testing follows functional programming principles:
 - **Property-based testing** across parameter ranges
 - **Integration scenarios** with realistic data flows
 - **Resource management** validation for cleanup
+- **System frame routing** verification in all processors
 
 This comprehensive testing approach ensures reliability and maintainability while supporting the data-centric, functional architecture.
+
+## Extension Points
 
 ### Adding New Processors
 
 1. Implement processor function following `flow/process` pattern
-2. Define input/output frame schemas
-3. Add to processor namespace and require in consumer
-4. Configure in flow definition
+2. Define input/output frame schemas with proper `:sys-in`/`:sys-out` channels
+3. Use `frame/send` for automatic system frame routing
+4. Add to processor namespace and require in consumer
+5. Configure in flow definition with system frame connections
+
+```clojure
+(defn my-processor-fn
+  ([] {:ins {:in "Regular input" :sys-in "System input"}
+       :outs {:out "Regular output" :sys-out "System output"}})
+  ([config] (init config))
+  ([state transition] (handle-transition state transition))
+  ([state input-port frame] 
+    [state (frame/send (process-frame frame))]))  ; Automatic routing
+```
 
 ### Transport Extensions
 
 1. Implement transport protocols in `simulflow.transport.protocols`
 2. Create serializers for provider-specific formats
 3. Add processor for transport lifecycle management
+4. **Ensure system frame routing** for VAD events and control signals
 
 ### AI Provider Integration
 
@@ -610,14 +722,29 @@ This comprehensive testing approach ensures reliability and maintainability whil
 2. Implement provider-specific WebSocket/HTTP clients
 3. Map provider responses to standard frame types
 4. Handle streaming and error cases
+5. **Define `:sys-out` channels** if generating system frames
 
 ### Frame Type Extensions
 
 1. Define new frame types in `simulflow.frame`
 2. Add Malli schemas for validation
-3. Update processor transform functions to handle new types
+3. **Add to `system-frames` set** if frame requires priority handling
+4. Update processor transform functions to handle new types
 
 ## Recent Enhancements
+
+### System Frame Routing Improvements (Current)
+
+**Frame Send Utility Enhancement**:
+- `frame/send` automatically routes frames based on type
+- Eliminates manual system/regular frame separation
+- Maintains backwards compatibility
+- Comprehensive test coverage
+
+**Processor Channel Consistency**:
+- All processors now have consistent `:sys-out` channels when outputting system frames
+- System frames never mixed with regular frames in `:out` channels
+- Clear separation of priority vs regular message flows
 
 ### Audio Processing Improvements
 
@@ -654,5 +781,24 @@ The framework is designed for extension in several areas:
 - **Multi-modal Support** - Video processing, image analysis
 - **Distributed Processing** - Remote processor execution
 - **Visual Pipeline Builder** - GUI for flow configuration
+- **Enhanced Frame Routing** - Custom channel routing beyond `:out`/`:sys-out`
+
+### Potential Frame/Send Enhancements
+
+Future improvements to the frame routing system could include:
+
+```clojure
+;; Enhanced frame/send with custom channels
+(frame/send 
+  (frame/user-speech-start true)
+  (frame/to-channel :audio-write [audio-command])
+  (frame/to-channel :ws-write [websocket-msg]))
+
+;; Or keyword argument syntax
+(frame/send 
+  (frame/bot-speech-stop true)
+  :audio-write [audio-command]
+  :custom-channel [custom-data])
+```
 
 The data-driven, functional approach ensures that new features can be added without breaking existing functionality, maintaining the principle of "data first, not methods first" throughout the codebase.
