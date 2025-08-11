@@ -125,8 +125,16 @@
           json-msg (u/json-str speech-started-event)
           [new-state outputs] (deepgram/transform state :ws-read json-msg)]
       (is (= state new-state))
-      (is (= 1 (count (:out outputs))))
-      (is (frame/user-speech-start? (first (:out outputs))))))
+      (is (= 1 (count (:sys-out outputs))))
+      (is (frame/user-speech-start? (first (:sys-out outputs))))))
+
+  (testing "WebSocket read message - utterance ended"
+    (let [state {:some :state}
+          json-msg (u/json-str utterance-end-event)
+          [new-state outputs] (deepgram/transform state :ws-read json-msg)]
+      (is (= state new-state))
+      (is (= 1 (count (:sys-out outputs))))
+      (is (frame/user-speech-stop? (first (:sys-out outputs))))))
 
   (testing "WebSocket read message - final transcript"
     (let [state {:some :state}
@@ -311,4 +319,13 @@
       (let [[new-state outputs] (deepgram/processor-fn state :ws-read json-msg)]
         (is (= state new-state))
         (is (= 1 (count (:out outputs))))
-        (is (frame/transcription? (first (:out outputs))))))))
+        (is (frame/transcription? (first (:out outputs)))))))
+
+  (testing "3 arity transform with system frame message"
+    (let [state {:some :state}
+          json-msg (u/json-str speech-started-event)]
+      (is (= 2 (count (deepgram/processor-fn state :ws-read json-msg))))
+      (let [[new-state outputs] (deepgram/processor-fn state :ws-read json-msg)]
+        (is (= state new-state))
+        (is (= 1 (count (:sys-out outputs))))
+        (is (frame/user-speech-start? (first (:sys-out outputs))))))))

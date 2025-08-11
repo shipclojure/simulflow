@@ -15,7 +15,8 @@
 (def realtime-speakers-out-describe
   {:ins {:in "Channel for audio output frames"
          :sys-in "Channel for system messages"}
-   :outs {:out "Channel for bot speech status frames"}
+   :outs {:out "Channel for non-system frames"
+          :sys-out "Channel for bot speech status frames (system frames)"}
    :params {:audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
             :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
             :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
@@ -23,7 +24,8 @@
 (def realtime-out-describe
   {:ins {:in "Channel for audio output frames"
          :sys-in "Channel for system messages"}
-   :outs {:out "Channel for bot speech status frames"}
+   :outs {:out "Channel for non-system frames"
+          :sys-out "Channel for bot speech status frames (system frames)"}
    :params {:audio.out/chan "Core async channel to put audio data. The data is raw byte array or serialzed if a serializer is active"
             :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
             :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
@@ -155,11 +157,6 @@
                           (assoc ::speaking? true)
                           (assoc ::last-send-time next-send-time))
 
-        ;; Generate events based on state transitions
-        events (if should-emit-start?
-                 [(frame/bot-speech-start true)]
-                 [])
-
         ;; Extract audio data from the new frame format
         frame-data (:frame/data frame)
         audio-data (if (map? frame-data)
@@ -174,8 +171,8 @@
                        :data audio-frame
                        :delay-until next-send-time}]
 
-    [updated-state {:out events
-                    :audio-write [audio-command]}]))
+    [updated-state (-> (frame/send (when should-emit-start? (frame/bot-speech-start true)))
+                       (assoc :audio-write [audio-command]))]))
 
 (defn realtime-out-transform
   [{::keys [now] :as state
@@ -194,23 +191,15 @@
 
           updated-state (if should-emit-stop?
                           (assoc state ::speaking? false)
-                          state)
+                          state)]
 
-          events (if should-emit-stop?
-                   [(frame/bot-speech-stop true)]
-                   [])]
-
-      [updated-state {:out events}])
+      [updated-state (frame/send (when should-emit-stop? (frame/bot-speech-stop true)))])
 
     ;; Handle system config changes
     (frame/system-config-change? frame)
     (if-let [new-serializer (:transport/serializer (:frame/data frame))]
       [(assoc state :transport/serializer new-serializer) {}]
       [state {}])
-
-    ;; Handle system input passthrough
-    (= input-port :sys-in)
-    [state {:out [frame]}]
 
     ;; Default case
     :else [state {}]))

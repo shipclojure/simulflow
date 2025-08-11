@@ -289,16 +289,16 @@
               "Initially not speaking")
           (is (true? (::out/speaking? (:state-after first-result)))
               "Should be speaking after first chunk")
-          (is (= 1 (count (:out first-output)))
+          (is (= 1 (count (:sys-out first-output)))
               "Should emit exactly one event")
-          (is (frame/bot-speech-start? (first (:out first-output)))
+          (is (frame/bot-speech-start? (first (:sys-out first-output)))
               "Should emit bot-speech-start event")))
 
       (testing "Subsequent chunks do not trigger additional start events"
         (let [subsequent-results (rest @results)]
           (doseq [result subsequent-results]
             (let [output (:output result)]
-              (is (empty? (:out output))
+              (is (empty? (:sys-out output))
                   (str "Chunk " (:chunk-index result) " should not emit events"))))))
 
       (testing "Audio write commands are generated correctly"

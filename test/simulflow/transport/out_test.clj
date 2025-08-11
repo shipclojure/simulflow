@@ -17,8 +17,8 @@
 
       (is (true? (::sut/speaking? new-state)))
       (is (= current-time (::sut/last-send-time new-state)))
-      (is (= 1 (count (:out output))))
-      (is (frame/bot-speech-start? (first (:out output))))
+      (is (= 1 (count (:sys-out output))))
+      (is (frame/bot-speech-start? (first (:sys-out output))))
       (is (= 1 (count (:audio-write output)))))))
 
 (deftest realtime-out-transform-test
@@ -28,7 +28,8 @@
           [new-state output] (sut/realtime-out-transform state :in frame)]
 
       (is (true? (::sut/speaking? new-state)))
-      (is (= 1 (count (:out output))))
+      (is (= 1 (count (:sys-out output))))
+      (is (frame/bot-speech-start? (first (:sys-out output))))
       (is (= 1 (count (:audio-write output))))))
 
   (testing "transform with timer tick (stop speaking)"
@@ -39,8 +40,8 @@
           [new-state output] (sut/realtime-out-transform state :timer-out timer-frame)]
 
       (is (false? (::sut/speaking? new-state)))
-      (is (= 1 (count (:out output))))
-      (is (frame/bot-speech-stop? (first (:out output)))))))
+      (is (= 1 (count (:sys-out output))))
+      (is (frame/bot-speech-stop? (first (:sys-out output)))))))
 
 (deftest test-realtime-speakers-out-describe
   (testing "describe function returns correct structure"
@@ -88,8 +89,8 @@
           [new-state output] (sut/realtime-out-transform state :timer-out timer-frame)]
 
       (is (false? (::sut/speaking? new-state)))
-      (is (= 1 (count (:out output))))
-      (is (frame/bot-speech-stop? (first (:out output)))))))
+      (is (= 1 (count (:sys-out output))))
+      (is (frame/bot-speech-stop? (first (:sys-out output)))))))
 
 (deftest test-realtime-out-system-config-handling
   (testing "system config change with new serializer"
@@ -108,15 +109,7 @@
           [new-state output] (sut/realtime-out-transform initial-state :in config-frame)]
 
       (is (= initial-state new-state))
-      (is (empty? output))))
-
-  (testing "system input passthrough"
-    (let [sys-frame {:frame/type :other}
-          initial-state {}
-          [new-state output] (sut/realtime-out-transform initial-state :sys-in sys-frame)]
-
-      (is (= initial-state new-state))
-      (is (= [sys-frame] (:out output))))))
+      (is (empty? output)))))
 
 (deftest test-realtime-speakers-out-serializer-integration
   (testing "transform with serializer"
@@ -223,9 +216,10 @@
           (is (false? (::sut/speaking? state3)))
 
           ;; Verify events
-          (is (frame/bot-speech-start? (first (:out output1))))
-          (is (empty? (:out output2)))
-          (is (frame/bot-speech-stop? (first (:out output3)))))))))
+          ;; Verify events
+          (is (frame/bot-speech-start? (first (:sys-out output1))))
+          (is (empty? (:sys-out output2)))
+          (is (frame/bot-speech-stop? (first (:sys-out output3)))))))))
 
 (deftest test-realtime-out-timing-accuracy
   (testing "delay-until calculations are accurate"
@@ -266,9 +260,10 @@
           [state-over output-over] (sut/realtime-out-transform state :timer-out timer-frame-over)]
 
       ;; Under threshold: still speaking
+      ;; Under threshold: still speaking
       (is (true? (::sut/speaking? state-under)))
-      (is (empty? (:out output-under)))
+      (is (empty? (:sys-out output-under)))
 
       ;; Over threshold: stop speaking
       (is (false? (::sut/speaking? state-over)))
-      (is (frame/bot-speech-stop? (first (:out output-over)))))))
+      (is (frame/bot-speech-stop? (first (:sys-out output-over)))))))

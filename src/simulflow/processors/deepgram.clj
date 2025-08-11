@@ -193,7 +193,7 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
   (if (= in-name :ws-read)
     (let [m (u/parse-if-json msg)
           frames (deepgram-event->frames m)]
-      [state {:out frames}])
+      [state (apply frame/send frames)])
     (cond
       (frame/audio-input-raw? msg) [state {:ws-write [msg]}]
       :else [state])))

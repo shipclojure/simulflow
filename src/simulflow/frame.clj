@@ -411,9 +411,12 @@
   system-frames (see `system-frames` set) go onto `:sys-out` and normal frames
   go on `:out` channel."
   [& frames]
-  (group-by out-channel frames))
+  (->> frames
+       (remove nil?)
+       (group-by out-channel)))
 
 (comment
+
   (send (user-speech-start true) (user-speech-stop true) (audio-output-raw {:sample-rate 16000 :audio (byte-array (range 200))}))
   ;; => {:sys-out
   ;;     [#:frame{:type :simulflow.frame/user-speech-start,
