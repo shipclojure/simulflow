@@ -20,7 +20,7 @@
 (defn make-elevenlabs-ws-url
   [args]
   (let [{:audio.out/keys [sample-rate]
-         :flow/keys [language]
+         :pipeline/keys [language]
          :elevenlabs/keys [model-id voice-id]
          :or {model-id "eleven_flash_v2_5"
               sample-rate 24000}}
@@ -63,7 +63,7 @@
      {:min 32 ;; ElevenLabs API keys are typically long
       :secret true ;; Marks this as sensitive data
       :description "ElevenLabs API key"}]]
-   [:flow/language {:default :en} schema/Language]
+   [:pipeline/language {:default :en} schema/Language]
    [:elevenlabs/model-id {:default :eleven_flash_v2_5
                           :description "ElevenLabs model identifier"}
     (schema/flex-enum
