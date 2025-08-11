@@ -150,7 +150,7 @@
 
 (defn mic-transport-in-describe
   []
-  {:outs {:out "Channel on which audio frames are put"}
+  {:outs base-transport-outs
    :params base-input-params})
 
 (defn mic-transport-in-init!
