@@ -39,8 +39,8 @@
         sending-interval (or sending-interval (/ duration 2))
         silence-threshold (or silence-threshold-ms (* 4 duration))
 
-        ;; Audio line setup
-        line (open-line! :source (sampled/audio-format 16000 16))
+        ;; Audio line state - will be opened on first frame
+        audio-line-atom (atom nil)
 
         ;; Channels following activity monitor pattern
         timer-in-ch (chan 1024)
@@ -54,13 +54,20 @@
         (>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
         (recur)))
 
-    ;; Audio writer process - handles only audio I/O side effects
+    ;; Audio writer process - handles only audio I/O side effects and lazy line opening
     (vthread-loop []
       (when-let [audio-command (<!! audio-write-ch)]
         (when (= (:command audio-command) :write-audio)
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)
-                wait-time (max 0 (- delay-until current-time))]
+                wait-time (max 0 (- delay-until current-time))
+                sample-rate (:sample-rate audio-command 16000) ; Fallback to 16000 Hz
+
+                ;; Open line if not already opened
+                line (or @audio-line-atom
+                         (let [new-line (open-line! :source (sampled/audio-format sample-rate 16))]
+                           (reset! audio-line-atom new-line)
+                           new-line))]
             (when (pos? wait-time)
               (<!! (timeout wait-time)))
             (sound/write! (:data audio-command) line 0)))
@@ -77,7 +84,7 @@
      ::duration-ms duration
      ::sending-interval sending-interval
      ::silence-threshold silence-threshold
-     ::audio-line line}))
+     ::audio-line-atom audio-line-atom}))
 
 (defn realtime-out-init!
   [{:audio.out/keys [duration-ms chan sending-interval]
@@ -132,6 +139,13 @@
 (defn realtime-out-transition
   [{::flow/keys [in-ports out-ports] :as state} transition]
   (when (= transition ::flow/stop)
+    ;; Close audio line if it exists (for speakers-out)
+    (when-let [audio-line-atom (::audio-line-atom state)]
+      (when-let [line @audio-line-atom]
+        (sound/stop! line)
+        (sampled/flush! line)
+        (close! line)))
+    ;; Legacy: close direct audio line (for old code)
     (when-let [line (::audio-line state)]
       (sound/stop! line)
       (sampled/flush! line)
@@ -152,24 +166,27 @@
   (let [should-emit-start? (not (::speaking? state))
         maybe-next-send (+ last-send-time sending-interval)
         next-send-time (if (>= now maybe-next-send) now maybe-next-send)
+
+        ;; Extract audio data and sample rate from the frame
+        frame-data (:frame/data frame)
+        {audio-data :audio sample-rate :sample-rate}
+        (if (map? frame-data)
+          frame-data ; New format: {:audio bytes :sample-rate hz}
+          {:audio frame-data :sample-rate 16000}) ; Fallback
+
         updated-state (-> state
                           (dissoc ::now)
                           (assoc ::speaking? true)
                           (assoc ::last-send-time next-send-time))
 
-        ;; Extract audio data from the new frame format
-        frame-data (:frame/data frame)
-        audio-data (if (map? frame-data)
-                     (:audio frame-data) ; New format: {:audio bytes :sample-rate hz}
-                     frame-data) ; Fallback for old format
-
-        ;; Generate audio write command
+        ;; Generate audio write command with sample rate
         audio-frame (if serializer
                       (tp/serialize-frame serializer frame)
                       audio-data)
         audio-command {:command :write-audio
                        :data audio-frame
-                       :delay-until next-send-time}]
+                       :delay-until next-send-time
+                       :sample-rate sample-rate}]
 
     [updated-state (-> (frame/send (when should-emit-start? (frame/bot-speech-start true)))
                        (assoc :audio-write [audio-command]))]))

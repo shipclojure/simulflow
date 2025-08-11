@@ -19,7 +19,20 @@
       (is (= current-time (::sut/last-send-time new-state)))
       (is (= 1 (count (:sys-out output))))
       (is (frame/bot-speech-start? (first (:sys-out output))))
-      (is (= 1 (count (:audio-write output)))))))
+      (is (= 1 (count (:audio-write output))))
+      (is (= 16000 (:sample-rate (first (:audio-write output)))))))
+
+  (testing "process-realtime-out-audio-frame with different sample rate"
+    (let [state {::sut/speaking? false
+                 ::sut/last-send-time 0
+                 ::sut/sending-interval 20}
+          frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 24000})
+          current-time 2000
+          [new-state output] (sut/process-realtime-out-audio-frame state frame current-time)]
+
+      (is (true? (::sut/speaking? new-state)))
+      (is (= 1 (count (:audio-write output))))
+      (is (= 24000 (:sample-rate (first (:audio-write output))))))))
 
 (deftest realtime-out-transform-test
   (testing "transform with audio frame"
@@ -206,8 +219,8 @@
               timer-frame {:timer/tick true
                            :timer/timestamp (+ (::sut/last-send-time state2) 1000)}
               [state3 output3] (sut/realtime-out-transform
-                                 (assoc state2 ::sut/silence-threshold 500)
-                                 :timer-out timer-frame)]
+                                (assoc state2 ::sut/silence-threshold 500)
+                                :timer-out timer-frame)]
 
           ;; Verify state progression
           (is (false? (::sut/speaking? initial-state)))
@@ -237,12 +250,15 @@
 
       (is (= current-time (:delay-until audio-write)))
       (is (= current-time (::sut/last-send-time new-state)))
-      (is (= next-state #::sut{:last-send-time 1025
-                               :sending-interval 25
-                               :speaking? true}))
-      (is (= next-state2 #::sut{:last-send-time 1050
-                                :sending-interval 25
-                                :speaking? true}))))
+
+      ;; Check timing fields specifically since audio-line is now included
+      (is (= 1025 (::sut/last-send-time next-state)))
+      (is (= 25 (::sut/sending-interval next-state)))
+      (is (true? (::sut/speaking? next-state)))
+
+      (is (= 1050 (::sut/last-send-time next-state2)))
+      (is (= 25 (::sut/sending-interval next-state2)))
+      (is (true? (::sut/speaking? next-state2)))))
 
   (testing "silence threshold calculations"
     (let [base-time 2000
@@ -259,7 +275,6 @@
           timer-frame-over {:timer/tick true :timer/timestamp (+ base-time 350)}
           [state-over output-over] (sut/realtime-out-transform state :timer-out timer-frame-over)]
 
-      ;; Under threshold: still speaking
       ;; Under threshold: still speaking
       (is (true? (::sut/speaking? state-under)))
       (is (empty? (:sys-out output-under)))
