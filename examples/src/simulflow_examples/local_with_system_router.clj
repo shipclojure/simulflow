@@ -146,7 +146,7 @@
                   [[:activity-monitor :out] [:context-aggregator :in]]
                   [[:activity-monitor :out] [:tts :in]]]
 
-                 (system-router/generate-system-router-connections demo)
+                 (system-router/generate-system-router-connections procs)
 
                  extra-conns)}))))
 

@@ -45,11 +45,8 @@
    (cond
      (and (= input-port :sys-in) (some? frame))
      (if (frame/system-frame? frame)
-       ;; Forward system frames
-       (do
-         (t/log! {:level :debug :id :system-frame-router :frame-type (:frame/type frame)}
-                 "Routing system frame")
-         [state {:sys-out [frame]}])
+       ;; Forward system
+       [state {:sys-out [frame]}]
        ;; Drop non-system frames
        (do
          (when (:log-dropped? state)
