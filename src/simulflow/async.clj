@@ -49,7 +49,6 @@
   [bindings & body]
   `(vthread (loop ~bindings ~@body)))
 
-
 (defn drain-channel!
   "Drains all pending messages from a channel without blocking.
    Returns the number of messages drained."

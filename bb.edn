@@ -9,4 +9,8 @@
   jar {:doc "Build jar with latest version"
        :task (clojure "-T:build jar")}
   deploy {:doc "Deploy the latest release"
-          :task (clojure "-X:deploy")}}}
+          :task (clojure "-X:deploy")}
+  format:check {:doc "Check code formatting with standard-clj"
+                :task (shell "standard-clj" "check" "src" "test" "examples/src")}
+  format:project {:doc "Run standard-clojure formatting on the entire codebase"
+                  :task (shell "standard-clj" "fix" "src" "test" "examples/src")}}}

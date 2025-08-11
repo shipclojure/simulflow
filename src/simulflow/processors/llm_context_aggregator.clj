@@ -30,9 +30,9 @@
 (defn next-context
   [{:keys [context role aggregation]}]
   (assoc context :messages (concat-context-messages
-                            (:messages context)
-                            role
-                            aggregation)))
+                             (:messages context)
+                             role
+                             aggregation)))
 
 (defn- handle-scenario-update
   [context {:keys [messages tools]}]
@@ -235,20 +235,20 @@
      (if (fn? f)
        (let [tool-result (u/await-or-return f args)]
          (frame/llm-tool-call-result
-          {:request tool-call-msg
-           :result (tool-result-adapter {:result tool-result
-                                         :tool-id tool-id
-                                         :fname fname})
-           ;; don't run llm if this is a transition
-           ;; function, to wait for the new context
-           ;; messages from the new scenario node
-           :properties {:run-llm? (nil? transition-cb)
-                        :on-update #(when transition-cb (transition-cb args))}}))
+           {:request tool-call-msg
+            :result (tool-result-adapter {:result tool-result
+                                          :tool-id tool-id
+                                          :fname fname})
+            ;; don't run llm if this is a transition
+            ;; function, to wait for the new context
+            ;; messages from the new scenario node
+            :properties {:run-llm? (nil? transition-cb)
+                         :on-update #(when transition-cb (transition-cb args))}}))
        (frame/llm-tool-call-result
-        {:request tool-call-msg
-         :result (tool-result-adapter {:result "Tool not found"
-                                       :tool-it tool-id
-                                       :fname fname})})))))
+         {:request tool-call-msg
+          :result (tool-result-adapter {:result "Tool not found"
+                                        :tool-it tool-id
+                                        :fname fname})})))))
 
 (defn context-aggregator-init
   "Launches tool caller process. The tool caller process handles calling tool call
@@ -344,9 +344,8 @@
        :outs {:out "Channel for assembled speak frames"}})
   ([_] {:acc nil})
   ([state transition]
-   (when (= transition ::flow/stop)
-     ;; No cleanup needed for this processor
-     )
+   (when (= transition ::flow/stop))
+   ;; No cleanup needed for this processor
    state)
   ([{:keys [acc]} _ msg]
    (when (frame/llm-text-chunk? msg)
@@ -363,37 +362,38 @@
 (def context-aggregator
   "Aggregates context messages. Keeps the full conversation history."
   (flow/process
-   (flow/map->step
-    {:describe (fn [] {:ins {:sys-in "Channel for receiving system messages that take priority"
-                             :in "Channel for aggregation messages"}
-                       :outs {:out "Channel where new context aggregations are put"}
-                       :params {:llm/context "Initial LLM context. See schema/LLMContext"
-                                :llm/tool-result-adapter "Adapter used to transform tool call results into accepted formats. Defaults to openai format"
-                                :aggregator/debug? "Optional When true, debug logs will be called"}})
+    (flow/map->step
+      {:describe (fn [] {:ins {:sys-in "Channel for receiving system messages that take priority"
+                               :in "Channel for aggregation messages"}
+                         :outs {:out "Channel where new context aggregations are put"
+                                :sys-out "Channel on which new system frames are outputted"}
+                         :params {:llm/context "Initial LLM context. See schema/LLMContext"
+                                  :llm/tool-result-adapter "Adapter used to transform tool call results into accepted formats. Defaults to openai format"
+                                  :aggregator/debug? "Optional When true, debug logs will be called"}})
 
-     :workload :compute
-     :init context-aggregator-init
-     :transition (fn [{::flow/keys [in-ports out-ports] :as state} transition]
-                   (when (= transition ::flow/stop)
-                     (doseq [port (concat (vals in-ports) (vals out-ports))]
-                       (a/close! port)))
-                   state)
-     :transform context-aggregator-transform})))
+       :workload :compute
+       :init context-aggregator-init
+       :transition (fn [{::flow/keys [in-ports out-ports] :as state} transition]
+                     (when (= transition ::flow/stop)
+                       (doseq [port (concat (vals in-ports) (vals out-ports))]
+                         (a/close! port)))
+                     state)
+       :transform context-aggregator-transform})))
 
 (def assistant-context-assembler
   "Assembles streaming tool-call request or message tokens from the LLM."
   (flow/process
-   (flow/map->step
-    {:describe
-     (fn []
-       {:ins {:sys-in "Channel for receiving system messages that take priority"
-              :in "Channel for streaming tool call requests"}
-        :outs {:out "Channel for output new contexts with tool call results"}
-        :params {:llm/context "Initial LLM context. See schema/LLMContext"
-                 :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
-     :init identity
-     :transition (fn [state transition] state)
-     :transform assistant-context-assembler-transform})))
+    (flow/map->step
+      {:describe
+       (fn []
+         {:ins {:sys-in "Channel for receiving system messages that take priority"
+                :in "Channel for streaming tool call requests"}
+          :outs {:out "Channel for output new contexts with tool call results"}
+          :params {:llm/context "Initial LLM context. See schema/LLMContext"
+                   :flow/handles-interrupt? "Wether the flow handles user interruptions. Default false"}})
+       :init identity
+       :transition (fn [state _transition] state)
+       :transform assistant-context-assembler-transform})))
 
 (def llm-sentence-assembler
   "Takes in llm-text-chunk frames and returns a full sentence. Useful for

@@ -250,7 +250,7 @@
 
                     (let [;; Process through realtime speakers transform
                           [new-state output] (out/realtime-out-transform
-                                              current-state :in chunk)]
+                                               current-state :in chunk)]
 
                       ;; Store results for analysis
                       (swap! results conj {:chunk-index chunk-index

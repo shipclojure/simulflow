@@ -1,9 +1,8 @@
 (ns simulflow.frame-test
   "Comprehensive tests for the simulflow.frame namespace"
   (:require
-
-   [simulflow.frame :as frame]
-   [clojure.test :refer [are deftest is testing]])
+   [clojure.test :refer [are deftest is testing]]
+   [simulflow.frame :as frame])
   (:import
    (java.util Date)))
 

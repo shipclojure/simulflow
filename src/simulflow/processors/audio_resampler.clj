@@ -57,8 +57,8 @@
 (defn audio-frame?
   [frame]
   (or
-   (frame/audio-input-raw? frame)
-   (frame/audio-output-raw? frame)))
+    (frame/audio-input-raw? frame)
+    (frame/audio-output-raw? frame)))
 
 (defn transform
   "Transform function that resamples audio-input-raw frames"

@@ -11,45 +11,45 @@
     (testing "concatenates new message when role differs"
       (is (= [{:role "system", :content "Hello"} {:role :user, :content "World"}]
              (sut/concat-context-messages
-              [{:role "system" :content "Hello"}]
-              :user
-              "World"))))
+               [{:role "system" :content "Hello"}]
+               :user
+               "World"))))
 
     (testing "combines messages with same role"
       (is (= [{:role :system, :content "Hello World"}]
              (sut/concat-context-messages
-              [{:role "system" :content "Hello"}]
-              :system
-              "World"))))
+               [{:role "system" :content "Hello"}]
+               :system
+               "World"))))
 
     (testing "handles empty context"
       (is (= [{:role :user, :content "Hello"}]
              (sut/concat-context-messages
-              []
-              :user
-              "Hello"))))
+               []
+               :user
+               "Hello"))))
 
     (testing "accepts both keyword and string roles"
       (is (= [{:role :system, :content "Hello World"}]
              (sut/concat-context-messages
-              [{:role "system" :content "Hello"}]
-              :system
-              "World")))
+               [{:role "system" :content "Hello"}]
+               :system
+               "World")))
 
       (is (= [{:role "system", :content "Hello World"}]
              (sut/concat-context-messages
-              [{:role :system :content "Hello"}]
-              "system"
-              "World"))))
+               [{:role :system :content "Hello"}]
+               "system"
+               "World"))))
 
     (testing "accepts array as entry with multiple entries"
       (is (= [{:role :system :content "Hello"}
               {:role :user :content "Hi there"}
               {:role :assistant :content "How are you doing?"}]
              (sut/concat-context-messages
-              [{:role :system :content "Hello"}]
-              [{:role :user :content "Hi there"}
-               {:role :assistant :content "How are you doing?"}]))))))
+               [{:role :system :content "Hello"}]
+               [{:role :user :content "Hi there"}
+                {:role :assistant :content "How are you doing?"}]))))))
 
 (deftest context-aggregation-test
   (testing "context aggregation"
@@ -173,9 +173,9 @@
                               :content "Your context was just updated"}]}]
           (is (= [(assoc sstate :llm/context nc)]
                  (sut/context-aggregator-transform
-                  sstate :sys-in
-                  (frame/system-config-change
-                   {:llm/context nc}))))))
+                   sstate :sys-in
+                   (frame/system-config-change
+                     {:llm/context nc}))))))
 
       (testing "Handles scenario-context-update frames"
         (let [start {:aggregating? true
@@ -238,10 +238,10 @@
             ;; Case 1: Normal append with run-llm
             (let [[new-state {:keys [out]}]
                   (sut/context-aggregator-transform
-                   state nil
-                   (frame/llm-context-messages-append
-                    {:messages new-messages
-                     :properties {:run-llm? true}}))]
+                    state nil
+                    (frame/llm-context-messages-append
+                      {:messages new-messages
+                       :properties {:run-llm? true}}))]
 
               ;; Check state update
               (is (= [{:role :system :content "Initial context"}
@@ -260,11 +260,11 @@
             ;; Case 2: Append with tool call
             (let [[new-state {:keys [out tool-write]}]
                   (sut/context-aggregator-transform
-                   state nil
-                   (frame/llm-context-messages-append
-                    {:messages (conj new-messages tool-request)
-                     :properties {:tool-call? true
-                                  :run-llm? false}}))]
+                    state nil
+                    (frame/llm-context-messages-append
+                      {:messages (conj new-messages tool-request)
+                       :properties {:tool-call? true
+                                    :run-llm? false}}))]
 
               ;; Check state update
               (is (= [{:role :system :content "Initial context"}
@@ -288,11 +288,11 @@
             ;; Case 3: Append with both tool call and run-llm
             (let [[new-state {:keys [out tool-write]}]
                   (sut/context-aggregator-transform
-                   state nil
-                   (frame/llm-context-messages-append
-                    {:messages (conj new-messages tool-request)
-                     :properties {:tool-call? true
-                                  :run-llm? true}}))]
+                    state nil
+                    (frame/llm-context-messages-append
+                      {:messages (conj new-messages tool-request)
+                       :properties {:tool-call? true
+                                    :run-llm? true}}))]
 
               ;; Check state update
               (is (= [{:role :system :content "Initial context"}
@@ -374,18 +374,18 @@
               ;; Accumulate all token chunks
               final-state (reduce (fn [current-state frame]
                                     (let [[next-state] (sut/assistant-context-assembler-transform
-                                                        current-state
-                                                        nil
-                                                        frame)]
+                                                         current-state
+                                                         nil
+                                                         frame)]
                                       next-state))
                                   sstate
                                   (map frame/llm-text-chunk token-chunks))
 
               ;; Final state after end frame
               [_ {:keys [out]}] (sut/assistant-context-assembler-transform
-                                 final-state
-                                 nil
-                                 (frame/llm-full-response-end true))
+                                  final-state
+                                  nil
+                                  (frame/llm-full-response-end true))
               frame (first out)]
 
           ;; Verify intermediate state has accumulated all tokens
@@ -401,17 +401,17 @@
       (testing "Handles tool call streams"
         (let [final-state (reduce (fn [current-state frame]
                                     (let [[next-state] (sut/assistant-context-assembler-transform
-                                                        current-state
-                                                        nil
-                                                        frame)]
+                                                         current-state
+                                                         nil
+                                                         frame)]
                                       next-state))
                                   sstate
                                   (map chunk->frame mock/mock-tool-call-response))
               ;; Final state after end frame
               [next-state {:keys [out]}] (sut/assistant-context-assembler-transform
-                                          final-state
-                                          nil
-                                          (frame/llm-full-response-end true))
+                                           final-state
+                                           nil
+                                           (frame/llm-full-response-end true))
               out-frame (first out)]
           (is (= sstate next-state))
           (is (= :simulflow.frame/llm-context-messages-append (:frame/type out-frame)))
@@ -427,17 +427,17 @@
       (testing "Handles tool calls with no arguments"
         (let [final-state (reduce (fn [current-state frame]
                                     (let [[next-state] (sut/assistant-context-assembler-transform
-                                                        current-state
-                                                        nil
-                                                        frame)]
+                                                         current-state
+                                                         nil
+                                                         frame)]
                                       next-state))
                                   sstate
                                   (map chunk->frame mock/mock-tool-call-response-single-argument))
               ;; Final state after end frame
               [next-state {:keys [out]}] (sut/assistant-context-assembler-transform
-                                          final-state
-                                          nil
-                                          (frame/llm-full-response-end true))
+                                           final-state
+                                           nil
+                                           (frame/llm-full-response-end true))
               out-frame (first out)]
           (is (= sstate next-state))
           (is (= :simulflow.frame/llm-context-messages-append (:frame/type out-frame)))

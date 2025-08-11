@@ -33,12 +33,12 @@
 
 (def wrap-exception
   (exception/create-exception-middleware
-   (merge
-    exception/default-handlers
-    {;; print stack-traces for all exceptions
-     ::exception/wrap (fn [handler e request]
-                        (t/log! :error e)
-                        (handler e request))})))
+    (merge
+      exception/default-handlers
+      {;; print stack-traces for all exceptions
+       ::exception/wrap (fn [handler e request]
+                          (t/log! :error e)
+                          (handler e request))})))
 
 (defn emit-xml-str
   "Emit the string for this xml declaration"
@@ -67,9 +67,9 @@
         ws-url (str "wss://" h "/ws")]
     ;; https://www.twilio.com/docs/voice/twiml/connect
     (xml-response
-     (emit-xml-str [:Response
-                    [:Connect
-                     [:Stream {:url ws-url}]]]))))
+      (emit-xml-str [:Response
+                     [:Connect
+                      [:Stream {:url ws-url}]]]))))
 
 (def dbg-flow (atom nil))
 
@@ -93,85 +93,85 @@
         chunk-duration-ms 20]
     {:procs
      (u/deep-merge
-      {:transport-in {:proc transport/twilio-transport-in
-                      :args {:transport/in-ch in}}
-       :transcriptor {:proc asr/deepgram-processor
-                      :args {:transcription/api-key (secret [:deepgram :api-key])
-                             :transcription/interim-results? true
-                             :transcription/punctuate? false
-                             :transcription/vad-events? true
-                             :transcription/smart-format? true
-                             :transcription/model :nova-2
-                             :transcription/utterance-end-ms 1000
-                             :transcription/language language
-                             :transcription/encoding :ulaw
-                             :transcription/sample-rate sample-rate}}
-       :context-aggregator {:proc context/context-aggregator
-                            :args {:llm/context llm-context
-                                   :aggregator/debug? false}}
+       {:transport-in {:proc transport/twilio-transport-in
+                       :args {:transport/in-ch in}}
+        :transcriptor {:proc asr/deepgram-processor
+                       :args {:transcription/api-key (secret [:deepgram :api-key])
+                              :transcription/interim-results? true
+                              :transcription/punctuate? false
+                              :transcription/vad-events? true
+                              :transcription/smart-format? true
+                              :transcription/model :nova-2
+                              :transcription/utterance-end-ms 1000
+                              :transcription/language language
+                              :transcription/encoding :ulaw
+                              :transcription/sample-rate sample-rate}}
+        :context-aggregator {:proc context/context-aggregator
+                             :args {:llm/context llm-context
+                                    :aggregator/debug? false}}
 
-       :llm {:proc llm/openai-llm-process
-             :args {:openai/api-key (secret [:openai :new-api-sk])
-                    :llm/model "gpt-4o-mini"}}
+        :llm {:proc llm/openai-llm-process
+              :args {:openai/api-key (secret [:openai :new-api-sk])
+                     :llm/model "gpt-4o-mini"}}
 
-       :assistant-context-assembler {:proc context/assistant-context-assembler
-                                     :args {:debug? false}}
+        :assistant-context-assembler {:proc context/assistant-context-assembler
+                                      :args {:debug? false}}
 
-       :llm-sentence-assembler {:proc context/llm-sentence-assembler}
-       :tts {:proc tts/elevenlabs-tts-process
-             :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
-                    :elevenlabs/model-id "eleven_flash_v2_5"
-                    :elevenlabs/voice-id (secret [:elevenlabs :voice-id])
-                    :voice/stability 0.5
-                    :voice/similarity-boost 0.8
-                    :voice/use-speaker-boost? true
-                    :flow/language language
-                    :audio.out/encoding encoding
-                    :audio.out/sample-rate sample-rate}}
-       :audio-splitter {:proc transport/audio-splitter
-                        :args {:audio.out/sample-rate sample-rate
-                               :audio.out/sample-size-bits sample-size-bits
-                               :audio.out/channels channels
-                               :audio.out/duration-ms chunk-duration-ms}}
-       :realtime-out {:proc transport-out/realtime-out-processor
-                      :args {:audio.out/chan out
-                             :audio.out/sending-interval 20}}
-       :activity-monitor {:proc activity-monitor/process
-                          :args {::activity-monitor/timeout-ms 5000}}
+        :llm-sentence-assembler {:proc context/llm-sentence-assembler}
+        :tts {:proc tts/elevenlabs-tts-process
+              :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                     :elevenlabs/model-id "eleven_flash_v2_5"
+                     :elevenlabs/voice-id (secret [:elevenlabs :voice-id])
+                     :voice/stability 0.5
+                     :voice/similarity-boost 0.8
+                     :voice/use-speaker-boost? true
+                     :flow/language language
+                     :audio.out/encoding encoding
+                     :audio.out/sample-rate sample-rate}}
+        :audio-splitter {:proc transport/audio-splitter
+                         :args {:audio.out/sample-rate sample-rate
+                                :audio.out/sample-size-bits sample-size-bits
+                                :audio.out/channels channels
+                                :audio.out/duration-ms chunk-duration-ms}}
+        :realtime-out {:proc transport-out/realtime-out-processor
+                       :args {:audio.out/chan out
+                              :audio.out/sending-interval 20}}
+        :activity-monitor {:proc activity-monitor/process
+                           :args {::activity-monitor/timeout-ms 5000}}
 
-       :prn-sink {:proc (flow/process (fn
-                                        ([] {:ins {:in "gimme stuff to print!"}})
-                                        ([_] nil)
-                                        ([_ _] nil)
-                                        ([_ _ v] (t/log! {:id :prn-sink :data v}))))}}
-      extra-procs)
+        :prn-sink {:proc (flow/process (fn
+                                         ([] {:ins {:in "gimme stuff to print!"}})
+                                         ([_] nil)
+                                         ([_ _] nil)
+                                         ([_ _ v] (t/log! {:id :prn-sink :data v}))))}}
+       extra-procs)
 
      :conns (concat
-             [[[:transport-in :sys-out] [:transcriptor :sys-in]]
-              [[:transport-in :out] [:transcriptor :in]]
+              [[[:transport-in :sys-out] [:transcriptor :sys-in]]
+               [[:transport-in :out] [:transcriptor :in]]
 
-              [[:transcriptor :out] [:context-aggregator :in]]
-              [[:context-aggregator :out] [:llm :in]]
+               [[:transcriptor :out] [:context-aggregator :in]]
+               [[:context-aggregator :out] [:llm :in]]
 
-              ;; Aggregate full context
-              [[:llm :out] [:assistant-context-assembler :in]]
-              [[:assistant-context-assembler :out] [:context-aggregator :in]]
+               ;; Aggregate full context
+               [[:llm :out] [:assistant-context-assembler :in]]
+               [[:assistant-context-assembler :out] [:context-aggregator :in]]
 
-              ;; Assemble sentence by sentence for fast speech
-              [[:llm :out] [:llm-sentence-assembler :in]]
-              [[:llm-sentence-assembler :out] [:tts :in]]
+               ;; Assemble sentence by sentence for fast speech
+               [[:llm :out] [:llm-sentence-assembler :in]]
+               [[:llm-sentence-assembler :out] [:tts :in]]
 
-              [[:tts :out] [:audio-splitter :in]]
-              [[:transport-in :sys-out] [:realtime-out :sys-in]]
-              [[:audio-splitter :out] [:realtime-out :in]]
+               [[:tts :out] [:audio-splitter :in]]
+               [[:transport-in :sys-out] [:realtime-out :sys-in]]
+               [[:audio-splitter :out] [:realtime-out :in]]
 
-              ;; Activity monitor connections - basically check if there is
-              ;; activity on the pipeline
-              [[:realtime-out :out] [:activity-monitor :in]]
-              [[:transcriptor :out] [:activity-monitor :in]]
-              [[:activity-monitor :out] [:context-aggregator :in]]
-              [[:activity-monitor :out] [:tts :in]]]
-             extra-conns)}))
+               ;; Activity monitor connections - basically check if there is
+               ;; activity on the pipeline
+               [[:realtime-out :out] [:activity-monitor :in]]
+               [[:transcriptor :out] [:activity-monitor :in]]
+               [[:activity-monitor :out] [:context-aggregator :in]]
+               [[:activity-monitor :out] [:tts :in]]]
+              extra-conns)}))
 
 (defn tool-use-example
   "Tools are specified in the :llm/context :tools vector.
@@ -184,28 +184,28 @@
   [in out]
   {:flow
    (flow/create-flow
-    (phone-flow
-     {:in in
-      :out out
-      :llm/context {:messages
-                    [{:role "system"
-                      :content "You are a voice agent operating via phone. Be
+     (phone-flow
+       {:in in
+        :out out
+        :llm/context {:messages
+                      [{:role "system"
+                        :content "You are a voice agent operating via phone. Be
                        concise. The input you receive comes from a
                        speech-to-text (transcription) system that isn't always
                        efficient and may send unclear text. Ask for
                        clarification when you're unsure what the person said."}]
-                    :tools
-                    [{:type :function
-                      :function
-                      {:name "get_weather"
-                       :handler (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))
-                       :description "Get the current weather of a location"
-                       :parameters {:type :object
-                                    :required [:town]
-                                    :properties {:town {:type :string
-                                                        :description "Town for which to retrieve the current weather"}}
-                                    :additionalProperties false}
-                       :strict true}}]}}))})
+                      :tools
+                      [{:type :function
+                        :function
+                        {:name "get_weather"
+                         :handler (fn [{:keys [town]}] (str "The weather in " town " is 17 degrees celsius"))
+                         :description "Get the current weather of a location"
+                         :parameters {:type :object
+                                      :required [:town]
+                                      :properties {:town {:type :string
+                                                          :description "Town for which to retrieve the current weather"}}
+                                      :additionalProperties false}
+                         :strict true}}]}}))})
 
 (defn make-twilio-ws-handler
   [make-flow]
@@ -259,25 +259,25 @@
 
 (def app
   (ring/ring-handler
-   (ring/router
-    routes
-    {:exception pretty/exception
-     :data {:muuntaja mtj/instance
-            :middleware [;; query-params & form-params
-                         parameters/parameters-middleware
-                         ;; content-negotiation
-                         muuntaja/format-negotiate-middleware
-                         ;; encoding response body
-                         muuntaja/format-response-middleware
-                         ;; exception handling
-                         wrap-exception
-                         ;; decoding request body
-                         muuntaja/format-request-middleware
-                         ;; coercing response bodys
-                         coercion/coerce-response-middleware
-                         ;; coercing request parameters
-                         coercion/coerce-request-middleware]}})
-   (ring/create-default-handler)))
+    (ring/router
+      routes
+      {:exception pretty/exception
+       :data {:muuntaja mtj/instance
+              :middleware [;; query-params & form-params
+                           parameters/parameters-middleware
+                           ;; content-negotiation
+                           muuntaja/format-negotiate-middleware
+                           ;; encoding response body
+                           muuntaja/format-response-middleware
+                           ;; exception handling
+                           wrap-exception
+                           ;; decoding request body
+                           muuntaja/format-request-middleware
+                           ;; coercing response bodys
+                           coercion/coerce-response-middleware
+                           ;; coercing request parameters
+                           coercion/coerce-request-middleware]}})
+    (ring/create-default-handler)))
 
 (defn start [& {:keys [port] :or {port 3000}}]
   (println (str "server running in port " port))

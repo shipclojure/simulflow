@@ -1,8 +1,7 @@
 (ns simulflow.utils.audio-test
   (:require
-
-   [simulflow.utils.audio :as audio]
-   [clojure.test :refer [deftest is testing]])
+   [clojure.test :refer [deftest is testing]]
+   [simulflow.utils.audio :as audio])
   (:import
    (javax.sound.sampled AudioFormat$Encoding)))
 

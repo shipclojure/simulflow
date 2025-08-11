@@ -176,8 +176,6 @@
   []
   (long (/ (System/nanoTime) 1e6)))
 
-
-
 ;;; Aliases utils to prevent breaking changes
 ;;; Taken from https://github.com/taoensso/encore/blob/292cd788830a9f855607e8d847c61df3c18f0941/src/taoensso/encore.cljc#L571
 (defn ^:no-doc alias-link-var
@@ -225,9 +223,9 @@
      Source var's metadata will be preserved (docstring, arglists, etc.).
      Changes to Clj source var's value will also be applied to alias.
      See also `defaliases`."
-  ([      src                       ] `(defalias nil    ~src nil          nil))
-  ([alias src                       ] `(defalias ~alias ~src nil          nil))
-  ([alias src alias-attrs           ] `(defalias ~alias ~src ~alias-attrs nil))
+  ([src] `(defalias nil    ~src nil          nil))
+  ([alias src] `(defalias ~alias ~src nil          nil))
+  ([alias src alias-attrs] `(defalias ~alias ~src ~alias-attrs nil))
   ([alias src alias-attrs alias-body]
    (let [cljs?     (some? (:ns &env))
          src-sym   (if (symbol? src) src (throw (ex-info "Source must be a symbol" {:src src})))
@@ -255,8 +253,8 @@
 
      (when-not src-var-info
        (throw
-        (ex-info (str "Source var not found: " src)
-                 {:src src, :ns (str *ns*)})))
+         (ex-info (str "Source var not found: " src)
+                  {:src src, :ns (str *ns*)})))
 
      (if cljs?
        `(def ~alias-sym ~alias-body)
@@ -277,16 +275,16 @@
   [& clauses]
   `(do
      ~@(map
-        (fn [x]
-          (cond
-            (symbol? x) `(defalias ~x)
-            (map?    x)
-            (let [{:keys [alias src attrs body]
-                   :or   {attrs (dissoc x :alias :src)}} x]
-              `(defalias ~alias ~src ~attrs ~body))
+         (fn [x]
+           (cond
+             (symbol? x) `(defalias ~x)
+             (map?    x)
+             (let [{:keys [alias src attrs body]
+                    :or   {attrs (dissoc x :alias :src)}} x]
+               `(defalias ~alias ~src ~attrs ~body))
 
-            :else
-            (throw (ex-info "Expected symbol or map"
-                            {:clause x
-                             :expected '#{symbol map}}))))
-        clauses)))
+             :else
+             (throw (ex-info "Expected symbol or map"
+                             {:clause x
+                              :expected '#{symbol map}}))))
+         clauses)))

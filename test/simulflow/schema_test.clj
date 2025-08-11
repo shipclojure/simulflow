@@ -111,9 +111,9 @@
                   [:default-field {:default "default-value"} :string]]
           params {:optional-field "optional"}]
       (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo
-           #"Missing required parameters"
-           (sut/parse-with-defaults schema params)))))
+            clojure.lang.ExceptionInfo
+            #"Missing required parameters"
+            (sut/parse-with-defaults schema params)))))
 
   (testing "includes helpful error data when required fields missing"
     (let [schema [:map
@@ -157,9 +157,9 @@
                   [:number-field {:default "not-a-number"} :int]]
           params {:required-field "value"}]
       (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo
-           #"Parameters invalid after applying defaults"
-           (sut/parse-with-defaults schema params)))))
+            clojure.lang.ExceptionInfo
+            #"Parameters invalid after applying defaults"
+            (sut/parse-with-defaults schema params)))))
 
   (testing "preserves provided values over defaults"
     (let [schema [:map
@@ -268,9 +268,9 @@
   (testing "Edge cases and validation"
     (testing "Non-map schema throws assertion error"
       (is (thrown-with-msg?
-           AssertionError
-           #"Can only transform :map schemas"
-           (sut/->describe-parameters :string))))
+            AssertionError
+            #"Can only transform :map schemas"
+            (sut/->describe-parameters :string))))
 
     (testing "Empty map schema"
       (let [schema [:map]

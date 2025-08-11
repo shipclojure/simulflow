@@ -1,11 +1,12 @@
 (ns simulflow.processors.activity-monitor
   "Process to monitor activity on the call. Used to ping user when no activity is detected."
-  (:require [clojure.core.async :as a]
-            [clojure.core.async.flow :as flow]
-            [simulflow.async :refer [vthread-loop]]
-            [simulflow.frame :as frame]
-            [simulflow.schema :as schema]
-            [taoensso.telemere :as t]))
+  (:require
+   [clojure.core.async :as a]
+   [clojure.core.async.flow :as flow]
+   [simulflow.async :refer [vthread-loop]]
+   [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
+   [taoensso.telemere :as t]))
 
 (def ActivityMonitorConfigSchema
   [:map

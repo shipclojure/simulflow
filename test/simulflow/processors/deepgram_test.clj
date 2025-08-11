@@ -2,12 +2,11 @@
   (:require
    [clojure.core.async.flow :as flow]
    [clojure.string :as str]
-
+   [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
    [simulflow.processors.deepgram :as deepgram]
    [simulflow.schema :as schema]
-   [simulflow.utils.core :as u]
-   [clojure.test :refer [deftest is testing]]))
+   [simulflow.utils.core :as u]))
 
 (def current-time #inst "2025-06-27T06:13:35.236-00:00")
 

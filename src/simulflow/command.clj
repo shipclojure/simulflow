@@ -32,7 +32,6 @@
                                 :buffer-size buffer-size})
                  id)))
 
-
 (defn http-request-command
   "Create an HTTP request command for regular API calls"
   [url method body & {:keys [headers timeout-ms id]}]

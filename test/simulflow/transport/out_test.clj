@@ -1,11 +1,10 @@
 (ns simulflow.transport.out-test
   (:require
-
+   [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
    [simulflow.transport.out :as sut]
-   [simulflow.transport.protocols :as tp]
-   [simulflow.utils.core :as u]
-   [clojure.test :refer [deftest is testing]]))
+   [simulflow.transport.protocols :as tp :refer [FrameSerializer]]
+   [simulflow.utils.core :as u]))
 
 (deftest process-realtime-out-audio-frame-test
   (testing "process-realtime-out-audio-frame with first audio frame"
@@ -94,7 +93,8 @@
 
 (deftest test-realtime-out-system-config-handling
   (testing "system config change with new serializer"
-    (let [new-serializer {:type :twilio}
+    (let [new-serializer (reify FrameSerializer
+                           (serialize-frame [_ frame] (assoc frame :serialized? true)))
           config-frame (frame/system-config-change {:transport/serializer new-serializer})
           initial-state {:transport/serializer nil}
           [new-state output] (sut/realtime-out-transform initial-state :in config-frame)]
