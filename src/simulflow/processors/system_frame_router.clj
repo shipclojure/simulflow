@@ -5,6 +5,7 @@
   eliminating the need for N×(N-1) connections between system frame producers and consumers."
   (:require
    [clojure.core.async.flow :as flow]
+   [clojure.datafy :as datafy]
    [simulflow.frame :as frame]
    [taoensso.telemere :as t]))
 
@@ -65,6 +66,55 @@
 
   This is the standard way to create the processor for use in flows."
   (flow/process system-frame-router))
+
+(defn contains-system-router?
+  "Returns true if the flow-config contains the system-frame-router-process"
+  [flow-config]
+  (reduce-kv (fn [_ _ v]
+               (if (= (:proc v) system-frame-router-process)
+                 (reduced true)
+                 false))
+             false
+             flow-config))
+
+(defn generate-system-router-connections
+  "Given a flow config map, analyzes each processor's :proc with clojure.datafy/datafy
+  to check if it has :sys-in and :sys-out channels in its :desc. Returns a vector
+  of connection pairs that should be added to connect processors to the system-router.
+
+  Assumes the system-router processor is named :system-router in the flow config.
+
+  Returns connections in the format:
+  [;; System frame producers -> router
+   [[:producer-with-sys-out :sys-out] [:system-router :sys-in]]
+   ;; Router -> system frame consumers
+   [[:system-router :sys-out] [:consumer-with-sys-in :sys-in]]]"
+  [flow-config]
+  (let [processor-analyses (for [[proc-name {:keys [proc]}] flow-config
+                                 :when (and proc (not= proc-name :system-router))]
+                             (try
+                               (let [desc (-> proc datafy/datafy :desc)]
+                                 {:name proc-name
+                                  :has-sys-in? (contains? (:ins desc) :sys-in)
+                                  :has-sys-out? (contains? (:outs desc) :sys-out)})
+                               (catch Exception e
+                                 {:name proc-name
+                                  :has-sys-in? false
+                                  :has-sys-out? false
+                                  :error (.getMessage e)})))
+
+        sys-out-producers (filter :has-sys-out? processor-analyses)
+        sys-in-consumers (filter :has-sys-in? processor-analyses)
+
+        producer-connections (map (fn [{:keys [name]}]
+                                    [[name :sys-out] [:system-router :sys-in]])
+                                  sys-out-producers)
+
+        consumer-connections (map (fn [{:keys [name]}]
+                                    [[:system-router :sys-out] [name :sys-in]])
+                                  sys-in-consumers)]
+
+    (vec (concat producer-connections consumer-connections))))
 
 (comment)
   ;; Usage in a flow - eliminates complex system frame connections
