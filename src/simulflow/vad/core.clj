@@ -18,7 +18,11 @@
       audio-buffer - byte array representing 16kHz PCM mono audio
 
      Returns:
-      Voice confidence score between 0.0 and 1.0"))
+      Voice confidence score between 0.0 and 1.0")
+
+  (cleanup [this]
+    "Cleans up any resources created either on instantiation or running other
+    vad analysis functions related to this analyser."))
 
 (def default-params
   "Default parameters for VAD.

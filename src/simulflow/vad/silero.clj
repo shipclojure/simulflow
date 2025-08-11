@@ -302,4 +302,7 @@
            (catch Exception e
              (t/log! {:level :error
                       :error e} "Error calculating voice confidence with Silero VAD")
-             0.0)))))))
+             0.0)))
+
+       (cleanup [_]
+         (close-model! model))))))
