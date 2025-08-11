@@ -17,23 +17,23 @@
 
    [:llm/model {:default :gpt-4o-mini}
     (schema/flex-enum
-     {:description "OpenAI model identifier"
-      :error/message "Must be a valid OpenAI model"
-      :default "gpt-4o-mini"}
-     [;; GPT-4 Models
-      "gpt-4"
-      "gpt-4-32k"
-      "gpt-4-1106-preview" ;; GPT-4 Turbo
-      "gpt-4-vision-preview" ;; GPT-4 Vision
-      ;; GPT-3.5 Models
-      "gpt-3.5-turbo"
-      "gpt-3.5-turbo-16k"
-      "gpt-3.5-turbo-1106"
-      ;; Base Models
-      "babbage-002"
-      "davinci-002"
-      ;; Include your custom model
-      "gpt-4o-mini"])]
+      {:description "OpenAI model identifier"
+       :error/message "Must be a valid OpenAI model"
+       :default "gpt-4o-mini"}
+      [;; GPT-4 Models
+       "gpt-4"
+       "gpt-4-32k"
+       "gpt-4-1106-preview" ;; GPT-4 Turbo
+       "gpt-4-vision-preview" ;; GPT-4 Vision
+       ;; GPT-3.5 Models
+       "gpt-3.5-turbo"
+       "gpt-3.5-turbo-16k"
+       "gpt-3.5-turbo-1106"
+       ;; Base Models
+       "babbage-002"
+       "davinci-002"
+       ;; Include your custom model
+       "gpt-4o-mini"])]
    [:llm/temperature {:optional true}
     [:float
      {:description "Sampling temperature (0-2)"
@@ -90,7 +90,7 @@
 ;; Example validation:
 (comment
   (require
-   '[malli.error :as me])
+    '[malli.error :as me])
   ;; Valid config
   (m/validate OpenAILLMConfigSchema
               {:openai/api-key "sk-12312312312312312312312312312312312312312313..."})
@@ -102,9 +102,9 @@
                   :openai/api-key "sk-..."})
       me/humanize))
 
-(defn describe
-  []
-  {:ins {:in "Channel for incoming context aggregations"}
+(def describe
+  {:ins {:in "Channel for incoming context aggregations"
+         :sys-in "Channel for incoming system messages"}
    :outs {:out "Channel where streaming responses will go"}
    :params (schema/->describe-parameters OpenAILLMConfigSchema)
    :workload :io})
@@ -127,7 +127,7 @@
                       (t/log! {:level :info :id :openai} ["Processing request command" command])
                       (assert (= (:command/kind command) :command/sse-request)
                               "OpenAI processor only supports SSE request commands")
-          ;; Execute the command and handle the streaming response
+                      ;; Execute the command and handle the streaming response
                       (handle-response (command/handle-command command) llm-read)
                       (catch Exception e
                         (t/log! {:level :error :id :openai :error e} "Error processing command")))
@@ -189,7 +189,7 @@
 
 (defn openai-llm-fn
   "Multi-arity processor function for OpenAI LLM"
-  ([] (describe))
+  ([] describe)
   ([params] (init! params))
   ([state trs] (transition state trs))
   ([state input-port frame] (transform state input-port frame)))

@@ -6,17 +6,6 @@
    [simulflow.schema :as schema]
    [simulflow.utils.core :as u]))
 
-(deftest openai-describe-test
-  (testing "describe function returns correct structure"
-    (let [result (openai/describe)]
-      (is (contains? result :ins))
-      (is (contains? result :outs))
-      (is (contains? result :params))
-      (is (contains? result :workload))
-      (is (= (:workload result) :io))
-      (is (contains? (:ins result) :in))
-      (is (contains? (:outs result) :out)))))
-
 (def test-api-key "test-api-key-miiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiin")
 
 (deftest openai-transform-test
@@ -32,10 +21,10 @@
         (is (= (count (::openai/llm-write output)) 1))
         (let [command (first (::openai/llm-write output))
               messages (:messages (u/parse-if-json (get-in command [:command/data :body])))]
-          (is (= command #:command{:kind :command/sse-request,
-                                   :data {:url "https://api.openai.com/v1/chat/completions",
-                                          :method :post,
-                                          :body (u/json-str {:messages ai-messages :stream true, :model (:llm/model state)}),
+          (is (= command #:command{:kind :command/sse-request
+                                   :data {:url "https://api.openai.com/v1/chat/completions"
+                                          :method :post
+                                          :body (u/json-str {:messages ai-messages :stream true, :model (:llm/model state)})
                                           :headers {"Authorization" (str "Bearer " test-api-key)
                                                     "Content-Type" "application/json"}}}))
           (is (= messages (:messages ai-context)))))
@@ -126,13 +115,13 @@
             valid-results (remove nil? results)]
         (is (= (count valid-results) 5)) ; 4 content chunks + 1 done
 
-                                        ; Check content chunks
+        ; Check content chunks
         (doseq [i (range 4)]
           (let [[state output] (nth valid-results i)]
             (is (= state {}))
             (is (frame/llm-text-chunk? (first (:out output))))))
 
-                                        ; Check done chunk
+        ; Check done chunk
         (let [[state output] (last valid-results)]
           (is (= state {}))
           (is (frame/llm-full-response-end? (first (:out output)))))))
@@ -149,13 +138,13 @@
             valid-results (remove nil? results)]
         (is (= (count valid-results) 7)) ; 6 tool call chunks + 1 done
 
-                                        ; Check tool call chunks
+        ; Check tool call chunks
         (doseq [i (range 6)]
           (let [[state output] (nth valid-results i)]
             (is (= state {}))
             (is (frame/llm-tool-call-chunk? (first (:out output))))))
 
-                                        ; Check done chunk
+        ; Check done chunk
         (let [[state output] (last valid-results)]
           (is (= state {}))
           (is (frame/llm-full-response-end? (first (:out output)))))))

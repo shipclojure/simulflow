@@ -16,7 +16,6 @@
 (defn handle-completion-request!
   "Handle completion requests for OpenAI LLM models"
   [in-c out-c]
-
   (vthread-loop []
     (when-let [chunk (a/<!! in-c)]
       (let [d (response-chunk-delta chunk)]
