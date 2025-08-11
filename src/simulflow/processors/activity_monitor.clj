@@ -100,10 +100,9 @@
         timer-out-ch (a/chan 1024)]
     (vthread-loop []
       (let [timeout-ch (a/timeout timeout-ms)
-            [v c] (a/alts!! [timer-in-ch timeout-ch])]
+            [_v c] (a/alts!! [timer-in-ch timeout-ch])]
         (when (= c timeout-ch)
           (t/log! {:msg "Activity timeout activated!"
-                   :data {:timeout-ms timeout-ms :c c :v v}
                    :id :activity-monitor
                    :level :debug})
           (a/>!! timer-out-ch {::timeout? true}))
