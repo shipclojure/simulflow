@@ -166,28 +166,33 @@
                  (sound/stop! line)
                  (close! line))]
     (vthread-loop []
-                  (when @running?
-                    (try
-                      (let [bytes-read (sound/read! line buffer 0 buffer-size)]
-                        (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
-                          (a/>!! mic-in-ch processed-data)))
-                      (catch Exception e
-                        (t/log! {:level :error :id :microphone-transport :error e}
-                                "Error reading audio data")
-                        ;; Brief pause before retrying to prevent tight error loop
-                        (Thread/sleep 100)))
-                    (recur)))
+      (when @running?
+        (try
+          (let [bytes-read (sound/read! line buffer 0 buffer-size)]
+            (when-let [processed-data (and @running? (process-mic-buffer buffer bytes-read))]
+              (a/>!! mic-in-ch processed-data)))
+          (catch Exception e
+            (t/log! {:level :error :id :microphone-transport :error e}
+                    "Error reading audio data")
+            ;; Brief pause before retrying to prevent tight error loop
+            (Thread/sleep 100)))
+        (recur)))
     (into state
           {::flow/in-ports {::mic-in mic-in-ch}
            ::close close})))
 
 (defn mic-transport-in-transition
   [state transition]
-  (when (and (= transition ::flow/stop)
-             (fn? (::close state)))
-    (t/log! {:level :info
-             :id :transport-in} "Closing input")
-    ((::close state)))
+  (when (= transition ::flow/stop)
+    (when-let [close-fn (::close state)]
+      (when (fn? close-fn)
+        (t/log! {:level :info
+                 :id :transport-in} "Closing input")
+        (close-fn)))
+    (when-let [analyser (:vad/analyser state)]
+      (t/log! {:level :debug :id :transport-in :msg "Cleaning up vad analyser"})
+      (vad/cleanup analyser)))
+
   state)
 
 (defn mic-transport-in-transform
@@ -216,6 +221,9 @@
   (when (= transition ::flow/stop)
     (doseq [port (remove nil? (concat (vals in-ports) (vals out-ports)))]
       (a/close! port))
+    (when-let [analyser (:vad/analyser state)]
+      (t/log! {:level :debug :id :transport-in :msg "Cleaning up vad analyser"})
+      (vad/cleanup analyser))
     state))
 
 (defn async-transport-in-init!
