@@ -53,7 +53,7 @@
           language :en
 
           debug? false
-          chunk-duration-ms 40
+          chunk-duration-ms 20
           extra-procs {}
           extra-conns []}}]
 
@@ -100,7 +100,7 @@
                       :voice/stability 0.5
                       :voice/similarity-boost 0.8
                       :voice/use-speaker-boost? true
-                      :flow/language language}}
+                      :pipeline/language language}}
 
          ;; audio-output-raw -> smaller audio-output-raw frames (used for sending audio in realtime)
          :audio-splitter {:proc transport/audio-splitter
@@ -110,11 +110,7 @@
          :transport-out {:proc transport-out/realtime-speakers-out-processor
                          :args {:audio.out/sending-interval chunk-duration-ms
                                 :audio.out/duration-ms chunk-duration-ms}}
-         :prn-sink {:proc (flow/process (fn
-                                          ([] {:ins {:in "gimme stuff to print!"}})
-                                          ([_] nil)
-                                          ([_ _] nil)
-                                          ([_ _ v] (t/log! {:id :prn-sink :data v}))))}
+
          :activity-monitor {:proc activity-monitor/process
                             :args {::activity-monitor/timeout-ms 5000}}}
         extra-procs)
@@ -122,6 +118,7 @@
                [[[:transport-in :out] [:transcriptor :in]]
 
                 [[:transcriptor :out] [:context-aggregator :in]]
+                [[:transport-in :sys-out] [:context-aggregator :sys-in]]
                 [[:context-aggregator :out] [:llm :in]]
 
                 ;; Aggregate full context
@@ -135,11 +132,10 @@
                 [[:tts :out] [:audio-splitter :in]]
                 [[:audio-splitter :out] [:transport-out :in]]
 
-                [[:transport-out :out] [:prn-sink :in]]
-
                 ;; Activity detection
-                [[:transport-out :out] [:activity-monitor :in]]
-                [[:transcriptor :out] [:activity-monitor :in]]
+                [[:transport-out :sys-out] [:activity-monitor :sys-in]]
+                [[:transport-in :sys-out] [:activity-monitor :sys-in]]
+                [[:transcriptor :sys-out] [:activity-monitor :sys-in]]
                 [[:activity-monitor :out] [:context-aggregator :in]]
                 [[:activity-monitor :out] [:tts :in]]]
                extra-conns)})))

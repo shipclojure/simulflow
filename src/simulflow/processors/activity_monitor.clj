@@ -52,7 +52,7 @@
 
 (defn transform
   [state in msg]
-  (if (= :in in)
+  (if (= :sys-in in)
     (cond
       (frame/user-speech-start? msg)
       [(assoc state ::user-speaking? true) {:timer-process-in [msg]}]

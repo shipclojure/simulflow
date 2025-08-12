@@ -57,7 +57,6 @@
     ;; Audio writer process - handles only audio I/O side effects and lazy line opening
     (vthread-loop []
       (when-let [audio-command (<!! audio-write-ch)]
-        (t/log! {:level :debug :id :speakers-out :msg "Playing audio chunk" :data audio-command})
         (when (= (:command audio-command) :write-audio)
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)
@@ -164,7 +163,6 @@
   [{:keys [transport/serializer] :as state
     ::keys [last-send-time sending-interval]
     :or {last-send-time 0}} frame now]
-  (t/log! {:level :debug :id :speakers-out :sample 0.01 :msg "Received playback frame" :data (dissoc (:frame/data frame) :audio)})
   (let [should-emit-start? (not (::speaking? state))
         maybe-next-send (+ last-send-time sending-interval)
         next-send-time (if (>= now maybe-next-send) now maybe-next-send)
@@ -247,3 +245,30 @@
 (def realtime-speakers-out-processor
   "Processor that sends audio chunks to output speakers in a realtime manner"
   (flow/process realtime-speakers-out-fn))
+
+(comment
+
+  (def demo-flow-config {:procs {:speakers {:proc realtime-speakers-out-processor}}})
+
+  (def g (flow/create-flow demo-flow-config))
+
+  (defonce flow-started? (atom false))
+
+  ;; Start local ai flow - starts paused
+  (let [{:keys [report-chan error-chan]} (flow/start g)]
+    (reset! flow-started? true)
+    ;; Resume local ai -> you can now speak with the AI
+    (flow/resume g)
+    (vthread-loop []
+      (when @flow-started?
+        (when-let [[msg c] (a/alts!! [report-chan error-chan])]
+          (when (map? msg)
+            (t/log! (cond-> {:level :debug :id (if (= c error-chan) :error :report)}
+                      (= c error-chan) (assoc :error msg)) msg))
+          (recur)))))
+
+  (flow/inject g [:speakers :in] [(frame/audio-output-raw {:audio (byte-array (range 200)) :sample-rate 24000})])
+
+  (flow/stop g)
+
+  ,)
