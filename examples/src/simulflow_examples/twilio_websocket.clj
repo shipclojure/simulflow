@@ -167,8 +167,9 @@
 
                ;; Activity monitor connections - basically check if there is
                ;; activity on the pipeline
-               [[:realtime-out :out] [:activity-monitor :in]]
-               [[:transcriptor :out] [:activity-monitor :in]]
+               [[:realtime-out :sys-out] [:activity-monitor :sys-in]]
+               [[:transcriptor :sys-out] [:activity-monitor :sys-in]]
+               [[:transport-in :sys-out] [:activity-monitor :sys-in]]
                [[:activity-monitor :out] [:context-aggregator :in]]
                [[:activity-monitor :out] [:tts :in]]]
               extra-conns)}))

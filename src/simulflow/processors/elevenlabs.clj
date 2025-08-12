@@ -181,17 +181,17 @@
         _ (t/log! {:level :debug :id :elevenlabs} "Connecting to TTS websocket")
         ws-conn @(ws/websocket url conf)]
     (vthread-loop []
-                  (when @alive?
-                    (when-let [msg (a/<!! ws-write)]
-                      (when @alive?
-                        (ws/send! ws-conn msg))
-                      (recur))))
+      (when @alive?
+        (when-let [msg (a/<!! ws-write)]
+          (when @alive?
+            (ws/send! ws-conn msg))
+          (recur))))
     (vthread-loop []
-                  (when @alive?
-                    (a/<!! (a/timeout 3000))
-                    (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
-                    (ws/send! ws-conn keep-alive-message)
-                    (recur)))
+      (when @alive?
+        (a/<!! (a/timeout 3000))
+        (t/log! {:level :debug :id :elevenlabs} "Sending keep-alive message")
+        (ws/send! ws-conn keep-alive-message)
+        (recur)))
     (into args
           {:websocket/conn ws-conn
            :websocket/alive? alive?
