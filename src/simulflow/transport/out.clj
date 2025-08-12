@@ -81,7 +81,6 @@
                        :audio-write audio-write-ch}
      ;; Initial business logic state (managed in transform)
      ::speaking? false
-     ::last-audio-time 0
      ::next-send-time (u/mono-time)
      ::duration-ms duration
      ::sending-interval sending-interval
