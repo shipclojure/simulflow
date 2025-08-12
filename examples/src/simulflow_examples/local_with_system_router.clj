@@ -196,5 +196,4 @@
   ;; Stop the conversation
   (do
     (flow/stop local-ai)
-    (reset! flow-started? false)
-    (vad/cleanup vad-analyser)))
+    (reset! flow-started? false)))

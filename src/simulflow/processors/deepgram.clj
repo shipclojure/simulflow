@@ -157,7 +157,6 @@ https://developers.deepgram.com/docs/understanding-end-of-speech-detection#using
       (when @alive?
         (when-let [msg (a/<!! ws-write-chan)]
           (when (and (frame/audio-input-raw? msg) @alive?)
-            (t/log! {:id :deepgram :level :debug :sample 0.01 :msg "Sending audio for transcription" :data (:frame/data msg)})
             (ws/send! ws-conn (:frame/data msg))
             (recur)))))
 
