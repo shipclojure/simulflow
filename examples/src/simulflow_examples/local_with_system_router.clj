@@ -145,9 +145,10 @@
                   [[:transport-out :out] [:activity-monitor :in]]
                   [[:transcriptor :out] [:activity-monitor :in]]
                   [[:activity-monitor :out] [:context-aggregator :in]]
-                  [[:activity-monitor :out] [:tts :in]]]
+                  [[:activity-monitor :out] [:tts :in]]
 
-                 (system-router/generate-system-router-connections procs)
+                  ;; System flow
+                  [[:transport-in :sys-out] [:context-aggregator :sys-in]]]
 
                  extra-conns)}))))
 
@@ -170,73 +171,6 @@
                                                       :description "Town for which to retrieve the current weather"}}
                                   :additionalProperties false}
                      :strict true}}]})
-
-(def language :en)
-
-(def debug? false)
-(def chunk-duration-ms 40)
-(def extra-procs {})
-(def extra-conns [])
-
-(def demo {;; Capture audio from microphone and send raw-audio-input frames further in the pipeline
-           :transport-in {:proc transport-in/microphone-transport-in
-                          :args {:vad/analyser nil}}
-           ;; raw-audio-input -> transcription frames
-           :transcriptor {:proc deepgram/deepgram-processor
-                          :args {:transcription/api-key (secret [:deepgram :api-key])
-                                 :transcription/interim-results? true
-                                 :transcription/punctuate? false
-                                 :transcription/vad-events? false
-                                 :transcription/smart-format? true
-                                 :transcription/model :nova-2
-                                 :transcription/utterance-end-ms 1000
-                                 :transcription/language language}}
-
-           ;; user transcription & llm message frames -> llm-context frames
-           ;; responsible for keeping the full conversation history
-           :context-aggregator {:proc context/context-aggregator
-                                :args {:llm/context llm-context
-                                       :aggregator/debug? debug?}}
-
-           ;; Takes llm-context frames and produces new llm-text-chunk & llm-tool-call-chunk frames
-           :llm {:proc openai/openai-llm-process
-                 :args {:openai/api-key (secret [:openai :new-api-sk])
-                        :llm/model "gpt-4o-mini"}}
-
-           ;; llm-text-chunk & llm-tool-call-chunk -> llm-context-messages-append frames
-           :assistant-context-assembler {:proc context/assistant-context-assembler
-                                         :args {:debug? debug?}}
-
-           ;; llm-text-chunk -> sentence speak frames (faster for text to speech)
-           :llm-sentence-assembler {:proc context/llm-sentence-assembler}
-
-           ;; speak-frames -> audio-output-raw frames
-           :tts {:proc xi/elevenlabs-tts-process
-                 :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
-                        :elevenlabs/model-id "eleven_flash_v2_5"
-                        :elevenlabs/voice-id (secret [:elevenlabs :voice-id])
-                        :voice/stability 0.5
-                        :voice/similarity-boost 0.8
-                        :voice/use-speaker-boost? true
-                        :flow/language language}}
-
-           ;; audio-output-raw -> smaller audio-output-raw frames (used for sending audio in realtime)
-           :audio-splitter {:proc transport/audio-splitter
-                            :args {:audio.out/duration-ms chunk-duration-ms}}
-
-           ;; speakers out
-           :transport-out {:proc transport-out/realtime-speakers-out-processor
-                           :args {:audio.out/sending-interval chunk-duration-ms
-                                  :audio.out/duration-ms chunk-duration-ms}}
-           :prn-sink {:proc (flow/process (fn
-                                            ([] {:ins {:in "gimme stuff to print!"}})
-                                            ([_] nil)
-                                            ([_ _] nil)
-                                            ([_ _ v] (t/log! {:id :prn-sink :data v}))))}
-           :activity-monitor {:proc activity-monitor/process
-                              :args {::activity-monitor/timeout-ms 5000}}
-           :system-router {:proc system-frame-router-process
-                           :args {}}})
 
 (comment
 
