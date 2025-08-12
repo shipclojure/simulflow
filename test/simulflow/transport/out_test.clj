@@ -28,7 +28,12 @@
                  ::sut/sending-interval 20}
           frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 24000})
           current-time 2000
-          [new-state output] (sut/process-realtime-out-audio-frame state frame current-time)]
+          [new-state output] (sut/process-realtime-out-audio-frame state frame current-time)
+          command (first (:audio-write output))]
+      (is (= (update command :data vec) {:command :write-audio
+                                         :data [1, 2, 3]
+                                         :delay-until 2000
+                                         :sample-rate 24000}))
 
       (is (true? (::sut/speaking? new-state)))
       (is (= 1 (count (:audio-write output))))

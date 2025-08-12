@@ -6,7 +6,8 @@
    [simulflow.transport.in :as in]
    [simulflow.transport.out :as out]
    [simulflow.utils.audio :as audio]
-   [simulflow.utils.core :as u :refer [defaliases]]))
+   [simulflow.utils.core :as u :refer [defaliases]]
+   [taoensso.telemere :as t]))
 
 ;; =============================================================================
 ;; Processors
@@ -68,6 +69,11 @@
                                                :channels 1 ; PCM is mono
                                                :sample-size-bits 16 ; PCM is 16-bit
                                                :duration-ms duration-ms})]
+       (t/log! {:id :audio-splitter
+                :msg "Received audio output. Splitting into chunks"
+                :level :debug
+                :data {:sample-rate sample-rate
+                       :chunk-size chunk-size}})
        (if-let [chunks (split-audio-into-chunks audio chunk-size)]
          ;; Create new frames preserving the sample rate from original frame
          [state {:out (mapv (fn [chunk-audio]

@@ -25,7 +25,7 @@
 
 (defn log-vad-state!
   [prev-vad-state vad-state]
-  (when (not= prev-vad-state vad-state)
+  (when (and prev-vad-state vad-state (not= prev-vad-state vad-state))
     (t/log! {:level :debug
              :id :transport-in
              :msg "Changed vad state"

@@ -57,6 +57,7 @@
     ;; Audio writer process - handles only audio I/O side effects and lazy line opening
     (vthread-loop []
       (when-let [audio-command (<!! audio-write-ch)]
+        (t/log! {:level :debug :id :speakers-out :msg "Playing audio chunk" :data audio-command})
         (when (= (:command audio-command) :write-audio)
           (let [current-time (u/mono-time)
                 delay-until (:delay-until audio-command 0)
@@ -70,6 +71,7 @@
                            new-line))]
             (when (pos? wait-time)
               (<!! (timeout wait-time)))
+
             (sound/write! (:data audio-command) line 0)))
         (recur)))
 
@@ -163,6 +165,7 @@
   [{:keys [transport/serializer] :as state
     ::keys [last-send-time sending-interval]
     :or {last-send-time 0}} frame now]
+  (t/log! {:level :debug :id :speakers-out :sample 0.01 :msg "Received playback frame" :data (dissoc (:frame/data frame) :audio)})
   (let [should-emit-start? (not (::speaking? state))
         maybe-next-send (+ last-send-time sending-interval)
         next-send-time (if (>= now maybe-next-send) now maybe-next-send)
@@ -196,8 +199,7 @@
     :or {now (u/mono-time)}} input-port frame]
   (cond
     ;; Handle incoming audio frames - core business logic moved here
-    (and (= input-port :in)
-         (frame/audio-output-raw? frame))
+    (frame/audio-output-raw? frame)
     (process-realtime-out-audio-frame state frame now)
 
     (and (= input-port :timer-out)
