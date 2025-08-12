@@ -1,6 +1,5 @@
 (ns simulflow.processors.activity-monitor-test
   (:require
-   [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [clojure.core.async.impl.protocols :as impl]
    [clojure.test :refer [deftest is testing]]
@@ -309,8 +308,7 @@
 (deftest processor-fn-test
   (testing "0 arity describe"
     (is (= (activity-monitor/processor-fn)
-           {:ins {:in "Channel for activity events (user-speech-start, bot-speech-start etc.)"
-                  :sys-in "Channel for system messages"}
+           {:ins {:sys-in "Channel for system messages"}
             :outs {:out "Channel for inactivity prompts"}
             :params {:simulflow.processors.activity-monitor/end-phrase "Type: string; Optional ; Description: Message for bot to say in order to end the conversation"
                      :simulflow.processors.activity-monitor/max-pings "Type: integer; Optional ; Description: Maximum number of inactivity pings before ending the conversation"

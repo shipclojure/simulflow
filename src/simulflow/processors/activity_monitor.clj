@@ -89,8 +89,7 @@
         :else [state]))))
 
 (def describe
-  {:ins {:in "Channel for activity events (user-speech-start, bot-speech-start etc.)"
-         :sys-in "Channel for system messages"}
+  {:ins {:sys-in "Channel for system messages"}
    :outs {:out "Channel for inactivity prompts"}
    :params (schema/->describe-parameters ActivityMonitorConfigSchema)})
 
