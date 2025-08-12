@@ -249,7 +249,7 @@
                       (Thread/sleep 5)) ; Small delay to simulate processing time
 
                     (let [;; Process through realtime speakers transform
-                          [new-state output] (out/realtime-out-transform
+                          [new-state output] (out/base-realtime-out-transform
                                                current-state :in chunk)]
 
                       ;; Store results for analysis

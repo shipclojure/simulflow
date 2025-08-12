@@ -194,7 +194,7 @@
     [updated-state (-> (frame/send (when should-emit-start? (frame/bot-speech-start true)))
                        (assoc :audio-write [audio-command]))]))
 
-(defn realtime-out-transform
+(defn base-realtime-out-transform
   [{::keys [now] :as state
     :or {now (u/mono-time)}} input-port frame]
   (cond
@@ -232,7 +232,7 @@
   ([] realtime-out-describe)
   ([params] (realtime-out-init! params))
   ([state transition] (realtime-out-transition state transition))
-  ([state input-port frame] (realtime-out-transform state input-port frame)))
+  ([state input-port frame] (base-realtime-out-transform state input-port frame)))
 
 (def realtime-out-processor
   "Processor that sends audio chunks to output channel in a realtime manner"
@@ -243,7 +243,7 @@
   ([] realtime-speakers-out-describe)
   ([params] (realtime-speakers-out-init! params))
   ([state transition] (realtime-out-transition state transition))
-  ([state input-port frame] (realtime-out-transform state input-port frame)))
+  ([state input-port frame] (base-realtime-out-transform state input-port frame)))
 
 (def realtime-speakers-out-processor
   "Processor that sends audio chunks to output speakers in a realtime manner"

@@ -93,13 +93,13 @@
   {:src out/realtime-out-describe}
   {:src out/realtime-out-init!}
   {:src out/realtime-out-transition}
-  {:src out/realtime-out-transform}
+  {:alias realtime-out-transform :src out/base-realtime-out-transform}
   {:src out/realtime-out-fn}
   {:src out/realtime-out-processor}
   {:src out/realtime-speakers-out-describe}
   {:src out/realtime-speakers-out-init!}
   {:alias realtime-speakers-out-transition :src out/realtime-out-transition}
-  {:alias realtime-speakers-out-transform :src out/realtime-out-transform}
+  {:alias realtime-speakers-out-transform :src out/base-realtime-out-transform}
   {:src out/realtime-speakers-out-fn}
   {:src out/realtime-speakers-out-processor}
 
