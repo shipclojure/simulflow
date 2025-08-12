@@ -15,6 +15,7 @@
    [simulflow.transport.in :as transport-in]
    [simulflow.transport.out :as transport-out]
    [simulflow.utils.core :as u]
+   [simulflow.vad.core :as vad]
    [simulflow.vad.silero :as silero]
    [taoensso.telemere :as t]))
 
@@ -239,9 +240,9 @@
 
 (comment
 
-  (system-router/generate-system-router-connections demo)
+  (def vad-analyser (silero/create-silero-vad))
 
-  (def local-ai (make-local-flow {:vad-analyser (silero/create-silero-vad)}))
+  (def local-ai (make-local-flow {:vad-analyser vad-analyser}))
 
   (defonce flow-started? (atom false))
 
@@ -261,4 +262,5 @@
   ;; Stop the conversation
   (do
     (flow/stop local-ai)
-    (reset! flow-started? false)))
+    (reset! flow-started? false)
+    (vad/cleanup vad-analyser)))
