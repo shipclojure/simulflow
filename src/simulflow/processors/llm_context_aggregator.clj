@@ -57,7 +57,7 @@
   "
   [state _ frame]
   (when (:aggregator/debug? state)
-    (t/log! {:level :debug :id :llm-context} {:type (:frame/type frame) :data (:frame/data frame)}))
+    (t/log! {:level :debug :id :user-context-aggregator :data {:type (:frame/type frame) :data (:frame/data frame)} :msg "Got frame"}))
 
   (let [debug? (:aggregator/debug? state)
         {:llm/keys [context]
@@ -295,7 +295,7 @@
       (frame/llm-full-response-start? frame)
       ,(do
          (when debug?
-           (t/log! {:level :debug :id id} "START FRAME"))
+           (t/log! {:level :debug :id id :data frame} "START FRAME"))
          [(assoc state
                  :content-aggregation nil
                  :function-name nil

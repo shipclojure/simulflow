@@ -124,7 +124,7 @@
     (vthread-loop []
                   (when-let [command (a/<!! llm-write)]
                     (try
-                      (t/log! {:level :info :id :openai} ["Processing request command" command])
+                      (t/log! {:level :info :id :openai :data command} "Processing request command")
                       (assert (= (:command/kind command) :command/sse-request)
                               "OpenAI processor only supports SSE request commands")
                       ;; Execute the command and handle the streaming response
