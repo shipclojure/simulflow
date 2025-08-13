@@ -23,8 +23,10 @@
    [simulflow.scenario-manager :as sm]
    [simulflow.secrets :refer [secret]]
    [simulflow.transport :as transport]
+   [simulflow.transport.in :as transport-in]
    [simulflow.transport.out :as transport-out]
    [simulflow.utils.core :as u]
+   [simulflow.vad.silero :as silero]
    [taoensso.telemere :as t]))
 
 (comment
@@ -80,32 +82,27 @@
 (defn phone-flow
   "This example showcases a voice AI agent for the phone. Phone audio is usually
   encoded as MULAW at 8kHz frequency (sample rate) and it is mono (1 channel)."
-  [{:keys [llm-context extra-procs in out extra-conns language]
+  [{:keys [llm-context extra-procs in out extra-conns language vad-analyser]
     :or {llm-context {:messages [{:role "system"
                                   :content "You are a helpful assistant "}]}
          extra-procs {}
          language :en
          extra-conns []}}]
-  (let [encoding :ulaw
-        sample-rate 8000
-        sample-size-bits 8
-        channels 1 ;; mono
-        chunk-duration-ms 20]
+  (let [chunk-duration-ms 20]
     {:procs
      (u/deep-merge
-       {:transport-in {:proc transport/twilio-transport-in
-                       :args {:transport/in-ch in}}
+       {:transport-in {:proc transport-in/twilio-transport-in
+                       :args {:transport/in-ch in
+                              :vad/analyser vad-analyser}}
         :transcriptor {:proc asr/deepgram-processor
                        :args {:transcription/api-key (secret [:deepgram :api-key])
                               :transcription/interim-results? true
                               :transcription/punctuate? false
-                              :transcription/vad-events? true
+                              :transcription/vad-events? false
                               :transcription/smart-format? true
                               :transcription/model :nova-2
                               :transcription/utterance-end-ms 1000
-                              :transcription/language language
-                              :transcription/encoding :ulaw
-                              :transcription/sample-rate sample-rate}}
+                              :transcription/language language}}
         :context-aggregator {:proc context/context-aggregator
                              :args {:llm/context llm-context
                                     :aggregator/debug? false}}
@@ -125,32 +122,22 @@
                      :voice/stability 0.5
                      :voice/similarity-boost 0.8
                      :voice/use-speaker-boost? true
-                     :flow/language language
-                     :audio.out/encoding encoding
-                     :audio.out/sample-rate sample-rate}}
+                     :pipeline/language language}}
         :audio-splitter {:proc transport/audio-splitter
-                         :args {:audio.out/sample-rate sample-rate
-                                :audio.out/sample-size-bits sample-size-bits
-                                :audio.out/channels channels
-                                :audio.out/duration-ms chunk-duration-ms}}
-        :realtime-out {:proc transport-out/realtime-out-processor
-                       :args {:audio.out/chan out
-                              :audio.out/sending-interval 20}}
+                         :args {:audio.out/duration-ms chunk-duration-ms}}
+        :transport-out {:proc transport-out/realtime-out-processor
+                        :args {:audio.out/chan out
+                               :audio.out/sending-interval chunk-duration-ms}}
         :activity-monitor {:proc activity-monitor/process
-                           :args {::activity-monitor/timeout-ms 5000}}
-
-        :prn-sink {:proc (flow/process (fn
-                                         ([] {:ins {:in "gimme stuff to print!"}})
-                                         ([_] nil)
-                                         ([_ _] nil)
-                                         ([_ _ v] (t/log! {:id :prn-sink :data v}))))}}
+                           :args {::activity-monitor/timeout-ms 5000}}}
        extra-procs)
 
      :conns (concat
-              [[[:transport-in :sys-out] [:transcriptor :sys-in]]
-               [[:transport-in :out] [:transcriptor :in]]
+              [[[:transport-in :out] [:transcriptor :in]]
 
                [[:transcriptor :out] [:context-aggregator :in]]
+               [[:transport-in :sys-out] [:context-aggregator :sys-in]]
+               [[:transport-in :sys-out] [:transport-out :sys-in]]
                [[:context-aggregator :out] [:llm :in]]
 
                ;; Aggregate full context
@@ -162,14 +149,13 @@
                [[:llm-sentence-assembler :out] [:tts :in]]
 
                [[:tts :out] [:audio-splitter :in]]
-               [[:transport-in :sys-out] [:realtime-out :sys-in]]
-               [[:audio-splitter :out] [:realtime-out :in]]
 
-               ;; Activity monitor connections - basically check if there is
-               ;; activity on the pipeline
-               [[:realtime-out :sys-out] [:activity-monitor :sys-in]]
-               [[:transcriptor :sys-out] [:activity-monitor :sys-in]]
+               [[:audio-splitter :out] [:transport-out :in]]
+
+               ;; Activity detection
+               [[:transport-out :sys-out] [:activity-monitor :sys-in]]
                [[:transport-in :sys-out] [:activity-monitor :sys-in]]
+               [[:transcriptor :sys-out] [:activity-monitor :sys-in]]
                [[:activity-monitor :out] [:context-aggregator :in]]
                [[:activity-monitor :out] [:tts :in]]]
               extra-conns)}))
@@ -188,6 +174,7 @@
      (phone-flow
        {:in in
         :out out
+        :vad-analyser (silero/create-silero-vad)
         :llm/context {:messages
                       [{:role "system"
                         :content "You are a voice agent operating via phone. Be
