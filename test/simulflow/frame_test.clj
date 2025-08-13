@@ -468,7 +468,7 @@
 
   (testing "large number of frames"
     (let [regular-frames (repeatedly 100 #(frame/text-input {:text (str "message-" (rand-int 1000))}))
-          system-frames (repeatedly 50 #(frame/system-start true))]
-      (let [result (apply frame/send (concat regular-frames system-frames))]
-        (is (= 100 (count (:out result))))
-        (is (= 50 (count (:sys-out result))))))))
+          system-frames (repeatedly 50 #(frame/system-start true))
+          result (apply frame/send (concat regular-frames system-frames))]
+      (is (= 100 (count (:out result))))
+      (is (= 50 (count (:sys-out result)))))))
