@@ -217,10 +217,6 @@
       [(assoc state :transport/serializer new-serializer) {}]
       [state {}])
 
-    ;; Handle system input passthrough
-    (= input-port :sys-in)
-    [state {:sys-out [frame]}]
-
     ;; Default case
     :else [state {}]))
 
