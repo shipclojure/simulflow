@@ -8,6 +8,8 @@
         :task (shell "bin/kaocha")}
   jar {:doc "Build jar with latest version"
        :task (clojure "-T:build jar")}
+  pom {:doc "Build pom.xml based on deps.edn"
+       :task (clojure "-X:deps mvn-pom")}
   deploy {:doc "Deploy the latest release"
           :task (clojure "-X:deploy")}
   format:check {:doc "Check code formatting with standard-clj"
