@@ -47,3 +47,8 @@
 !.clj-kondo/macros/
 /.mcp.json
 /.clojure-mcp/
+
+# Local documentation files - preserved locally but not tracked
+PROJECT_SUMMARY.md
+CLAUDE.md
+LLM_CODE_STYLE.md
