@@ -209,7 +209,7 @@
         buf (doto (ByteBuffer/allocate (* 2 (alength bs)))
               (.order (ByteOrder/nativeOrder)))
         fbuf (.asFloatBuffer buf)]
-    (doseq [i (range (quot (alength bs) 2))]
+    (doseq [_i (range (quot (alength bs) 2))]
       (.put fbuf
             (float (/ (.getShort inbuf)
                       Short/MAX_VALUE))))
