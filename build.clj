@@ -43,7 +43,8 @@
     (println "\nCopying source...")
     (b/copy-dir {:src-dirs ["resources" "src"] :target-dir class-dir})
     (println "\nBuilding JAR...")
-    (b/jar opts))
+    (b/jar opts)
+    (println "\nBuilding Done ✅"))
   opts)
 
 (defn install

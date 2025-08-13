@@ -1,5 +1,6 @@
 (ns simulflow.vad.silero
   (:require
+   [clojure.java.io :as io]
    [simulflow.utils.audio :as audio]
    [simulflow.vad.core :as vad]
    [taoensso.telemere :as t])
@@ -10,6 +11,20 @@
 ;; Constants
 (def ^:private model-reset-time-ms 5000)
 (def ^:private supported-sample-rates #{8000 16000})
+(def ^:private default-model-resource "silero_vad.onnx")
+
+(defn- load-model-resource
+  "Load the ONNX model from resources as a byte array."
+  ([]
+   (load-model-resource default-model-resource))
+  ([resource-name]
+   (if-let [resource (io/resource resource-name)]
+     (with-open [in (io/input-stream resource)]
+       (let [baos (java.io.ByteArrayOutputStream.)]
+         (io/copy in baos)
+         (.toByteArray baos)))
+     (throw (ex-info (str "Model resource not found: " resource-name)
+                     {:resource resource-name})))))
 
 ;; ONNX Model wrapper
 (defn- create-session-options []
@@ -94,83 +109,90 @@
 
 (defn- create-silero-onnx-model
   "Create a new Silero ONNX model instance"
-  [model-path]
-  (try
-    (let [env (OrtEnvironment/getEnvironment)
-          opts (create-session-options)
-          session (.createSession env model-path opts)
-          state (atom {:state (make-array Float/TYPE 2 1 128)
-                       :context (make-array Float/TYPE 0 0)
-                       :last-sr 0
-                       :last-batch-size 0})]
-      (reify SileroOnnxModel
-        (reset-states! [_]
-          (reset-states! _ 1))
-        (reset-states! [_ batch-size]
-          (reset! state {:state (make-array Float/TYPE 2 batch-size 128)
-                         :context (make-array Float/TYPE batch-size 0)
-                         :last-sr 0
-                         :last-batch-size 0}))
-        (call-model [this x sr]
-          (let [{:keys [x sr]} (validate-input x sr)
-                number-samples (if (= sr 16000) 512 256)
-                batch-size (count x)
-                context-size (if (= sr 16000) 64 32)]
-            ;; Validate exact sample count
-            (when (not= (count (first x)) number-samples)
-              (throw (IllegalArgumentException.
-                       (str "Provided number of samples is " (count (first x))
-                            " (Supported values: 256 for 8000 sample rate, 512 for 16000)"))))
-            ;; Handle state resets
-            (let [current-state @state
-                  need-reset? (or (zero? (:last-batch-size current-state))
-                                  (and (not= (:last-sr current-state) 0)
-                                       (not= (:last-sr current-state) sr))
-                                  (and (not= (:last-batch-size current-state) 0)
-                                       (not= (:last-batch-size current-state) batch-size)))]
-              (when need-reset?
-                (reset-states! this batch-size))
-              ;; Re-read state after potential reset
-              (let [current-state @state
-                    context (if (zero? (count (:context current-state)))
-                              (make-array Float/TYPE batch-size context-size)
-                              (:context current-state))
-                    x-with-context (concatenate-arrays context (to-float-array-2d x))
-                    env (OrtEnvironment/getEnvironment)]
-                (with-open [input-tensor (OnnxTensor/createTensor env x-with-context)
-                            state-tensor (OnnxTensor/createTensor env (:state current-state))
-                            sr-tensor (OnnxTensor/createTensor env (long-array [sr]))]
-                  (let [inputs (doto (HashMap.)
-                                 (.put "input" input-tensor)
-                                 (.put "state" state-tensor)
-                                 (.put "sr" sr-tensor))]
-                    (with-open [outputs (.run session inputs)]
-                      (let [output (.getValue (.get outputs 0))
-                            new-state (.getValue (.get outputs 1))
-                            new-context (get-last-columns x-with-context context-size)]
-                        (swap! state assoc
-                               :state new-state
-                               :context new-context
-                               :last-sr sr
-                               :last-batch-size batch-size)
-                        ;; Return confidence for first batch item
-                        (aget output 0 0)))))))))
-        (close-model! [_]
-          (try
-            (.close session)
-            (catch Exception e
-              (t/log! {:level :warn
-                       :id :silero-onnx
-                       :error e} "Error closing Silero ONNX model"))))))
-    (catch Exception e
-      (t/log! {:level :error
-               :error e} "Failed to create Silero ONNX model")
-      (throw e))))
+  ([]
+   (create-silero-onnx-model default-model-resource))
+  ([model-path]
+   (try
+     (let [env (OrtEnvironment/getEnvironment)
+           opts (create-session-options)
+           session (if (and model-path (.exists (io/file model-path)))
+                     ;; Use file path if it exists
+                     (.createSession env model-path opts)
+                     ;; Load from resources as byte array
+                     (let [model-bytes (load-model-resource (or model-path default-model-resource))]
+                       (.createSession env model-bytes opts)))
+           state (atom {:state (make-array Float/TYPE 2 1 128)
+                        :context (make-array Float/TYPE 0 0)
+                        :last-sr 0
+                        :last-batch-size 0})]
+       (reify SileroOnnxModel
+         (reset-states! [_]
+           (reset-states! _ 1))
+         (reset-states! [_ batch-size]
+           (reset! state {:state (make-array Float/TYPE 2 batch-size 128)
+                          :context (make-array Float/TYPE batch-size 0)
+                          :last-sr 0
+                          :last-batch-size 0}))
+         (call-model [this x sr]
+           (let [{:keys [x sr]} (validate-input x sr)
+                 number-samples (if (= sr 16000) 512 256)
+                 batch-size (count x)
+                 context-size (if (= sr 16000) 64 32)]
+             ;; Validate exact sample count
+             (when (not= (count (first x)) number-samples)
+               (throw (IllegalArgumentException.
+                        (str "Provided number of samples is " (count (first x))
+                             " (Supported values: 256 for 8000 sample rate, 512 for 16000)"))))
+             ;; Handle state resets
+             (let [current-state @state
+                   need-reset? (or (zero? (:last-batch-size current-state))
+                                   (and (not= (:last-sr current-state) 0)
+                                        (not= (:last-sr current-state) sr))
+                                   (and (not= (:last-batch-size current-state) 0)
+                                        (not= (:last-batch-size current-state) batch-size)))]
+               (when need-reset?
+                 (reset-states! this batch-size))
+               ;; Re-read state after potential reset
+               (let [current-state @state
+                     context (if (zero? (count (:context current-state)))
+                               (make-array Float/TYPE batch-size context-size)
+                               (:context current-state))
+                     x-with-context (concatenate-arrays context (to-float-array-2d x))
+                     env (OrtEnvironment/getEnvironment)]
+                 (with-open [input-tensor (OnnxTensor/createTensor env x-with-context)
+                             state-tensor (OnnxTensor/createTensor env (:state current-state))
+                             sr-tensor (OnnxTensor/createTensor env (long-array [sr]))]
+                   (let [inputs (doto (HashMap.)
+                                  (.put "input" input-tensor)
+                                  (.put "state" state-tensor)
+                                  (.put "sr" sr-tensor))]
+                     (with-open [outputs (.run session inputs)]
+                       (let [output (.getValue (.get outputs 0))
+                             new-state (.getValue (.get outputs 1))
+                             new-context (get-last-columns x-with-context context-size)]
+                         (swap! state assoc
+                                :state new-state
+                                :context new-context
+                                :last-sr sr
+                                :last-batch-size batch-size)
+                         ;; Return confidence for first batch item
+                         (aget output 0 0)))))))))
+         (close-model! [_]
+           (try
+             (.close session)
+             (catch Exception e
+               (t/log! {:level :warn
+                        :id :silero-onnx
+                        :error e} "Error closing Silero ONNX model"))))))
+     (catch Exception e
+       (t/log! {:level :error
+                :error e} "Failed to create Silero ONNX model")
+       (throw e)))))
 
 (comment
 
   (defn test-model []
-    (let [model (create-silero-onnx-model "resources/silero_vad.onnx")
+    (let [model (create-silero-onnx-model nil) ; Use bundled resource
           ;; Create 512 samples of silence
           silence (float-array 512 0.0)
           ;; Create 512 samples of noise
@@ -223,7 +245,7 @@
   "Create a Silero VAD analyzer instance with audio accumulation.
    
    Options:
-   - :model-path - Path to the silero_vad.onnx model file
+   - :model-path - Path to a custom silero_vad.onnx model file or java resource (default: uses bundled model)
    - :sample-rate - Audio sample rate (8000 or 16000 Hz, default: 16000)
    - :vad/min-confidence - Threshold for voice activity detection (default: 0.7)
    - :vad/min-speech-duration-ms - Minimum speech duration in ms (default: 200)
@@ -232,14 +254,13 @@
   ([{:keys [model-path sample-rate]
      :vad/keys [min-confidence min-speech-duration-ms min-silence-duration-ms]
      :or {sample-rate 16000
-          model-path "resources/silero_vad.onnx"
           min-speech-duration-ms (:vad/min-speech-duration-ms vad/default-params)
           min-silence-duration-ms (:vad/min-silence-duration-ms vad/default-params)
           min-confidence (:vad/min-confidence vad/default-params)}}]
    (when-not (contains? supported-sample-rates sample-rate)
      (throw (IllegalArgumentException.
               (str "Sampling rate not supported, only available for " supported-sample-rates))))
-   (let [model (create-silero-onnx-model (or model-path "resources/silero_vad.onnx"))
+   (let [model (create-silero-onnx-model model-path)
          frames-required (if (= sample-rate 16000) 512 256)
          bytes-per-frame 2 ; 16-bit PCM
          bytes-required (* frames-required bytes-per-frame)
@@ -305,3 +326,8 @@
              0.0)))
        (cleanup [_]
          (close-model! model))))))
+
+(comment
+  (def vad (create-silero-vad))
+
+  (vad/cleanup vad))
