@@ -25,14 +25,14 @@
     (let [speech-start (frame/user-speech-start true {:timestamp current-time})]
       (is (= (activity-monitor/transform
                {::activity-monitor/user-speaking? false}
-               :in
+               :sys-in
                speech-start)
              [{::activity-monitor/user-speaking? true} {:timer-process-in [speech-start]}]))))
   (testing "If user stopped speaking, set user speaking false and send frame to timer process to reset activity timer"
     (let [speech-stop (frame/user-speech-stop true {:timestamp current-time})]
       (is (= (activity-monitor/transform
                {::activity-monitor/user-speaking? true}
-               :in
+               :sys-in
                speech-stop)
              [{::activity-monitor/user-speaking? false} {:timer-process-in [speech-stop]}]))))
 
@@ -40,21 +40,21 @@
     (let [speech-start (frame/bot-speech-start true {:timestamp current-time})]
       (is (= (activity-monitor/transform
                {::activity-monitor/bot-speaking? false}
-               :in
+               :sys-in
                speech-start)
              [{::activity-monitor/bot-speaking? true} {:timer-process-in [speech-start]}]))))
   (testing "If bot speaking frame, set bot speaking true and send frame to timer process to reset activity timer"
     (let [speech-stop (frame/bot-speech-stop true {:timestamp current-time})]
       (is (= (activity-monitor/transform
                {::activity-monitor/bot-speaking? true}
-               :in
+               :sys-in
                speech-stop)
              [{::activity-monitor/bot-speaking? false} {:timer-process-in [speech-stop]}]))))
 
-  (testing "Returns old state if any other frame came from :in chan"
+  (testing "Returns old state if any other frame came from :sys-in chan"
     (is (= (activity-monitor/transform
              {::activity-monitor/bot-speaking? true}
-             :in
+             :sys-in
              (frame/system-start true {:timestamp current-time}))
            [{::activity-monitor/bot-speaking? true}])))
 
@@ -119,7 +119,7 @@
     (let [speech-start (frame/user-speech-start true {:timestamp current-time})]
       (is (= (activity-monitor/transform
                {::activity-monitor/user-speaking? true}
-               :in
+               :sys-in
                speech-start)
              [{::activity-monitor/user-speaking? true} {:timer-process-in [speech-start]}]))))
 
@@ -127,7 +127,7 @@
     (let [speech-stop (frame/user-speech-stop true {:timestamp current-time})]
       (is (= (activity-monitor/transform
                {::activity-monitor/user-speaking? false}
-               :in
+               :sys-in
                speech-stop)
              [{::activity-monitor/user-speaking? false} {:timer-process-in [speech-stop]}]))))
 
@@ -135,7 +135,7 @@
     (let [speech-start (frame/bot-speech-start true {:timestamp current-time})]
       (is (= (activity-monitor/transform
                {::activity-monitor/bot-speaking? true}
-               :in
+               :sys-in
                speech-start)
              [{::activity-monitor/bot-speaking? true} {:timer-process-in [speech-start]}]))))
 
@@ -143,7 +143,7 @@
     (let [speech-stop (frame/bot-speech-stop true {:timestamp current-time})]
       (is (= (activity-monitor/transform
                {::activity-monitor/bot-speaking? false}
-               :in
+               :sys-in
                speech-stop)
              [{::activity-monitor/bot-speaking? false} {:timer-process-in [speech-stop]}]))))
 
@@ -341,6 +341,6 @@
     (let [speech-start (frame/user-speech-start true {:timestamp current-time})]
       (is (= (activity-monitor/processor-fn
                {::activity-monitor/user-speaking? false}
-               :in
+               :sys-in
                speech-start)
              [{::activity-monitor/user-speaking? true} {:timer-process-in [speech-start]}])))))
