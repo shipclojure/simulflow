@@ -195,6 +195,36 @@
                                       :additionalProperties false}
                          :strict true}}]}}))})
 
+(defn scenario-example
+  "A scenario is a predefined, highly structured conversation. LLM performance
+  degrades when it has a big complex prompt to enact, so to ensure a consistent
+  output use scenarios that transition the LLM into a new scenario node with a clear
+  instruction for the current node."
+  ([in out]
+   (scenario-example in out {:initial-node :start}))
+  ([in out {:keys [initial-node scenario-config]}]
+   (let [flow (flow/create-flow
+                (phone-flow
+                  {:in in
+                   :out out
+                   ;; Don't add any context because the scenario will handle that
+                   :llm/context {:messages []
+                                 :tools []}
+                   :language :en
+
+                   ;; add gateway process for scenario to inject frames
+                   :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}}
+
+                   :extra-conns [[[:scenario :sys-out] [:tts :in]]
+                                 [[:scenario :sys-out] [:context-aggregator :sys-in]]]}))
+
+         s (sm/scenario-manager {:flow flow
+                                 :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel
+                                 :scenario-config (assoc scenario-config :initial-node initial-node)})]
+
+     {:flow flow
+      :scenario s})))
+
 (defn make-twilio-ws-handler
   [make-flow]
   (fn [req]

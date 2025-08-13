@@ -79,8 +79,8 @@
                  ;; add gateway process for scenario to inject frames
                  :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}}
 
-                 :extra-conns [[[:scenario :speak-out] [:tts :in]]
-                               [[:scenario :context-out] [:context-aggregator :in]]]})
+                 :extra-conns [[[:scenario :sys-out] [:tts :in]]
+                               [[:scenario :sys-out] [:context-aggregator :sys-in]]]})
 
          s (sm/scenario-manager {:flow flow
                                  :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel

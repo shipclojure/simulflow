@@ -383,7 +383,7 @@
         (is (every? frame/llm-text-chunk? frames))))))
 
 (deftest test-send-function
-  "Test the frame/send function for routing frames to appropriate channels"
+
   (testing "empty input"
     (is (= {} (frame/send))))
 
@@ -400,7 +400,7 @@
   (testing "mixed frame types"
     (let [audio-frame (frame/audio-input-raw test-audio-data)
           start-frame (frame/system-start true)
-          text-frame (frame/text-input {:text "hello"})]
+          text-frame (frame/text-input "hello")]
       (is (= {:out [audio-frame text-frame]
               :sys-out [start-frame]}
              (frame/send audio-frame start-frame text-frame)))))
@@ -413,8 +413,8 @@
 
   (testing "multiple regular frames"
     (let [audio-frame (frame/audio-input-raw test-audio-data)
-          text-frame (frame/text-input {:text "hello"})
-          transcription-frame (frame/transcription {:text "world"})]
+          text-frame (frame/text-input "hello")
+          transcription-frame (frame/transcription "world")]
       (is (= {:out [audio-frame text-frame transcription-frame]}
              (frame/send audio-frame text-frame transcription-frame)))))
 
@@ -448,18 +448,18 @@
     (let [frames [(frame/audio-input-raw test-audio-data)
                   (frame/audio-output-raw {:audio test-audio-data :sample-rate 16000})
                   (frame/audio-tts-raw test-audio-data)
-                  (frame/transcription {:text "hello"})
-                  (frame/transcription-interim {:text "hello"})
-                  (frame/llm-context {:messages []})
-                  (frame/llm-text-chunk {:text "chunk"})
-                  (frame/text-input {:text "input"})]]
+                  (frame/transcription "hello")
+                  (frame/transcription-interim "hello")
+                  (frame/llm-context {:messages [{:role :system :content "Hello"}]})
+                  (frame/llm-text-chunk "chunk")
+                  (frame/text-input "input")]]
       (is (= {:out frames}
              (apply frame/send frames)))))
 
   (testing "preserves frame order within channels"
     (let [frame1 (frame/audio-input-raw test-audio-data)
-          frame2 (frame/text-input {:text "hello"})
-          frame3 (frame/transcription {:text "world"})
+          frame2 (frame/text-input "hello")
+          frame3 (frame/transcription "world")
           sys-frame1 (frame/system-start true)
           sys-frame2 (frame/system-stop true)]
       (is (= {:out [frame1 frame2 frame3]

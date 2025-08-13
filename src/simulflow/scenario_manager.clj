@@ -63,7 +63,7 @@
                              (mapcat :functions)
                              (keep (fn [f] (get-in f [:function :transition-to])))
                              (remove #(or (nil? %)
-                                        (fn? %))))]
+                                          (fn? %))))]
         (every? defined-nodes transitions)))]])
 
 (defprotocol Scenario
@@ -153,13 +153,11 @@
   will be directed to :speak-out channel (should be connected to a text to
   speech process)"
   ([] {:ins {:scenario-in "Channel on which the scenario will put frames."}
-       :outs {:speak-out "Channel where speak-frames will be put. Should be connected to text to speech process"
-              :context-out "Channel where context frames will be put"}})
+       :outs {:sys-out "Channel where system frames will be put (follows app convention)"}})
   ([_] nil)
   ([state _] state)
   ([_ _ frame]
-   [nil (cond-> {:context-out [frame]}
-          (frame/speak-frame? frame) (assoc :speak-out [frame]))]))
+   [nil (frame/send frame)]))
 
 (comment
   (scenario-manager

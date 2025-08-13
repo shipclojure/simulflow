@@ -389,7 +389,9 @@
                      ::vad-user-speech-start
                      ::bot-interrupt
                      ::control-interrupt-start
-                     ::control-interrupt-stop})
+                     ::control-interrupt-stop
+                     ::scenario-context-update
+                     ::speak-frame})
 
 (defn system-frame?
   "Returns true if the frame is a system frame that should be processed immediately"
