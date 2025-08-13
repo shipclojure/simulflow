@@ -77,11 +77,11 @@
   [source target]
   (if (= source target)
     []
-    ;; Special case: µ-law to PCM conversion must go directly to 16-bit
-    ;; because Java Audio System doesn't support µ-law to 8-bit PCM
-    (if (and (= (:encoding source) :ulaw)
-             (= (:encoding target) :pcm-signed))
-      ;; For µ-law -> PCM conversion, force bit depth to 16 in first step
+    (cond
+      ;; Special case: µ-law to PCM conversion must go directly to 16-bit
+      ;; because Java Audio System doesn't support µ-law to 8-bit PCM
+      (and (= (:encoding source) :ulaw)
+           (= (:encoding target) :pcm-signed))
       (let [intermediate (assoc source
                                 :encoding :pcm-signed
                                 :sample-size-bits 16)
@@ -92,7 +92,22 @@
           [intermediate]
           (cons intermediate remaining-steps)))
 
+      ;; Special case: PCM to µ-law conversion requires downsampling first
+      ;; Must downsample to 8kHz before converting to µ-law
+      (and (= (:encoding source) :pcm-signed)
+           (= (:encoding target) :ulaw)
+           (not= (:sample-rate source) (:sample-rate target)))
+      (let [;; First downsample while keeping PCM format
+            downsampled (assoc source :sample-rate (:sample-rate target))
+            ;; Then convert encoding to µ-law
+            final-step (assoc downsampled :encoding :ulaw :sample-size-bits 8)
+            steps [downsampled]]
+        (if (= final-step target)
+          (conj steps final-step)
+          (concat steps (create-encoding-steps final-step target))))
+
       ;; Normal transformation order for other cases
+      :else
       (let [transformation-order [:encoding :sample-rate :sample-size-bits :channels :endian]
             steps (reduce
                     (fn [acc property]
@@ -151,7 +166,7 @@
 
           ;; Read all bytes from resampled stream
           output-stream (ByteArrayOutputStream.)
-          buffer-size (or (:buffer-size target-config) 1024)
+          buffer-size (or (:buffer-size target-config) 2048)
           buffer (byte-array buffer-size)]
 
       (loop []
@@ -169,12 +184,20 @@
               "Failed to resample audio data")
       audio-data)))
 
-(defn ulaw->pcm16k
+(defn ulaw8k->pcm16k
   [audio-data]
   (resample-audio-data
     audio-data
     {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}
     {:sample-rate 16000 :encoding :pcm-signed :channels 1 :sample-size-bits 16}))
+
+(defn pcm->ulaw8k
+  "Convert from source signed PCM at source sample rate to ulaw 8k"
+  [audio-data source-sample-rate]
+  (resample-audio-data
+    audio-data
+    {:sample-rate source-sample-rate :encoding :pcm-signed :channels 1 :sample-size-bits 16}
+    {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}))
 
 (defn pcms16->pcmf32
   "Convert a byte array of PCM signed shorts,

@@ -101,7 +101,7 @@
                                                      :media
                                                      :payload
                                                      u/decode-base64
-                                                     audio/ulaw->pcm16k))]
+                                                     audio/ulaw8k->pcm16k))]
           (base-input-transport-transform state in audio-frame))
 
         "close"

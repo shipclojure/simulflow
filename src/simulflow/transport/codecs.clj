@@ -14,7 +14,7 @@
                                        :media
                                        :payload
                                        u/decode-base64
-                                       audio/ulaw->pcm16k))
+                                       audio/ulaw8k->pcm16k))
     nil))
 
 (defn make-twilio-serializer [stream-sid]
@@ -22,7 +22,10 @@
     p/FrameSerializer
     (serialize-frame [_ frame]
       ;; Convert pipeline frame to Twilio-specific format
-      (when (frame/audio-output-raw? frame)
-        (u/json-str {:event "media"
-                     :streamSid stream-sid
-                     :media {:payload (u/encode-base64 (:frame/data frame))}})))))
+      (if (frame/audio-output-raw? frame)
+        (let [{:keys [sample-rate audio]} (:frame/data frame)
+              ulaw-audio (audio/pcm->ulaw8k audio sample-rate)]
+          (u/json-str {:event "media"
+                       :streamSid stream-sid
+                       :media {:payload (u/encode-base64 ulaw-audio)}}))
+        frame))))
