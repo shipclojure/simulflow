@@ -1,57 +1,52 @@
-# simulflow - Real-time Data-Driven AI Pipeline Framework
+# Simulflow - Build realtime voice-enabled AI agents in a data centric way
 
-<img src="./resources/simulflow.png"  align="right" height="250" />
-
+<img src="./resources/simulflow.png" align="right" height="250" />
 
 > Daydreaming is the first awakening of what we call simulflow. It is
 > an essential tool of rational thought. With it you can clear the mind for
 > better thinking.
 – Frank Herbert, _Heretics of Dune_
 
-
 > Bene Gesserit also have the ability to practice simulflow, literally the
 > simultaneous flow of several threads of consciousness at any given time; mental
 > multitasking, as it were. The combination of simulflow with their analytical
 > abilities and Other Memory is responsible for the frightening intelligence of
 > the average Bene Gesserit.
+
 Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simulflow)
 
 [![Clojars Project](https://img.shields.io/clojars/v/com.shipclojure/simulflow.svg)](https://clojars.org/com.shipclojure/simulflow)
-<br>
 
-**simulflow** is a Clojure framework for building real-time multimodal AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, video and AI interactions with built-in support for major AI providers.
+**simulflow** is a Clojure framework for building real-time voice-enabled AI applications using a data-driven, functional approach. Built on top of `clojure.core.async.flow`, it provides a composable pipeline architecture for processing audio, text, and AI interactions with built-in support for major AI providers.
 
 > [!WARNING]
 > While Simulflow has been used in live, production applications - it's still under *active* development.
 > Expect breaking changes to support new usecases
 
+## What is this?
+
+Simulflow is a framework that uses processors that communicate through specialized frames to create voice-enabled AI agents. Think of it as a data pipeline where each component transforms typed messages:
+
+```
+Microphone Transport → (audio-in frames) → Transcriptor → (transcription frames) → 
+Context Aggregation → (context to LLM) → LLM → (streams response) → 
+Text Assembler → (sentence frames) → Text-to-Speech → (audio-out frames) → 
+Audio Splitter → (chunked audio) → Speaker Transport
+```
+
+This pipeline approach makes it easy to swap components, add new functionality, or debug individual stages without affecting the entire system.
+
 ## Table of Contents
 
 - [Installation](#installation)
-  - [Clojure CLI/deps.edn](#clojure-clidepsedn)
-  - [Leiningen/Boot](#leiningenboot)
-  - [Maven](#maven)
 - [Requirements](#requirements)
 - [Video presentation](#video-presentation)
 - [Core Features](#core-features)
-- [Quick Start: Local example](#quick-start-local-example)
+- [Quick Start Example](#quick-start-example)
+- [Examples](#examples)
 - [Supported Providers](#supported-providers)
-  - [Text-to-Speech (TTS)](#text-to-speech-tts)
-  - [Speech-to-Text (STT)](#speech-to-text-stt)
-  - [Text Based Large Language Models (LLM)](#text-based-large-language-models-llm)
 - [Key Concepts](#key-concepts)
-  - [Flows](#flows)
-  - [Transport](#transport)
-  - [Frames](#frames)
-    - [Frame Schema Validation (Development Only)](#frame-schema-validation-development-only)
-    - [Creating Custom Frames](#creating-custom-frames)
-  - [Processes](#processes)
 - [Adding Custom Processes](#adding-custom-processes)
-- [Modular Processor Functions](#modular-processor-functions)
-  - [Multi-Arity Function Pattern](#multi-arity-function-pattern)
-  - [Example: Reusing Transport Functions](#example-reusing-transport-functions)
-  - [Composing Processor Logic](#composing-processor-logic)
-  - [Benefits of Modular Functions](#benefits-of-modular-functions)
 - [Built With](#built-with)
 - [Acknowledgements](#acknowledgements)
 - [License](#license)
@@ -100,7 +95,7 @@ Simulflow, [Dune Wiki](https://dune.fandom.com/wiki/Bene_Gesserit_Training#Simul
 -   **Built-in Services:** Ready-to-use integrations with major AI providers
 
 
-## Quick Start: Local example
+## Quick Start Example
 
 First, create a `resources/secrets.edn`:
 
@@ -119,67 +114,67 @@ Allow Microphone access when prompted.
 
 ```clojure
 (ns simulflow-examples.local
+  {:clj-reload/no-unload true}
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
-   [taoensso.telemere :as t]
-   [simulflow.processors.deepgram :as asr]
-   [simulflow.processors.elevenlabs :as tts]
+   [simulflow.async :refer [vthread-loop]]
+   [simulflow.processors.activity-monitor :as activity-monitor]
+   [simulflow.processors.deepgram :as deepgram]
+   [simulflow.processors.elevenlabs :as xi]
    [simulflow.processors.llm-context-aggregator :as context]
-   [simulflow.processors.openai :as llm]
+   [simulflow.processors.openai :as openai]
    [simulflow.secrets :refer [secret]]
    [simulflow.transport :as transport]
-   [simulflow.utils.core :as u]))
+   [simulflow.transport.in :as transport-in]
+   [simulflow.transport.out :as transport-out]
+   [simulflow.utils.core :as u]
+   [simulflow.vad.silero :as silero]
+   [taoensso.telemere :as t]))
 
 (defn make-local-flow
-  "This example showcases a voice AI agent for the local computer.  Audio is
-  usually encoded as PCM at 16kHz frequency (sample rate) and it is mono (1
-  channel).
-    "
+  "This example showcases a voice AI agent for the local computer."
   ([] (make-local-flow {}))
-  ([{:keys [llm-context extra-procs extra-conns encoding debug?
-            sample-rate language sample-size-bits channels chunk-duration-ms]
-     :or {llm-context {:messages [{:role "system"
-                                   :content "You are a helpful assistant "}]}
-          encoding :pcm-signed
-          sample-rate 16000
-          sample-size-bits 16
-          channels 1
-          chunk-duration-ms 20
+  ([{:keys [llm-context extra-procs extra-conns debug? vad-analyser
+            language chunk-duration-ms]
+     :or {llm-context {:messages
+                       [{:role "system"
+                         :content "You are a voice agent operating via phone. Be
+                       concise in your answers. The input you receive comes from a
+                       speech-to-text (transcription) system that isn't always
+                       efficient and may send unclear text. Ask for
+                       clarification when you're unsure what the person said."}]}
+
           language :en
           debug? false
+          chunk-duration-ms 20
           extra-procs {}
           extra-conns []}}]
 
    (flow/create-flow
      {:procs
       (u/deep-merge
-        {;; Capture audio from microphone and send raw-audio-input frames further in the pipeline
-         :transport-in {:proc transport/microphone-transport-in
-                        :args {:audio-in/sample-rate sample-rate
-                               :audio-in/channels channels
-                               :audio-in/sample-size-bits sample-size-bits}}
+        {;; Capture audio from microphone and send raw-audio-input frames
+         :transport-in {:proc transport-in/microphone-transport-in
+                        :args {:vad/analyser vad-analyser}}
          ;; raw-audio-input -> transcription frames
-         :transcriptor {:proc asr/deepgram-processor
+         :transcriptor {:proc deepgram/deepgram-processor
                         :args {:transcription/api-key (secret [:deepgram :api-key])
                                :transcription/interim-results? true
                                :transcription/punctuate? false
-                               :transcription/vad-events? true
+                               :transcription/vad-events? false
                                :transcription/smart-format? true
                                :transcription/model :nova-2
                                :transcription/utterance-end-ms 1000
-                               :transcription/language language
-                               :transcription/encoding encoding
-                               :transcription/sample-rate sample-rate}}
+                               :transcription/language language}}
 
          ;; user transcription & llm message frames -> llm-context frames
-         ;; responsible for keeping the full conversation history
          :context-aggregator  {:proc context/context-aggregator
                                :args {:llm/context llm-context
                                       :aggregator/debug? debug?}}
 
-         ;; Takes llm-context frames and produces new llm-text-chunk & llm-tool-call-chunk frames
-         :llm {:proc llm/openai-llm-process
+         ;; Takes llm-context frames and produces llm-text-chunk & llm-tool-call-chunk frames
+         :llm {:proc openai/openai-llm-process
                :args {:openai/api-key (secret [:openai :new-api-sk])
                       :llm/model "gpt-4o-mini"}}
 
@@ -191,35 +186,32 @@ Allow Microphone access when prompted.
          :llm-sentence-assembler {:proc context/llm-sentence-assembler}
 
          ;; speak-frames -> audio-output-raw frames
-         :tts {:proc tts/elevenlabs-tts-process
+         :tts {:proc xi/elevenlabs-tts-process
                :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
                       :elevenlabs/model-id "eleven_flash_v2_5"
                       :elevenlabs/voice-id (secret [:elevenlabs :voice-id])
                       :voice/stability 0.5
                       :voice/similarity-boost 0.8
                       :voice/use-speaker-boost? true
-                      :flow/language language
-                      :audio.out/encoding encoding
-                      :audio.out/sample-rate sample-rate}}
+                      :pipeline/language language}}
 
-         ;; audio-output-raw -> smaller audio-output-raw frames (used for sending audio in realtime)
+         ;; audio-output-raw -> smaller audio-output-raw frames for realtime
          :audio-splitter {:proc transport/audio-splitter
-                          :args {:audio.out/sample-rate sample-rate
-                                 :audio.out/sample-size-bits sample-size-bits
-                                 :audio.out/channels channels
-                                 :audio.out/duration-ms chunk-duration-ms}}
+                          :args {:audio.out/duration-ms chunk-duration-ms}}
 
          ;; speakers out
-         :transport-out {:proc transport/realtime-speakers-out-processor
-                         :args {:audio.out/sample-rate sample-rate
-                                :audio.out/sample-size-bits sample-size-bits
-                                :audio.out/channels channels
-                                :audio.out/duration-ms chunk-duration-ms}}}
+         :transport-out {:proc transport-out/realtime-speakers-out-processor
+                         :args {:audio.out/sending-interval chunk-duration-ms
+                                :audio.out/duration-ms chunk-duration-ms}}
+
+         :activity-monitor {:proc activity-monitor/process
+                            :args {::activity-monitor/timeout-ms 5000}}}
         extra-procs)
       :conns (concat
                [[[:transport-in :out] [:transcriptor :in]]
 
                 [[:transcriptor :out] [:context-aggregator :in]]
+                [[:transport-in :sys-out] [:context-aggregator :sys-in]]
                 [[:context-aggregator :out] [:llm :in]]
 
                 ;; Aggregate full context
@@ -231,23 +223,29 @@ Allow Microphone access when prompted.
                 [[:llm-sentence-assembler :out] [:tts :in]]
 
                 [[:tts :out] [:audio-splitter :in]]
-                [[:audio-splitter :out] [:transport-out :in]]]
+                [[:audio-splitter :out] [:transport-out :in]]
+
+                ;; Activity detection
+                [[:transport-out :sys-out] [:activity-monitor :sys-in]]
+                [[:transport-in :sys-out] [:activity-monitor :sys-in]]
+                [[:transcriptor :sys-out] [:activity-monitor :sys-in]]
+                [[:activity-monitor :out] [:context-aggregator :in]]
+                [[:activity-monitor :out] [:tts :in]]]
                extra-conns)})))
 
-(def local-ai (make-local-flow))
-
 (comment
+  (def local-ai (make-local-flow {:vad-analyser (silero/create-silero-vad)}))
 
   ;; Start local ai flow - starts paused
   (let [{:keys [report-chan error-chan]} (flow/start local-ai)]
-    (a/go-loop []
-      (when-let [[msg c] (a/alts! [report-chan error-chan])]
+    ;; Resume local ai -> you can now speak with the AI
+    (flow/resume local-ai)
+    (vthread-loop []
+      (when-let [[msg c] (a/alts!! [report-chan error-chan])]
         (when (map? msg)
-          (t/log! {:level :debug :id (if (= c error-chan) :error :report)} msg))
+          (t/log! (cond-> {:level :debug :id (if (= c error-chan) :error :report)}
+                    (= c error-chan) (assoc :error msg)) msg))
         (recur))))
-
-  ;; Resume local ai -> you can now speak with the AI
-  (flow/resume local-ai)
 
   ;; Stop the conversation
   (flow/stop local-ai)
@@ -259,9 +257,15 @@ Which roughly translates to:
 
 ![Flow Diagram](./resources/flow.png)
 
+## Examples
 
-See [examples](./examples/src/voice_fn_examples/) for more usages.
+For more complete examples and use cases, see the [examples](./examples/src/simulflow_examples/) directory:
 
+- **[Local Example](./examples/src/simulflow_examples/local.clj)** - Complete voice AI agent using microphone and speakers
+- **[Twilio WebSocket](./examples/src/simulflow_examples/twilio_websocket.clj)** - Telephony integration for phone-based voice AI
+- **Transport Examples** - Different audio input/output configurations
+
+These examples show real-world usage patterns and can be used as starting points for your own applications.
 
 ## Supported Providers
 
