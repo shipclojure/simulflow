@@ -1,7 +1,7 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
-## Unreleased
+## [0.1.7-alpha] - 2025-08-13
 
 ### Added
 - Voice Activity Detection protocols that the transport-in processors can use. [See protocol here](./src/simulflow/vad/core.clj)

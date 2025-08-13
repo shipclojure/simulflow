@@ -14,12 +14,12 @@
 
  :pom {:group-id "com.shipclojure"
        :artifact-id "simulflow"
-       :version "0.1.6-alpha"
+       :version "0.1.7-alpha"
        :name "simulflow"
        :description "A Clojure framework for building real-time voice-enabled AI applications"
        :url "https://github.com/shipclojure/simulflow"
        :scm {:url "https://github.com/shipclojure/simulflow"
-             :tag "v0.1.6-alpha"
+             :tag "v0.1.7-alpha"
              :connection "scm:git:git://github.com/shipclojure/simulflow.git"
              :dev-connection "scm:git:ssh://git@github.com/shipclojure/simulflow.git"}
        :licenses [{:name "Eclipse Public License"
@@ -70,4 +70,4 @@
            :exec-fn deps-deploy.deps-deploy/deploy
            :exec-args {:installer :remote
                        :sign-releases? false
-                       :artifact "target/com.shipclojure/simulflow-v0.1.6-alpha.jar"}}}}
+                       :artifact "target/com.shipclojure/simulflow-v0.1.7-alpha.jar"}}}}
