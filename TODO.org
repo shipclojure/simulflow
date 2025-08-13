@@ -2,7 +2,6 @@
 #+startup: indent content
 
 * TODO Change audio utils for conversion into specific encoding change (ulaw->pcm, pcm->ulaw etc) and resampling (same encoding, different sample rate))
-* TODO Add float32 conversion that is fast to use with VAD or turn detection models
 * TODO Standardize serializers/deserializers to have within the pipeline 16kHz PCM audio
 * TODO [#A] Add TTFT metric
 
@@ -18,26 +17,11 @@
 * TODO Add support for first message greeting in the pipeline :mvp:
 * TODO Add support for [[https://github.com/fixie-ai/ultravox][ultravox]]
 
-* TODO Add support for Silero VAD
-DEADLINE: <2025-01-20 Mon 20:00>
-:LOGBOOK:
-CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
-:END:
-
 * TODO Use [[https://github.com/taoensso/trove][trove]] as a logging facade so we don't force users to use telemere for logging
-
-* DONE Add support for google gemini
-CLOSED: [2025-05-13 Tue 11:29]
 
 * TODO Add support for openai realtime API
 
 * TODO Research webrtc support
-
-* DONE Add local transport (microphone + speaker out)
-CLOSED: [2025-05-13 Tue 11:30]
-:LOGBOOK:
-CLOCK: [2025-02-06 Thu 08:07]--[2025-02-06 Thu 08:32] =>  0:25
-:END:
 
 * TODO research [[https://github.com/phronmophobic/clj-media][clojure-media]] for dedicated ffmpeg support for media conversion
 
@@ -215,6 +199,24 @@ Some code from another project
         (recur)))))
 #+end_src
 
+* TODO Add support for [[https://talon.wiki/][Talon]] STT
+* DONE Add float32 conversion that is fast to use with VAD or turn detection models
+CLOSED: [2025-08-12 Tue 17:57]
+* DONE Add support for Silero VAD
+CLOSED: [2025-08-12 Tue 17:56] DEADLINE: <2025-01-20 Mon 20:00>
+:LOGBOOK:
+CLOCK: [2025-01-13 Mon 07:54]--[2025-01-13 Mon 08:19] =>  0:25
+:END:
+
+* DONE Add support for google gemini
+CLOSED: [2025-05-13 Tue 11:29]
+
+* DONE Add local transport (microphone + speaker out)
+CLOSED: [2025-05-13 Tue 11:30]
+:LOGBOOK:
+CLOCK: [2025-02-06 Thu 08:07]--[2025-02-06 Thu 08:32] =>  0:25
+:END:
+
 * DONE Implement diagram flows into vice-fn
 CLOSED: [2025-05-13 Tue 11:30]
 :LOGBOOK:
@@ -248,5 +250,3 @@ CLOSED: [2025-05-13 Tue 11:30]
 :LOGBOOK:
 CLOCK: [2025-02-03 Mon 09:35]--[2025-02-03 Mon 10:00] =>  0:25
 :END:
-
-* TODO Add support for [[https://talon.wiki/][Talon]] STT
