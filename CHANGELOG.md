@@ -8,11 +8,22 @@ All notable changes to this project will be documented in this file. This change
 - [Silero Voice Activity Detection model](./src/simulflow/vad/silero.clj) running through Onnx Runtime
 - parameter `:vad/analyser` to all transport-in processor params to pass a VAD analyser like Silero to be ran on each new audio chunk. This is useful for logic that handles AI interruptions and improves turn taking.
 - Added malli schema for `audio-output-raw` frames
+- Added `simulflow.frame/send` helper function that outputs frames based on their appropriate direction - used now in most processors
+- **Twilio Integration**: Twilio serializer with `make-twilio-serializer` for WebSocket communication
+- **Audio Resampler Processor**: New processor for real-time sample rate conversion
+- **System Frame Router**: New `system-frame-router` processor for handling system message routing in complex flows
+- **Interruption Support**: New frame types for bot interruption handling: `control-interrupt-start`, `control-interrupt-stop`, `bot-interrupt`
 
 ### Changed
-- Made 16kHz PCM mono audio be the default audio that runs through the pipeline. All `audio-input-raw` frames that come through pe pipeline are expected to be this way.
+- Made **16kHz signed PCM mono** audio be the default audio that runs through the pipeline. All `audio-input-raw` frames that come through pe pipeline are expected to be this way.
 - **POTENTIAL BREAKING** `frame/audio-output-raw` are now expected to contain the sample-rate of the audio. The sample rate will be used for chunking and final output conversion. If you have custom Text to speech generators, you need to update them to use it.
+- Changed examples to use silero vad model for VAD instead of relying on Deepgram
+- **BREAKING** Processors that outputted `system-frames` (see [frame/system-frames](./src/simulflow/frame.clj) set for a list of system frames) will output them exclusively on `:sys-out` channel and normal frames on `:out` channel.
+- **Audio Processing**: Enhanced audio conversion with improved µ-law/PCM support and step-by-step conversion planning
 
+### Fixed
+- **Audio Conversion**: Fixed critical bug in PCM 16kHz to Twilio µ-law 8kHz conversion where downsampling must occur before encoding conversion
+- **Transport**: Removed duplicate system frame passthrough that was causing duplicate frames
 
 ## [0.1.5-alpha] - 2025-07-24
 

@@ -381,3 +381,94 @@
       (let [frames (doall (repeatedly 100 #(frame/llm-text-chunk "test")))]
         (is (= 100 (count frames)))
         (is (every? frame/llm-text-chunk? frames))))))
+
+(deftest test-send-function
+  "Test the frame/send function for routing frames to appropriate channels"
+  (testing "empty input"
+    (is (= {} (frame/send))))
+
+  (testing "single regular frame"
+    (let [audio-frame (frame/audio-input-raw test-audio-data)]
+      (is (= {:out [audio-frame]}
+             (frame/send audio-frame)))))
+
+  (testing "single system frame"
+    (let [start-frame (frame/system-start true)]
+      (is (= {:sys-out [start-frame]}
+             (frame/send start-frame)))))
+
+  (testing "mixed frame types"
+    (let [audio-frame (frame/audio-input-raw test-audio-data)
+          start-frame (frame/system-start true)
+          text-frame (frame/text-input {:text "hello"})]
+      (is (= {:out [audio-frame text-frame]
+              :sys-out [start-frame]}
+             (frame/send audio-frame start-frame text-frame)))))
+
+  (testing "multiple system frames"
+    (let [start-frame (frame/system-start true)
+          stop-frame (frame/system-stop true)]
+      (is (= {:sys-out [start-frame stop-frame]}
+             (frame/send start-frame stop-frame)))))
+
+  (testing "multiple regular frames"
+    (let [audio-frame (frame/audio-input-raw test-audio-data)
+          text-frame (frame/text-input {:text "hello"})
+          transcription-frame (frame/transcription {:text "world"})]
+      (is (= {:out [audio-frame text-frame transcription-frame]}
+             (frame/send audio-frame text-frame transcription-frame)))))
+
+  (testing "nil frames are filtered out"
+    (let [audio-frame (frame/audio-input-raw test-audio-data)
+          start-frame (frame/system-start true)]
+      (is (= {:out [audio-frame]
+              :sys-out [start-frame]}
+             (frame/send nil audio-frame nil start-frame nil)))))
+
+  (testing "all nil frames"
+    (is (= {} (frame/send nil nil nil))))
+
+  (testing "all system frame types are routed to sys-out"
+    (let [frames [(frame/system-start true)
+                  (frame/system-stop true)
+                  (frame/system-config-change {:config {}})
+                  (frame/user-speech-start true)
+                  (frame/user-speech-stop true)
+                  (frame/bot-speech-start true)
+                  (frame/bot-speech-stop true)
+                  (frame/vad-user-speech-start true)
+                  (frame/vad-user-speech-stop true)
+                  (frame/bot-interrupt true)
+                  (frame/control-interrupt-start true)
+                  (frame/control-interrupt-stop true)]]
+      (is (= {:sys-out frames}
+             (apply frame/send frames)))))
+
+  (testing "all regular frame types are routed to out"
+    (let [frames [(frame/audio-input-raw test-audio-data)
+                  (frame/audio-output-raw {:audio test-audio-data :sample-rate 16000})
+                  (frame/audio-tts-raw test-audio-data)
+                  (frame/transcription {:text "hello"})
+                  (frame/transcription-interim {:text "hello"})
+                  (frame/llm-context {:messages []})
+                  (frame/llm-text-chunk {:text "chunk"})
+                  (frame/text-input {:text "input"})]]
+      (is (= {:out frames}
+             (apply frame/send frames)))))
+
+  (testing "preserves frame order within channels"
+    (let [frame1 (frame/audio-input-raw test-audio-data)
+          frame2 (frame/text-input {:text "hello"})
+          frame3 (frame/transcription {:text "world"})
+          sys-frame1 (frame/system-start true)
+          sys-frame2 (frame/system-stop true)]
+      (is (= {:out [frame1 frame2 frame3]
+              :sys-out [sys-frame1 sys-frame2]}
+             (frame/send frame1 sys-frame1 frame2 sys-frame2 frame3)))))
+
+  (testing "large number of frames"
+    (let [regular-frames (repeatedly 100 #(frame/text-input {:text (str "message-" (rand-int 1000))}))
+          system-frames (repeatedly 50 #(frame/system-start true))]
+      (let [result (apply frame/send (concat regular-frames system-frames))]
+        (is (= 100 (count (:out result))))
+        (is (= 50 (count (:sys-out result))))))))
