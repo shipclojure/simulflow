@@ -1,0 +1,10 @@
+;; `cljfmt` is not used directly with simulflow. I recommend you use
+;; `standard-clojure`: https://github.com/oakmac/standard-clojure-style-js
+
+;; This config is here because AI tools like `clojure-mcp` format code so it is
+;; good for the AI formatting to be as compliant as possible with our standard
+;; formatting.
+{:indents {#re ".*" [[:inner 0]]}
+ :remove-surrounding-whitespace?  false
+ :remove-trailing-whitespace?     false
+ :remove-consecutive-blank-lines? false}
