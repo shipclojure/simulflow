@@ -69,7 +69,7 @@
                                  source-encoding target-encoding
                                  channels sample-size-bits buffer-size endian]} state
 
-          audio-data (:frame/data frame)
+          audio-data ^bytes (:frame/data frame)
 
           source-config {:sample-rate source-sample-rate
                          :encoding source-encoding

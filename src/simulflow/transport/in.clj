@@ -137,7 +137,7 @@
 (defn process-mic-buffer
   "Process audio buffer read from microphone.
    Returns map with :audio-data and :timestamp, or nil if no valid data."
-  [buffer bytes-read]
+  [^bytes buffer ^long bytes-read]
   (when (pos? bytes-read)
     {:audio-data (Arrays/copyOfRange buffer 0 bytes-read)
      :timestamp (java.util.Date.)}))

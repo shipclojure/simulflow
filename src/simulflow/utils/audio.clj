@@ -5,8 +5,9 @@
    [uncomplicate.clojure-sound.sampled :as sampled])
   (:import
    (java.io ByteArrayInputStream ByteArrayOutputStream)
-   (java.nio ByteBuffer ByteOrder)
-   (javax.sound.sampled AudioFormat AudioSystem DataLine$Info)))
+   (javax.sound.sampled AudioFormat AudioInputStream AudioSystem DataLine$Info)))
+
+(set! *warn-on-reflection* true)
 
 (defn line-supported?
   [^DataLine$Info info]
@@ -51,8 +52,8 @@
 
 (defn create-audio-format
   "Create a javax.sound.sampled.AudioFormat from configuration"
-  [{:keys [sample-rate encoding channels sample-size-bits endian buffer-size]
-    :or {sample-rate 16000 encoding :pcm-signed channels 1 sample-size-bits 16 endian :little-endian buffer-size 1024}}]
+  [{:keys [sample-rate encoding channels sample-size-bits endian]
+    :or {sample-rate 16000 encoding :pcm-signed channels 1 sample-size-bits 16 endian :little-endian}}]
   (sampled/audio-format encoding
                         sample-rate
                         sample-size-bits
@@ -110,15 +111,15 @@
       :else
       (let [transformation-order [:encoding :sample-rate :sample-size-bits :channels :endian]
             steps (reduce
-                    (fn [acc property]
-                      (let [current-config (or (last acc) source)
-                            target-value (get target property)
-                            current-value (get current-config property)]
-                        (if (= current-value target-value)
-                          acc
-                          (conj acc (assoc current-config property target-value)))))
-                    []
-                    transformation-order)]
+                   (fn [acc property]
+                     (let [current-config (or (last acc) source)
+                           target-value (get target property)
+                           current-value (get current-config property)]
+                       (if (= current-value target-value)
+                         acc
+                         (conj acc (assoc current-config property target-value)))))
+                   []
+                   transformation-order)]
         steps))))
 
 (defn convert-with-steps
@@ -138,7 +139,7 @@
         (recur (rest steps) next)))))
 
 (defn bytes->audio-input-stream
-  [audio-bytes format]
+  [^bytes audio-bytes format]
   (let [;; Create input stream from source audio
         byte-input-stream (ByteArrayInputStream. audio-bytes)]
     (sampled/audio-input byte-input-stream format (alength audio-bytes))))
@@ -153,16 +154,16 @@
 
    Returns:
    - byte array of resampled audio"
-  [audio-data source-config target-config]
+  ^bytes [^bytes audio-data source-config target-config]
   (try
-    (let [source-audio-stream (bytes->audio-input-stream
-                                audio-data
-                                (create-audio-format source-config))
+    (let [^AudioInputStream source-audio-stream (bytes->audio-input-stream
+                                                 audio-data
+                                                 (create-audio-format source-config))
 
           conversion-steps (create-encoding-steps source-config target-config)
 
           ;; Get resampled audio stream
-          target-audio-stream (convert-with-steps source-audio-stream conversion-steps)
+          ^AudioInputStream target-audio-stream (convert-with-steps source-audio-stream conversion-steps)
 
           ;; Read all bytes from resampled stream
           output-stream (ByteArrayOutputStream.)
@@ -187,42 +188,17 @@
 (defn ulaw8k->pcm16k
   [audio-data]
   (resample-audio-data
-    audio-data
-    {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}
-    {:sample-rate 16000 :encoding :pcm-signed :channels 1 :sample-size-bits 16}))
+   audio-data
+   {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}
+   {:sample-rate 16000 :encoding :pcm-signed :channels 1 :sample-size-bits 16}))
 
 (defn pcm->ulaw8k
   "Convert from source signed PCM at source sample rate to ulaw 8k"
   [audio-data source-sample-rate]
   (resample-audio-data
-    audio-data
-    {:sample-rate source-sample-rate :encoding :pcm-signed :channels 1 :sample-size-bits 16}
-    {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}))
-
-(defn pcms16->pcmf32
-  "Convert a byte array of PCM signed shorts,
-  return a byte array of pcm signed 32 bit floats.
-  "
-  [^bytes bs]
-  (let [inbuf (doto (ByteBuffer/wrap bs)
-                (.order (ByteOrder/nativeOrder)))
-        buf (doto (ByteBuffer/allocate (* 2 (alength bs)))
-              (.order (ByteOrder/nativeOrder)))
-        fbuf (.asFloatBuffer buf)]
-    (doseq [_i (range (quot (alength bs) 2))]
-      (.put fbuf
-            (float (/ (.getShort inbuf)
-                      Short/MAX_VALUE))))
-    (.array buf)))
-
-(defn bytes->floats [^bytes bs]
-  (let [buf (doto (ByteBuffer/wrap bs)
-              (.order (ByteOrder/nativeOrder)))
-        fbuf (.asFloatBuffer buf)
-        flts (float-array (quot (alength bs)
-                                4))]
-    (.get fbuf flts)
-    flts))
+   audio-data
+   {:sample-rate source-sample-rate :encoding :pcm-signed :channels 1 :sample-size-bits 16}
+   {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}))
 
 (defn pcm-bytes->floats
   "Convert byte array to float array (assuming 16-bit PCM little-endian)"
@@ -237,33 +213,6 @@
               (/ (float (short (bit-or low-byte (bit-shift-left high-byte 8))))
                  32768.0))))
     audio-float32))
-
-(defn downsample
-  "Convert the sound samples, `bs` from `from-sample-rate` to `to-sample-rate`.
-
-  The sound samples must be pcmf32."
-  [^bytes bs from-sample-rate to-sample-rate]
-  (assert (< to-sample-rate from-sample-rate))
-  (let [num-samples (dec
-                      (long
-                        (* (quot (alength bs) 4)
-                           (/ to-sample-rate
-                              from-sample-rate))))
-        inbuf (doto (ByteBuffer/wrap bs)
-                (.order (ByteOrder/nativeOrder)))
-        outbuf (doto (ByteBuffer/allocate (* 4 num-samples))
-                 (.order (ByteOrder/nativeOrder)))]
-    (dotimes [i num-samples]
-      (let [index (double (* i (/ from-sample-rate to-sample-rate)))
-            i0 (long index)
-            i1 (inc i0)
-            f (- index (Math/floor index))]
-        #_(.putFloat outbuf (* 4 i) (.getFloat inbuf (* 4 i0)))
-        (.putFloat outbuf (* 4 i)
-                   (+ (.getFloat inbuf (* 4 i0))
-                      (* f (- (.getFloat inbuf (* 4 i1))
-                              (.getFloat inbuf (* 4 i0))))))))
-    (.array outbuf)))
 
 (defn calculate-volume
   "Calculate volume level (RMS) for 16-bit PCM audio buffer.
@@ -352,8 +301,8 @@
                         (let [byte1 (aget pcm-bytes i)
                               byte2 (aget pcm-bytes (inc i))
                               sample (Math/abs (int (unchecked-short
-                                                      (bit-or (bit-and byte1 0xff)
-                                                              (bit-shift-left byte2 8)))))]
+                                                     (bit-or (bit-and byte1 0xff)
+                                                             (bit-shift-left byte2 8)))))]
                           (recur (+ i 2) (max max-val sample)))
                         max-val))]
       (<= max-value speaking-threshold))))
@@ -404,3 +353,61 @@
           (aset result (inc i) high-byte)
           (recur (+ i 2)))))
     result))
+
+(defn downsample-pcm16
+  "Downsample 16-bit PCM audio from source sample rate to target sample rate.
+
+   Uses simple linear interpolation for resampling. For higher quality resampling,
+   consider using the existing resample-audio-data function with javax.sound.
+
+   Args:
+     pcm-bytes: Byte array of 16-bit signed PCM samples (little-endian)
+     from-sample-rate: Source sample rate in Hz
+     to-sample-rate: Target sample rate in Hz (must be <= from-sample-rate)
+
+   Returns:
+     Byte array of downsampled 16-bit PCM samples"
+  [^bytes pcm-bytes from-sample-rate to-sample-rate]
+  (assert (<= to-sample-rate from-sample-rate)
+          "Target sample rate must be <= source sample rate for downsampling")
+
+  (if (= from-sample-rate to-sample-rate)
+    pcm-bytes ; No resampling needed
+    (let [num-input-samples (/ (count pcm-bytes) 2)
+          ratio (/ (double to-sample-rate) from-sample-rate)
+          num-output-samples (long (* num-input-samples ratio))
+          result (byte-array (* num-output-samples 2))]
+
+      (loop [out-idx 0]
+        (when (< out-idx num-output-samples)
+          (let [;; Calculate corresponding input sample position
+                input-pos (* out-idx (/ (double from-sample-rate) to-sample-rate))
+                i0 (long input-pos)
+                i1 (min (inc i0) (dec num-input-samples))
+                fraction (- input-pos i0)
+
+                ;; Read input samples (16-bit little-endian)
+                sample0 (let [byte-idx (* i0 2)
+                              low (bit-and (aget pcm-bytes byte-idx) 0xff)
+                              high (aget pcm-bytes (inc byte-idx))]
+                          (unchecked-short (bit-or low (bit-shift-left high 8))))
+
+                sample1 (let [byte-idx (* i1 2)
+                              low (bit-and (aget pcm-bytes byte-idx) 0xff)
+                              high (aget pcm-bytes (inc byte-idx))]
+                          (unchecked-short (bit-or low (bit-shift-left high 8))))
+
+                ;; Linear interpolation
+                interpolated (+ sample0 (* fraction (- sample1 sample0)))
+                final-sample (long interpolated)
+
+                ;; Write output sample (16-bit little-endian)
+                out-byte-idx (* out-idx 2)
+                low-byte (unchecked-byte (bit-and final-sample 0xff))
+                high-byte (unchecked-byte (bit-shift-right final-sample 8))]
+
+            (aset result out-byte-idx low-byte)
+            (aset result (inc out-byte-idx) high-byte)
+            (recur (inc out-idx)))))
+
+      result)))

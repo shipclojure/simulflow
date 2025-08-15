@@ -1,13 +1,14 @@
 (ns simulflow.onnx
   "Namespace with various utils for the Onnx framework "
   (:import
-   (ai.onnxruntime OrtEnvironment)))
+   (ai.onnxruntime OrtEnvironment OrtSession)
+   [java.util Map]))
 
-(defn inspect-model [model-path]
+(defn inspect-model [^String model-path]
   (let [env (OrtEnvironment/getEnvironment)
-        session (.createSession env model-path)]
+        session ^OrtSession (.createSession env model-path)]
     (println "Input names and shapes:")
-    (doseq [input (.getInputInfo session)]
+    (doseq [input ^Map (.getInputInfo session)]
       (println "  " (.getKey input) "->" (.getValue input)))
     (println "Output names and shapes:")
     (doseq [output (.getOutputInfo session)]

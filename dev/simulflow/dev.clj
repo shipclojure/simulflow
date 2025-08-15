@@ -5,8 +5,23 @@
    [malli.dev :as malli-dev]
    [taoensso.telemere :as t]))
 
-
 (t/set-min-level! :debug)
+
+(defn enable-reflection-warnings!
+  "Enable reflection warnings for all loaded namespaces and set as default for new ones."
+  []
+  ;; Set default for new namespaces
+  (alter-var-root #'*warn-on-reflection* (constantly true))
+
+  ;; Enable for all currently loaded namespaces
+  (doseq [ns-sym (all-ns)]
+    (binding [*ns* ns-sym]
+      (set! *warn-on-reflection* true)))
+
+  (println "Reflection warnings enabled for all namespaces"))
+
+;; Enable reflection warnings by default in dev
+(enable-reflection-warnings!)
 
 (defmacro jit [sym]
   `(requiring-resolve '~sym))
@@ -42,9 +57,7 @@
 (comment ;; s-:
 
   (reset)
-
-  )
-
+  ,)
 
 (comment
   (export-types)
