@@ -188,7 +188,7 @@
                     :on-close (fn [_ws code reason]
                                 (reset! alive? false)
                                 (t/log! {:level :debug :id :elevenlabs} ["Websocket connection closed" "Code:" code "Reason:" reason])))
-        _ (t/log! {:level :debug :id :elevenlabs} "Connecting to TTS websocket")
+        _ (t/log! {:level :debug :id :elevenlabs :data url} "Connecting to TTS websocket")
         ws-conn @(ws/websocket url conf)]
     (vthread-loop []
       (when @alive?

@@ -94,7 +94,9 @@
                          (out-frames {:sys-out [(frame/system-config-change
                                                   (u/without-nils {:twilio/stream-sid stream-sid
                                                                    :twilio/call-sid (get-in data [:start :callSid])
-                                                                   :transport/serializer (make-twilio-serializer stream-sid :convert-audio? (:serializer/convert-audio? state false))}))]})
+                                                                   :transport/serializer (make-twilio-serializer
+                                                                                           stream-sid
+                                                                                           :convert-audio? (:serializer/convert-audio? state false))}))]})
                          (out-frames {}))]
         "media"
         (let [audio-frame (frame/audio-input-raw (-> data

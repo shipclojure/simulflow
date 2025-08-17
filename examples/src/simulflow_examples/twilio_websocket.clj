@@ -122,9 +122,12 @@
                      :voice/stability 0.5
                      :voice/similarity-boost 0.8
                      :voice/use-speaker-boost? true
-                     :pipeline/language language}}
+                     :pipeline/language language
+                     :audio.out/sample-size-bits 8
+                     :audio.out/encoding :ulaw}}
         :audio-splitter {:proc transport/audio-splitter
-                         :args {:audio.out/duration-ms chunk-duration-ms}}
+                         :args {:audio.out/duration-ms chunk-duration-ms
+                                :audio.out/sample-size-bits 8}}
         :transport-out {:proc transport-out/realtime-out-processor
                         :args {:audio.out/chan out
                                :audio.out/sending-interval chunk-duration-ms}}
