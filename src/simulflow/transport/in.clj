@@ -94,7 +94,7 @@
                          (out-frames {:sys-out [(frame/system-config-change
                                                   (u/without-nils {:twilio/stream-sid stream-sid
                                                                    :twilio/call-sid (get-in data [:start :callSid])
-                                                                   :transport/serializer (make-twilio-serializer stream-sid)}))]})
+                                                                   :transport/serializer (make-twilio-serializer stream-sid :convert-audio? (:serializer/convert-audio? state false))}))]})
                          (out-frames {}))]
         "media"
         (let [audio-frame (frame/audio-input-raw (-> data
@@ -119,7 +119,8 @@
   {:outs base-transport-outs
    :params (into base-input-params
                  {:transport/in-ch "Channel from which input comes"
-                  :twilio/handle-event "[DEPRECATED] Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"})})
+                  :twilio/handle-event "[DEPRECATED] Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"
+                  :serializer/convert-audio? "If the serializer that is created should convert audio to 8kHz ULAW or not."})})
 
 (defn twilio-transport-in-fn
   ([] twilio-transport-in-describe)

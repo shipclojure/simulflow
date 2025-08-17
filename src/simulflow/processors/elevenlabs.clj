@@ -13,13 +13,21 @@
 
 (def ^:private xi-tts-websocket-url "wss://api.elevenlabs.io/v1/text-to-speech/%s/stream-input")
 
+(def elevenlabs-encoding
+  "Mapping from clojure sound encoding to elevenlabs format"
+  {:ulaw :ulaw
+   :mp3 :mp3
+   :pcm-signed :pcm
+   :pcm-unsigned :pcm
+   :pcm-float :pcm})
+
 (defn encoding->elevenlabs
-  [sample-rate]
-  (keyword (str "pcm_" sample-rate)))
+  [format sample-rate]
+  (keyword (str (name (elevenlabs-encoding format)) "_" sample-rate)))
 
 (defn make-elevenlabs-ws-url
   [args]
-  (let [{:audio.out/keys [sample-rate]
+  (let [{:audio.out/keys [encoding sample-rate]
          :pipeline/keys [language]
          :elevenlabs/keys [model-id voice-id]
          :or {model-id "eleven_flash_v2_5"
@@ -29,7 +37,7 @@
     (u/append-search-params (format xi-tts-websocket-url voice-id)
                             {:model_id model-id
                              :language_code language
-                             :output_format (encoding->elevenlabs sample-rate)})))
+                             :output_format (encoding->elevenlabs encoding sample-rate)})))
 
 (defn begin-stream-message
   [{:voice/keys [stability similarity-boost use-speaker-boost?]
@@ -87,6 +95,8 @@
    [:voice/use-speaker-boost? {:default true
                                :description "Whether to enable speaker boost enhancement"}
     :boolean]
+   [:audio.out/encoding {:default :pcm-signed
+                         :description "The encoding for the generated audio. By default uses PCM but can be changed for others for example ulaw to use in telephony context"} schema/AudioEncoding]
    [:audio.out/sample-rate {:default 24000
                             :description "The sample rate at which elevenlabs will generate audio"}
     [:enum 8000 16000 22050 24000 44100]]])
