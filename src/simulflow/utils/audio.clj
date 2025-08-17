@@ -111,15 +111,15 @@
       :else
       (let [transformation-order [:encoding :sample-rate :sample-size-bits :channels :endian]
             steps (reduce
-                   (fn [acc property]
-                     (let [current-config (or (last acc) source)
-                           target-value (get target property)
-                           current-value (get current-config property)]
-                       (if (= current-value target-value)
-                         acc
-                         (conj acc (assoc current-config property target-value)))))
-                   []
-                   transformation-order)]
+                    (fn [acc property]
+                      (let [current-config (or (last acc) source)
+                            target-value (get target property)
+                            current-value (get current-config property)]
+                        (if (= current-value target-value)
+                          acc
+                          (conj acc (assoc current-config property target-value)))))
+                    []
+                    transformation-order)]
         steps))))
 
 (defn convert-with-steps
@@ -157,8 +157,8 @@
   ^bytes [^bytes audio-data source-config target-config]
   (try
     (let [^AudioInputStream source-audio-stream (bytes->audio-input-stream
-                                                 audio-data
-                                                 (create-audio-format source-config))
+                                                  audio-data
+                                                  (create-audio-format source-config))
 
           conversion-steps (create-encoding-steps source-config target-config)
 
@@ -188,17 +188,17 @@
 (defn ulaw8k->pcm16k
   [audio-data]
   (resample-audio-data
-   audio-data
-   {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}
-   {:sample-rate 16000 :encoding :pcm-signed :channels 1 :sample-size-bits 16}))
+    audio-data
+    {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}
+    {:sample-rate 16000 :encoding :pcm-signed :channels 1 :sample-size-bits 16}))
 
 (defn pcm->ulaw8k
   "Convert from source signed PCM at source sample rate to ulaw 8k"
   [audio-data source-sample-rate]
   (resample-audio-data
-   audio-data
-   {:sample-rate source-sample-rate :encoding :pcm-signed :channels 1 :sample-size-bits 16}
-   {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}))
+    audio-data
+    {:sample-rate source-sample-rate :encoding :pcm-signed :channels 1 :sample-size-bits 16}
+    {:sample-rate 8000 :encoding :ulaw :channels 1 :sample-size-bits 8}))
 
 (defn pcm-bytes->floats
   "Convert byte array to float array (assuming 16-bit PCM little-endian)"
@@ -301,8 +301,8 @@
                         (let [byte1 (aget pcm-bytes i)
                               byte2 (aget pcm-bytes (inc i))
                               sample (Math/abs (int (unchecked-short
-                                                     (bit-or (bit-and byte1 0xff)
-                                                             (bit-shift-left byte2 8)))))]
+                                                      (bit-or (bit-and byte1 0xff)
+                                                              (bit-shift-left byte2 8)))))]
                           (recur (+ i 2) (max max-val sample)))
                         max-val))]
       (<= max-value speaking-threshold))))

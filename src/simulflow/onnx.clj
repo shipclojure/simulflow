@@ -2,7 +2,7 @@
   "Namespace with various utils for the Onnx framework "
   (:import
    (ai.onnxruntime OrtEnvironment OrtSession)
-   [java.util Map]))
+   (java.util Map)))
 
 (defn inspect-model [^String model-path]
   (let [env (OrtEnvironment/getEnvironment)

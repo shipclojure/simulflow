@@ -20,7 +20,9 @@
   [:map
    [:audio.out/duration-ms {:default 40
                             :description "Duration in milliseconds of each audio chunk"}
-    [:int {:min 1 :max 1000}]]])
+    [:int {:min 1 :max 1000}]]
+   [:audio.out/sample-size-bits {:default 16
+                                 :description "Size in bits for each audio sample. Pipeline defaults "} :int]])
 
 ;; ============================================================================= 
 
@@ -62,12 +64,12 @@
   ([state _ frame]
    (cond
      (frame/audio-output-raw? frame)
-     (let [{:audio.out/keys [duration-ms]} state
+     (let [{:audio.out/keys [duration-ms sample-size-bits]} state
            {:keys [audio sample-rate]} (:frame/data frame)
            ;; Calculate chunk size based on frame's sample rate and configured duration
            chunk-size (audio/audio-chunk-size {:sample-rate sample-rate
-                                               :channels 1 ; PCM is mono
-                                               :sample-size-bits 16 ; PCM is 16-bit
+                                               :channels 1 ;; All generated audio (AI speech) is mono
+                                               :sample-size-bits sample-size-bits
                                                :duration-ms duration-ms})]
        (t/log! {:id :audio-splitter
                 :msg "Received audio output. Splitting into chunks"

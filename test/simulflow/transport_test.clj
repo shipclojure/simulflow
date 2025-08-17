@@ -88,7 +88,8 @@
   (testing "1-arity initializes state"
     (let [config {:audio.out/duration-ms 25}
           state (sut/audio-splitter-fn config)]
-      (is (= 25 (:audio.out/duration-ms state)))))
+      (is (= 25 (:audio.out/duration-ms state)))
+      (is (= 16 (:audio.out/sample-size-bits state)))))
 
   (testing "2-arity handles transitions"
     (let [state {:audio.out/duration-ms 30}
@@ -96,7 +97,7 @@
       (is (= state result))))
 
   (testing "3-arity transforms audio frames"
-    (let [state {:audio.out/duration-ms 20}
+    (let [state {:audio.out/duration-ms 20 :audio.out/sample-size-bits 16}
           ;; Create proper audio-output-raw frame with sample rate
           audio-data (byte-array (range 120))
           frame (frame/audio-output-raw {:audio audio-data :sample-rate 16000})
