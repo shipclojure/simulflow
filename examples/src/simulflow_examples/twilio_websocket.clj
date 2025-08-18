@@ -123,7 +123,7 @@
                      :voice/similarity-boost 0.8
                      :voice/use-speaker-boost? true
                      :pipeline/language language
-                     :audio.out/sample-size-bits 8
+                     :audio.out/sample-rate 8000
                      :audio.out/encoding :ulaw}}
         :audio-splitter {:proc transport/audio-splitter
                          :args {:audio.out/duration-ms chunk-duration-ms
