@@ -25,7 +25,7 @@
   [timestamp]
   (cond
     (int? timestamp) timestamp
-    (instance? java.util.Date timestamp) (.getTime timestamp)
+    (instance? java.util.Date timestamp) (.getTime ^java.util.Date timestamp)
     :else (throw (ex-info "Invalid timestamp type" {:timestamp timestamp :type (type timestamp)}))))
 
 (defn timestamp->date
@@ -33,7 +33,7 @@
    Accepts integers (milliseconds) and java.util.Date objects."
   [timestamp]
   (cond
-    (int? timestamp) (java.util.Date. timestamp)
+    (int? timestamp) (java.util.Date. ^long timestamp)
     (instance? java.util.Date timestamp) timestamp
     :else (throw (ex-info "Invalid timestamp type" {:timestamp timestamp :type (type timestamp)}))))
 
