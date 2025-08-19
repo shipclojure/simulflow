@@ -192,11 +192,11 @@
                          :content "You are a technical expert in Clojure programming. Be detailed and precise."}]}}))
   ;; 4. Stop the chat manually (or just ask to quit)
   (flow/stop chat))
-  ;; 5. Test the weather function
-  ;; You: What's the weather like in Paris?
-  ;; Assistant: I'll check the weather in Paris for you.
-  ;; [Tool call executed]
-  ;; The weather in Paris is 17 degrees celsius
-  ;; 6. CLI usage (alternative to REPL)
-  ;; From terminal: bin/chat
-  ;; Or with debug: bin/chat --debug
+;; 5. Test the weather function
+;; You: What's the weather like in Paris?
+;; Assistant: I'll check the weather in Paris for you.
+;; [Tool call executed]
+;; The weather in Paris is 17 degrees celsius
+;; 6. CLI usage (alternative to REPL)
+;; From terminal: bin/chat
+;; Or with debug: bin/chat --debug

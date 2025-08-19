@@ -1,15 +1,9 @@
 (ns simulflow.processors.openai
   (:require
-   [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [malli.core :as m]
-   [simulflow.async :refer [vthread-loop]]
-   [simulflow.command :as command]
-   [simulflow.frame :as frame]
    [simulflow.schema :as schema]
-   [simulflow.utils.core :as u]
-   [simulflow.utils.openai :as uai]
-   [taoensso.telemere :as t]))
+   [simulflow.utils.openai :as uai]))
 
 (def OpenAILLMConfigSchema
   [:map
@@ -109,83 +103,17 @@
    :params (schema/->describe-parameters OpenAILLMConfigSchema)
    :workload :io})
 
-(defn handle-response
-  [in-ch out-ch]
-  (vthread-loop []
-                (when-let [chunk (a/<!! in-ch)]
-                  (a/>!! out-ch chunk)
-                  (recur))))
-
 (defn init!
   [params]
-  (let [parsed-config (schema/parse-with-defaults OpenAILLMConfigSchema params)
-        llm-write (a/chan 100)
-        llm-read (a/chan 1024)]
-    (vthread-loop []
-                  (when-let [command (a/<!! llm-write)]
-                    (try
-                      (t/log! {:level :debug :id :openai :data command} "Processing request command")
-                      (assert (= (:command/kind command) :command/sse-request)
-                              "OpenAI processor only supports SSE request commands")
-                      ;; Execute the command and handle the streaming response
-                      (handle-response (command/handle-command command) llm-read)
-                      (catch Exception e
-                        (t/log! {:level :error :id :openai :error e} "Error processing command")))
-                    (recur)))
-
-    (merge parsed-config
-           {::flow/in-ports {::llm-read llm-read}
-            ::flow/out-ports {::llm-write llm-write}})))
+  (uai/init-llm-processor! OpenAILLMConfigSchema params :openai))
 
 (defn transition
-  [{::flow/keys [in-ports out-ports] :as state} transition]
-  (when (= transition ::flow/stop)
-    (doseq [port (concat (vals in-ports) (vals out-ports))]
-      (a/close! port)))
-  state)
-
-(defn transform-handle-llm-response
-  "Handle the streaming response from the LLM. Return appropriate frames based on
-  the stream. "
-  [state msg]
-  (let [d (uai/response-chunk-delta msg)
-        tool-call (first (:tool_calls d))
-        c (:content d)]
-    (cond
-      (= msg :done)
-      [state {:out [(frame/llm-full-response-end true)]}]
-
-      tool-call
-      [state {:out [(frame/llm-tool-call-chunk tool-call)]}]
-
-      c
-      [state {:out [(frame/llm-text-chunk c)]}]
-
-      :else [state])))
+  [state transition]
+  (uai/transition-llm-processor state transition))
 
 (defn transform
   [state in msg]
-  (cond
-    (= in ::llm-read)
-    (transform-handle-llm-response state msg)
-
-    (frame/llm-context? msg)
-    (let [context (:frame/data msg)
-          {:llm/keys [model] :openai/keys [api-key] :api/keys [completions-url]} state
-          tools (mapv u/->tool-fn (:tools context))
-          request-body (u/json-str (cond-> {:messages (:messages context)
-                                            :stream true
-                                            :model model}
-                                     (pos? (count tools)) (assoc :tools tools)))]
-      [state {::llm-write [(command/sse-request-command {:url completions-url
-                                                         :method :post
-                                                         :body request-body
-                                                         :headers {"Authorization" (str "Bearer " api-key)
-                                                                   "Content-Type" "application/json"}})]
-              :out [(frame/llm-full-response-start true)]}])
-
-    :else
-    [state {}]))
+  (uai/transform-llm-processor state in msg :openai/api-key :api/completions-url))
 
 (defn openai-llm-fn
   "Multi-arity processor function for OpenAI LLM"

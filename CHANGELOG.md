@@ -1,6 +1,16 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+## Unreleased
+
+### Added
+- Support for Google Gemini llm. See [gemini example flow](./examples/src/simulflow_examples/gemini.clj)
+- Support for text based agents. See [text chat example](./examples/src/simulflow_examples/text_chat.clj)
+- Support for different sample rates for the audio splitter processor. See [twilio-websocket example](./examples/src/simulflow_examples/twilio_websocket.clj) for demonstration
+
+### Changed
+- Moved most of the llm logic from [openai processor](./src/simulflow/processors/openai.clj) to an utils folder to be used by multiple processors like [gemini](./src/simulflow/processors/google.clj)
+
 ## [0.1.7-alpha] - 2025-08-13
 
 ### Added
