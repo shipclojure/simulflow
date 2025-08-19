@@ -39,7 +39,6 @@
       [state {::command [{:command/kind :command/print
                           :command/data (:frame/data frame)}]}]
 
-
       (frame/speak-frame? frame)
       [state {::command [{:command/kind :command/println
                           :command/data ""}

@@ -4,8 +4,8 @@
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
    [simulflow-examples.scenario-example :as scenario-example]
+   [simulflow.processors.google :as google]
    [simulflow.processors.llm-context-aggregator :as context]
-   [simulflow.processors.openai :as openai]
    [simulflow.scenario-manager :as sm]
    [simulflow.secrets :refer [secret]]
    [simulflow.transport.text-in :as text-in]
@@ -58,8 +58,7 @@
                                    :properties {}
                                    :additionalProperties false}
                       :strict true}}]}
-          debug? false
-          model "gpt-4o-mini"}}]
+          debug? false}}]
 
    {:procs
     (u/deep-merge
@@ -71,9 +70,8 @@
                             :args {:llm/context context
                                    :aggregator/debug? debug?}}
        ;; Generate LLM responses with streaming
-       :llm {:proc openai/openai-llm-process
-             :args {:openai/api-key (secret [:openai :new-api-sk])
-                    :llm/model model}}
+       :llm {:proc google/google-llm-process
+             :args {:google/api-key (secret [:google :api-key])}}
        ;; Handle assistant message assembly for context
        :assistant-context-assembler {:proc context/assistant-context-assembler
                                      :args {:debug? debug?}}

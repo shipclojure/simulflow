@@ -134,10 +134,10 @@
         api-key (get state api-key-key)
         completions-url (get state completions-url-key)
         tools (mapv u/->tool-fn (:tools context-data))
-        request-body (u/json-str (cond-> {:messages (:messages context-data)
-                                          :stream true
-                                          :model model}
-                                   (pos? (count tools)) (assoc :tools tools)))]
+        request-body (cond-> {:messages (:messages context-data)
+                              :stream true
+                              :model model}
+                       (pos? (count tools)) (assoc :tools tools))]
     [state {::llm-write [(command/sse-request-command {:url completions-url
                                                        :method :post
                                                        :body request-body

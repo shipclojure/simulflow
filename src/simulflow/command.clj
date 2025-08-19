@@ -1,7 +1,7 @@
 (ns simulflow.command
   (:require
    [hato.client :as http]
-   [simulflow.utils.core :refer [without-nils]]
+   [simulflow.utils.core :refer [content-type json-str without-nils]]
    [simulflow.utils.request :refer [sse-request]]))
 
 ;;; Command System Utilities
@@ -52,10 +52,16 @@
 
 (defmethod handle-command :command/sse-request
   [command]
-  (let [{:keys [url method body headers timeout-ms buffer-size]} (:command/data command)]
+  (let [{:keys [url method body headers timeout-ms buffer-size]} (:command/data command)
+        ;; JSON stringify the body if it's a map/collection and content-type is JSON
+        final-body (if (and (or (map? body) (coll? body))
+                            (some-> (content-type headers)
+                                    (.contains "application/json")))
+                     (json-str body)
+                     body)]
     (:body (sse-request {:request (without-nils {:url url
                                                  :method method
-                                                 :body body
+                                                 :body final-body
                                                  :headers headers
                                                  :timeout-ms timeout-ms})
                          :params (without-nils {:buffer-size buffer-size

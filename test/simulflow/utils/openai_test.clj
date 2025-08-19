@@ -19,11 +19,11 @@
         (is (contains? output ::uai/llm-write))
         (is (= (count (::uai/llm-write output)) 1))
         (let [command (first (::uai/llm-write output))
-              messages (:messages (u/parse-if-json (get-in command [:command/data :body])))]
+              messages (:messages (get-in command [:command/data :body]))]
           (is (= command #:command{:kind :command/sse-request
                                    :data {:url "https://api.openai.com/v1/chat/completions"
                                           :method :post
-                                          :body (u/json-str {:messages ai-messages :stream true, :model (:llm/model state)})
+                                          :body {:messages ai-messages :stream true, :model (:llm/model state)}
                                           :headers {"Authorization" (str "Bearer " test-api-key)
                                                     "Content-Type" "application/json"}}}))
           (is (= messages (:messages ai-context)))))
@@ -236,7 +236,6 @@
       (is (= state {}))
       (is (contains? output :out))
       (is (frame/llm-full-response-end? (first (:out output))))))
-  
   (testing "handles text content"
     (let [chunk {:choices [{:delta {:content "Hello"}}]}
           [state output] (uai/transform-handle-llm-response {} chunk)]
@@ -244,7 +243,6 @@
       (is (contains? output :out))
       (is (frame/llm-text-chunk? (first (:out output))))
       (is (= (:frame/data (first (:out output))) "Hello"))))
-  
   (testing "handles tool calls"
     (let [tool-call {:index 0 :type "function" :function {:name "test"}}
           chunk {:choices [{:delta {:tool_calls [tool-call]}}]}
@@ -253,7 +251,6 @@
       (is (contains? output :out))
       (is (frame/llm-tool-call-chunk? (first (:out output))))
       (is (= (:frame/data (first (:out output))) tool-call))))
-  
   (testing "handles empty delta"
     (let [chunk {:choices [{:delta {}}]}
           [state output] (uai/transform-handle-llm-response {} chunk)]

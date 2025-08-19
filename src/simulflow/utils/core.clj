@@ -288,3 +288,13 @@
                              {:clause x
                               :expected '#{symbol map}}))))
          clauses)))
+
+(defn content-type
+  "Extracts Content-Type header value from a header map, trying multiple variations.
+  Tries \"Content-Type\", \"content-type\", and :content-type in that order.
+  Returns the first match found, or nil if none found."
+  [headers]
+  (when headers
+    (or (get headers "Content-Type")
+        (get headers "content-type")
+        (get headers :content-type))))

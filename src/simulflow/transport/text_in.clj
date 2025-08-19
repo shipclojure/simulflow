@@ -8,7 +8,7 @@
    [simulflow.frame :as frame]
    [taoensso.telemere :as t])
   (:import
-   [java.io BufferedReader InputStreamReader]))
+   (java.io BufferedReader InputStreamReader)))
 
 (defn text-input-transform
   "Transform function handles stdin input and LLM response lifecycle for blocking"
@@ -18,10 +18,8 @@
       ;; Handle LLM response lifecycle via :sys-in for blocking
       (and (= input-port :sys-in) (frame/llm-full-response-start? frame))
       [(assoc state :blocked? true) {}]
-      
       (and (= input-port :sys-in) (frame/llm-full-response-end? frame))
       [(assoc state :blocked? false) {}]
-      
       ;; Handle text input from stdin - transform decides whether to process
       (and (= input-port ::stdin) (string? frame))
       (if blocked?
@@ -36,7 +34,6 @@
                      (frame/transcription user-text)
                      (frame/user-speech-stop true))]
             [state {}])))
-      
       :else [state {}])))
 
 (defn text-input-init!
@@ -44,16 +41,13 @@
   [params]
   (let [stdin-ch (a/chan 1024)
         running? (atom true)
-        
         ;; Create buffered reader for stdin
         reader (BufferedReader. (InputStreamReader. System/in))
-        
         ;; Close function to be called on stop
         close-fn (fn []
                    (reset! running? false)
                    (try (.close reader) (catch Exception _))
                    (a/close! stdin-ch))]
-    
     ;; Start stdin reading loop in virtual thread (no prompts)
     (vthread-loop []
       (when @running?
@@ -63,7 +57,6 @@
             (when @running?
               (when-not (a/offer! stdin-ch line)
                 (t/log! :warn "stdin channel full, dropping input"))))
-          
           (catch Exception e
             (if @running?
               (do
@@ -72,7 +65,6 @@
               ;; Normal shutdown, don't log error
               nil)))
         (recur)))
-    
     ;; Set up state with channels
     {::flow/in-ports {::stdin stdin-ch}
      ::close close-fn
@@ -87,18 +79,15 @@
     :outs {:out "User speech frames (transcription sequence)"
            :sys-out "System frames"}
     :params {}})
-  
   ([config]
    ;; Init processor
    (text-input-init! config))
-  
   ([state transition]
    ;; Handle transitions
    (case transition
      ::flow/stop (when-let [close-fn (::close state)]
                    (close-fn))
      state))
-  
   ([state input-port frame]
    ;; Transform function
    (text-input-transform state input-port frame)))
