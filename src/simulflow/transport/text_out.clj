@@ -17,7 +17,7 @@
 (defn text-output-transform
   "Pure transform function - handles text output logic and emits commands"
   [state _input-port frame]
-  (let [{:text-out/keys [response-active? response-prefix response-suffix show-thinking
+  (let [{:text-out/keys [response-prefix response-suffix show-thinking
                          user-prompt]} state]
     (cond
       ;; LLM response start - show prefix, clean formatting
