@@ -89,4 +89,4 @@ print_color $GREEN "🔧 Loading Clojure dependencies..."
 print_color $GREEN "🤖 Launching interactive chat..."
 echo ""
 
-exec clj -M:with-examples -m simulflow-examples.text-chat-demo $DEBUG_MODE
+exec clj -M:with-examples -m simulflow-examples.text-chat $DEBUG_MODE

@@ -3,17 +3,20 @@
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
+   [simulflow-examples.scenario-example :as scenario-example]
    [simulflow.processors.llm-context-aggregator :as context]
    [simulflow.processors.openai :as openai]
+   [simulflow.scenario-manager :as sm]
    [simulflow.secrets :refer [secret]]
    [simulflow.transport.text-in :as text-in]
    [simulflow.transport.text-out :as text-out]
+   [simulflow.utils.core :as u]
    [taoensso.telemere :as t]))
 
 ;; Set log level to reduce noise during chat
 (t/set-min-level! :warn)
 
-(defn make-text-chat-flow
+(defn text-chat-flow-config
   "Text-based chat flow using stdin/stdout instead of voice I/O.
 
   This example demonstrates how to interact with simulflow through text:
@@ -25,47 +28,47 @@
 
   For a convenient CLI version, use: bin/chat
   "
-  ([] (make-text-chat-flow {}))
-  ([{:keys [llm-context debug? model]
-     :or {llm-context {:messages
-                       [{:role "system"
-                         :content "You are a helpful AI assistant. Be concise and conversational.
+  ([] (text-chat-flow-config {}))
+  ([{:keys [llm/context debug? model extra-procs extra-conns]
+     :or {context {:messages
+                   [{:role "system"
+                     :content "You are a helpful AI assistant. Be concise and conversational.
                                   You are communicating through text chat."}]
-                       :tools
-                       [{:type :function
-                         :function
-                         {:name "get_weather"
-                          :handler (fn [{:keys [town]}]
-                                     (str "The weather in " town " is 17 degrees celsius"))
-                          :description "Get the current weather of a location"
-                          :parameters {:type :object
-                                       :required [:town]
-                                       :properties {:town {:type :string
-                                                           :description "Town for which to retrieve the current weather"}}
-                                       :additionalProperties false}
-                          :strict true}}
-                        {:type :function
-                         :function
-                         {:name "quit_chat"
-                          :handler (fn [_]
-                                     (println "\nGoodbye!")
-                                     (System/exit 0))
-                          :description "Quit the chat session"
-                          :parameters {:type :object
-                                       :properties {}
-                                       :additionalProperties false}
-                          :strict true}}]}
+                   :tools
+                   [{:type :function
+                     :function
+                     {:name "get_weather"
+                      :handler (fn [{:keys [town]}]
+                                 (str "The weather in " town " is 17 degrees celsius"))
+                      :description "Get the current weather of a location"
+                      :parameters {:type :object
+                                   :required [:town]
+                                   :properties {:town {:type :string
+                                                       :description "Town for which to retrieve the current weather"}}
+                                   :additionalProperties false}
+                      :strict true}}
+                    {:type :function
+                     :function
+                     {:name "quit_chat"
+                      :handler (fn [_]
+                                 (println "\nGoodbye!")
+                                 (System/exit 0))
+                      :description "Quit the chat session"
+                      :parameters {:type :object
+                                   :properties {}
+                                   :additionalProperties false}
+                      :strict true}}]}
           debug? false
           model "gpt-4o-mini"}}]
 
-   (flow/create-flow
-     {:procs
+   {:procs
+    (u/deep-merge
       {;; Read from stdin and emit user-speech-start/transcription/user-speech-stop sequence
        :text-input {:proc text-in/text-input-process
                     :args {}}
        ;; Handle conversation context and user speech aggregation
        :context-aggregator {:proc context/context-aggregator
-                            :args {:llm/context llm-context
+                            :args {:llm/context context
                                    :aggregator/debug? debug?}}
        ;; Generate LLM responses with streaming
        :llm {:proc openai/openai-llm-process
@@ -81,20 +84,51 @@
                             :text-out/show-thinking debug?
                             :text-out/user-prompt "You: "
                             :text-out/manage-prompts true}}}
-      :conns
-      [;; Main conversation flow
-       [[:text-input :out] [:context-aggregator :in]]
-       [[:context-aggregator :out] [:llm :in]]
-       ;; Stream LLM responses to output for clean formatting
-       [[:llm :out] [:text-output :in]]
-       ;; Assemble assistant context for conversation history
-       [[:llm :out] [:assistant-context-assembler :in]]
-       [[:assistant-context-assembler :out] [:context-aggregator :in]]
-       ;; System frame routing for input blocking/unblocking
-       ;; LLM emits llm-full-response-start/end frames to :out, which are system frames
-       [[:llm :out] [:text-input :sys-in]]
-       ;; System frames for lifecycle management
-       [[:text-input :sys-out] [:context-aggregator :sys-in]]]})))
+      extra-procs)
+    :conns (concat
+             [;; Main conversation flow
+              [[:text-input :out] [:context-aggregator :in]]
+              [[:context-aggregator :out] [:llm :in]]
+              ;; Stream LLM responses to output for clean formatting
+              [[:llm :out] [:text-output :in]]
+              ;; Assemble assistant context for conversation history
+              [[:llm :out] [:assistant-context-assembler :in]]
+              [[:assistant-context-assembler :out] [:context-aggregator :in]]
+              ;; System frame routing for input blocking/unblocking
+              ;; LLM emits llm-full-response-start/end frames to :out, which are system frames
+              [[:llm :out] [:text-input :sys-in]]
+              ;; System frames for lifecycle management
+              [[:text-input :sys-out] [:context-aggregator :sys-in]]]
+             extra-conns)}))
+
+(defn scenario-example
+  "A scenario is a predefined, highly structured conversation. LLM performance
+  degrades when it has a big complex prompt to enact, so to ensure a consistent
+  output use scenarios that transition the LLM into a new scenario node with a clear
+  instruction for the current node."
+  [{:keys [initial-node scenario-config]}]
+  (let [flow (flow/create-flow
+               (text-chat-flow-config
+                 {;; Don't add any context because the scenario will handle that
+                  :llm/context {:messages []
+                                :tools []}
+                  :language :en
+
+                  ;; add gateway process for scenario to inject frames
+                  :extra-procs {:scenario {:proc (flow/process #'sm/scenario-in-process)}}
+
+                  :extra-conns [[[:scenario :sys-out] [:text-output :in]]
+                                [[:scenario :sys-out] [:context-aggregator :sys-in]]]}))
+
+        s (when scenario-config
+            (sm/scenario-manager
+              {:flow flow
+               :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel
+               :scenario-config (cond-> scenario-config
+                                  initial-node (assoc :initial-node initial-node))}))]
+
+    {:flow flow
+     :scenario s}))
 
 (defn start-text-chat!
   "Start a text-based chat session with the simulflow agent.
@@ -117,8 +151,8 @@
    (println "🔗 CLI version available at: bin/chat")
    (println (apply str (repeat 50 "=")))
    ;; Create and start the flow
-   (let [chat-flow (make-text-chat-flow config)
-         {:keys [report-chan error-chan]} (flow/start chat-flow)]
+   (let [{:keys [flow scenario]} (scenario-example {:scenario-config scenario-example/scenario-config})
+         {:keys [report-chan error-chan]} (flow/start flow)]
      ;; Start error/report monitoring in background
      (future
        (loop []
@@ -128,9 +162,10 @@
                (println "\n❌ Error:" msg))
              (recur)))))
      ;; Resume the flow to begin processing
-     (flow/resume chat-flow)
+     (flow/resume flow)
+     (when scenario (sm/start scenario))
      ;; Return flow for manual control if needed
-     chat-flow)))
+     flow)))
 
 (defn -main
   "Main entry point for text chat demo"

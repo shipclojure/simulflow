@@ -38,6 +38,17 @@
       (frame/llm-text-chunk? frame)
       [state {::command [{:command/kind :command/print
                           :command/data (:frame/data frame)}]}]
+
+
+      (frame/speak-frame? frame)
+      [state {::command [{:command/kind :command/println
+                          :command/data ""}
+                         {:command/kind :command/print
+                          :command/data response-prefix}
+                         {:command/kind :command/println
+                          :command/data (:frame/data frame)}
+                         {:command/kind :command/print
+                          :command/data user-prompt}]}]
       ;; Handle tool calls quietly unless in debug mode
       (frame/llm-tool-call-chunk? frame)
       [state (if show-thinking
