@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file. This change
 ### Changed
 - Moved most of the llm logic from [openai processor](./src/simulflow/processors/openai.clj) to an utils folder to be used by multiple processors like [gemini](./src/simulflow/processors/google.clj)
 
+### Fixed
+- **Scenario Manager** Fixed a bug where normal utility tool functions were treated as transition functions that returned a nil transition node
+
 ## [0.1.7-alpha] - 2025-08-13
 
 ### Added
