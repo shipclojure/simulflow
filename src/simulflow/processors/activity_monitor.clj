@@ -55,7 +55,9 @@
   (if (= :sys-in in)
     (cond
       (frame/user-speech-start? msg)
-      [(assoc state ::user-speaking? true) {:timer-process-in [msg]}]
+      [(assoc state
+         ::user-speaking? true
+         ::ping-count 0) {:timer-process-in [msg]}]
 
       (frame/user-speech-stop? msg)
       [(assoc state ::user-speaking? false) {:timer-process-in [msg]}]
