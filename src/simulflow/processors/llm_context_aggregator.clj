@@ -115,17 +115,17 @@
       (and (frame/transcription? frame)
            (not (nil? frame-data))
            (not= "" (str/trim frame-data)))
-      ,(let [new-agg (:frame/data frame)]
-         (t/log! {:level :info :id id} ["TRANSCRIPTION: " new-agg])
+      ,(let [new-transcription (:frame/data frame)]
+         (t/log! {:level :info :id id} ["TRANSCRIPTION: " new-transcription])
          ;; if we seen end frame, we send aggregation
          ;; else
          (if aggregating?
            (if seen-end-frame?
              ;; send aggregtation
-             (let [nc (next-context {:context context :aggregation (str aggregation new-agg) :role "user"})]
+             (let [nc (next-context {:context context :aggregation (str/trim (str aggregation " " new-transcription)) :role "user"})]
                [(reset (assoc state :llm/context nc)) {:out [(frame/llm-context nc)]}])
              [(assoc state
-                     :aggregation (str aggregation new-agg)
+                     :aggregation (str aggregation new-transcription)
                      :seen-interim-results? false)])
            [(assoc state :seen-interim-results? false)]))
 
