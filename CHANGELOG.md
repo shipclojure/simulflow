@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file. This change
 
 ### Fixed
 - **Scenario Manager** Fixed a bug where normal utility tool functions were treated as transition functions that returned a nil transition node
+- **Activity Monitor** Fixed a bug where the ping count was not reset when the user said something.
 
 ## [0.1.7-alpha] - 2025-08-13
 
