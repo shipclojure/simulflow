@@ -2,9 +2,12 @@
   (:require
    [clojure.core.async.flow :as flow]
    [clojure.core.async.impl.protocols :as impl]
-   [clojure.test :refer [deftest is testing]]
+
    [simulflow.frame :as frame]
-   [simulflow.processors.activity-monitor :as activity-monitor]))
+   [simulflow.processors.activity-monitor :as activity-monitor]
+
+
+   [clojure.test :refer [deftest is testing]]))
 
 (def current-time #inst "2025-06-27T06:13:35.236-00:00")
 
@@ -27,7 +30,8 @@
                {::activity-monitor/user-speaking? false}
                :sys-in
                speech-start)
-             [{::activity-monitor/user-speaking? true} {:timer-process-in [speech-start]}]))))
+             [{::activity-monitor/user-speaking? true
+               ::activity-monitor/ping-count 0} {:timer-process-in [speech-start]}]))))
   (testing "If user stopped speaking, set user speaking false and send frame to timer process to reset activity timer"
     (let [speech-stop (frame/user-speech-stop true {:timestamp current-time})]
       (is (= (activity-monitor/transform
@@ -121,7 +125,8 @@
                {::activity-monitor/user-speaking? true}
                :sys-in
                speech-start)
-             [{::activity-monitor/user-speaking? true} {:timer-process-in [speech-start]}]))))
+             [{::activity-monitor/user-speaking? true
+               ::activity-monitor/ping-count 0} {:timer-process-in [speech-start]}]))))
 
   (testing "Idempotent state changes - user already not speaking gets stop event"
     (let [speech-stop (frame/user-speech-stop true {:timestamp current-time})]
@@ -343,4 +348,5 @@
                {::activity-monitor/user-speaking? false}
                :sys-in
                speech-start)
-             [{::activity-monitor/user-speaking? true} {:timer-process-in [speech-start]}])))))
+             [{::activity-monitor/user-speaking? true
+               ::activity-monitor/ping-count 0} {:timer-process-in [speech-start]}])))))
