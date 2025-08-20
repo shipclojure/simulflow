@@ -84,14 +84,15 @@
         handler (:handler fndef)
 
         next-node-or-fn (:transition-to fndef)
-        cb (if (fn? next-node-or-fn)
-             (fn [args]
-               (let [next-node (next-node-or-fn args)]
-                 (set-node scenario next-node)))
-             (fn [_] (set-node scenario next-node-or-fn)))]
+        cb (when next-node-or-fn
+             (if (fn? next-node-or-fn)
+               (fn [args]
+                 (let [next-node (next-node-or-fn args)]
+                   (set-node scenario next-node)))
+               (fn [_] (set-node scenario next-node-or-fn))))]
     (cond-> tool
       true (update-in [:function] dissoc :transition-to)
-      true (assoc-in [:function :transition-cb] cb)
+      cb (assoc-in [:function :transition-cb] cb)
       (nil? handler) (assoc-in [:function :handler] (fn [_] {:status :success})))))
 
 (defn scenario-manager
