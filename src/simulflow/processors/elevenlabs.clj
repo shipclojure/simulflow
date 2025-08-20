@@ -131,7 +131,7 @@
                                                :sample-rate (:audio.out/sample-rate state)}
                                               {:timestamp timestamp})
                       (frame/xi-audio-out parsed-json {:timestamp timestamp})])]
-        [new-state (when frames {:out frames})])
+        [new-state (apply frame/send frames )])
       ;; Still accumulating
       [(assoc state ::accumulator new-accumulator) {}])))
 
