@@ -29,7 +29,7 @@
   For a convenient CLI version, use: bin/chat
   "
   ([] (text-chat-flow-config {}))
-  ([{:keys [llm/context debug? model extra-procs extra-conns]
+  ([{:keys [llm/context debug? extra-procs extra-conns]
      :or {context {:messages
                    [{:role "system"
                      :content "You are a helpful AI assistant. Be concise and conversational.
@@ -132,7 +132,8 @@
   "Start a text-based chat session with the simulflow agent.
 
   Usage:
-  (start-text-chat!)
+  (start-text-chat!)                    ; Regular chat
+  (start-text-chat! {:scenario? true})  ; Scenario example
 
   Then type messages and press Enter. The assistant will respond with streaming text.
   Input is blocked while the assistant is responding.
@@ -141,15 +142,17 @@
 
   CLI Alternative: Use bin/chat for a convenient command-line interface."
   ([] (start-text-chat! {}))
-  ([config]
+  ([{:keys [scenario?] :as config}]
    (println "🤖 Starting Simulflow Text Chat...")
    (println "💡 Type your messages and press Enter")
    (println "⏸️  Input is blocked while assistant responds")
    (println "🚪 Ask to 'quit chat' to exit")
    (println "🔗 CLI version available at: bin/chat")
    (println (apply str (repeat 50 "=")))
-   ;; Create and start the flow
-   (let [{:keys [flow scenario]} (scenario-example {:scenario-config scenario-example/scenario-config})
+   ;; Create flow based on scenario choice
+   (let [{:keys [flow scenario]} (if scenario?
+                                   (scenario-example {:scenario-config scenario-example/config})
+                                   {:flow (flow/create-flow (text-chat-flow-config config)) :scenario nil})
          {:keys [report-chan error-chan]} (flow/start flow)]
      ;; Start error/report monitoring in background
      (future
@@ -168,9 +171,9 @@
 (defn -main
   "Main entry point for text chat demo"
   [& args]
-  (let [config (if (some #(= % "--debug") args)
-                 {:debug? true}
-                 {})]
+  (let [config (cond-> {}
+                 (some #(= % "--debug") args) (assoc :debug? true)
+                 (some #(= % "--scenario") args) (assoc :scenario? true))]
     (start-text-chat! config)))
 
 (comment

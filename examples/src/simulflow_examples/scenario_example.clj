@@ -6,7 +6,7 @@
    [simulflow.scenario-manager :as sm]
    [taoensso.telemere :as t]))
 
-(def scenario-config
+(def config
   {:initial-node :start
    :nodes
    {:start
@@ -84,7 +84,7 @@
 
          s (sm/scenario-manager {:flow flow
                                  :flow-in-coord [:scenario :scenario-in] ;; scenario-manager will inject frames through this channel
-                                 :scenario-config (assoc scenario-config :initial-node initial-node)})]
+                                 :scenario-config (assoc config :initial-node initial-node)})]
 
      {:flow flow
       :scenario s})))

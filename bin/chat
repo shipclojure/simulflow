@@ -32,13 +32,17 @@ if [ ! -f "resources/secrets.edn" ]; then
 fi
 
 # Parse command line arguments
-DEBUG_MODE=""
+ARGS=""
 HELP=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --debug)
-            DEBUG_MODE="--debug"
+            ARGS="$ARGS --debug"
+            shift
+            ;;
+        --scenario)
+            ARGS="$ARGS --scenario"
             shift
             ;;
         --help|-h)
@@ -61,16 +65,20 @@ if [ "$HELP" = true ]; then
     echo ""
     echo "Options:"
     echo "  --debug     Enable debug mode (verbose logging)"
+    echo "  --scenario  Use a scenario (structured conversation)"
     echo "  --help, -h  Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                # Start normal chat"
+    echo "  $0                # Start normal open-ended chat"
     echo "  $0 --debug        # Start with debug logging"
+    echo "  $0 --scenario     # Start with a scenario"
+    echo "  $0 --debug --scenario  # Debug mode with scenario"
     echo ""
     echo "Once running:"
     echo "  • Type messages and press Enter"
     echo "  • Input is blocked while assistant responds"
-    echo "  • Ask to 'quit chat' to exit gracefully"
+    echo "  • Ask to 'quit chat' to exit gracefully (normal chat)"
+    echo "  • Scenario will end automatically when complete"
     echo "  • Use Ctrl+C to force exit"
     exit 0
 fi
@@ -79,8 +87,12 @@ fi
 print_color $GREEN "🚀 Starting Simulflow Text Chat Demo..."
 print_color $BLUE "📁 Project: $(pwd)"
 
-if [ -n "$DEBUG_MODE" ]; then
+if [[ "$ARGS" == *"--debug"* ]]; then
     print_color $YELLOW "🐛 Debug mode enabled"
+fi
+
+if [[ "$ARGS" == *"--scenario"* ]]; then
+    print_color $YELLOW "🎭 Scenario mode enabled"
 fi
 
 print_color $GREEN "🔧 Loading Clojure dependencies..."
@@ -89,4 +101,4 @@ print_color $GREEN "🔧 Loading Clojure dependencies..."
 print_color $GREEN "🤖 Launching interactive chat..."
 echo ""
 
-exec clj -M:with-examples -m simulflow-examples.text-chat $DEBUG_MODE
+exec clj -M:with-examples -m simulflow-examples.text-chat $ARGS
