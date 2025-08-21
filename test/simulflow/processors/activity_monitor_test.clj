@@ -2,12 +2,9 @@
   (:require
    [clojure.core.async.flow :as flow]
    [clojure.core.async.impl.protocols :as impl]
-
+   [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
-   [simulflow.processors.activity-monitor :as activity-monitor]
-
-
-   [clojure.test :refer [deftest is testing]]))
+   [simulflow.processors.activity-monitor :as activity-monitor]))
 
 (def current-time #inst "2025-06-27T06:13:35.236-00:00")
 
