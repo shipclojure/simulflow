@@ -78,7 +78,10 @@
 ;; Twilio transport in
 
 (defn twilio-transport-in-transform
-  [{:twilio/keys [handle-event] :as state} in input]
+  [{:twilio/keys [handle-event]
+    :transport/keys [send-twilio-serializer?]
+    :or {send-twilio-serializer? true}
+    :as state} in input]
   (if (= in ::twilio-in)
     (let [data (u/parse-if-json input)
           output (if (fn? handle-event)
@@ -94,9 +97,10 @@
                          (out-frames {:sys-out [(frame/system-config-change
                                                   (u/without-nils {:twilio/stream-sid stream-sid
                                                                    :twilio/call-sid (get-in data [:start :callSid])
-                                                                   :transport/serializer (make-twilio-serializer
-                                                                                           stream-sid
-                                                                                           :convert-audio? (:serializer/convert-audio? state false))}))]})
+                                                                   :transport/serializer (when send-twilio-serializer?
+                                                                                           (make-twilio-serializer
+                                                                                             stream-sid
+                                                                                             :convert-audio? (:serializer/convert-audio? state false)))}))]})
                          (out-frames {}))]
         "media"
         (let [audio-frame (frame/audio-input-raw (-> data
@@ -112,17 +116,17 @@
     (base-input-transport-transform state in input)))
 
 (defn twilio-transport-in-init!
-  [{:transport/keys [in-ch] :twilio/keys [handle-event] :as state}]
+  [{:transport/keys [in-ch] :as state}]
   (into state
-        {::flow/in-ports {::twilio-in in-ch}
-         :twilio/handle-event handle-event}))
+        {::flow/in-ports {::twilio-in in-ch}}))
 
 (def twilio-transport-in-describe
   {:outs base-transport-outs
    :params (into base-input-params
                  {:transport/in-ch "Channel from which input comes"
                   :twilio/handle-event "[DEPRECATED] Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"
-                  :serializer/convert-audio? "If the serializer that is created should convert audio to 8kHz ULAW or not."})})
+                  :serializer/convert-audio? "If the serializer that is created should convert audio to 8kHz ULAW or not."
+                  :transport/send-twilio-serializer? "Whether to send a `::frame/system-config-change` with a `twilio-frame-serializer` when a twilio start frame is received. Default true"})})
 
 (defn twilio-transport-in-fn
   ([] twilio-transport-in-describe)

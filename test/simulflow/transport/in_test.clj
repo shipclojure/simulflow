@@ -14,7 +14,9 @@
   (reify vad/VADAnalyzer
     (analyze-audio [_ _]
       resulting-vad-state)
-    (voice-confidence [_ _] 0.1)))
+    (voice-confidence [_ _] 0.1)
+    (cleanup [_]
+      (prn "Cleanup called!"))))
 
 (deftest base-input-transport-test
   (let [input-frame (frame/audio-input-raw (byte-array (range 200)) {:timestamp test-timestamp})]
@@ -144,7 +146,19 @@
             (is (= state new-state))
             (is (= test-config-change-frame (first sys-out)))
             (is (frame/system-config-change? (last sys-out)))
-            (is (= "hello" (:twilio/stream-sid (:frame/data (last sys-out)))))))))))
+            (is (= "hello" (:twilio/stream-sid (:frame/data (last sys-out))))))))))
+  (testing "Doesn't send serializer if `:transport/send-twilio-serializer?` is false"
+    (let [state {:transport/send-twilio-serializer? false}
+          [new-state out] (in/twilio-transport-in-transform
+                            state
+                            ::in/twilio-in
+                            (u/json-str {:event "start"
+                                         :streamSid "hello"}))
+          config-change-frame (-> out :sys-out first)
+          serializer (-> out :sys-out first :frame/data :transport/serializer)]
+      (is (= state new-state))
+      (is (frame/system-config-change? config-change-frame))
+      (is (nil? serializer)))))
 
 ;; Microphone transport in tests
 
