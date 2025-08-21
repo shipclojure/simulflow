@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file. This change
 - Support for text based agents. See [text chat example](./examples/src/simulflow_examples/text_chat.clj)
 - Support for different sample rates for the audio splitter processor. See [twilio-websocket example](./examples/src/simulflow_examples/twilio_websocket.clj) for demonstration
 - Support for latest openai models (gpt5, gpt4.1, o series and more) See [openai.clj](./src/simulflow/processors/openai.clj) for the schema definition
+- **Twilio transport in** Added extra parameter `transport/send-twilio-serializer?` to prevent it from including a `:transport/serializer` in the `::frame/system-config-change` issued
+- **Realtime out transport** Extra parameter for `transport/serializer` as initial argument to the processor
 
 ### Changed
 - Moved most of the llm logic from [openai processor](./src/simulflow/processors/openai.clj) to an utils folder to be used by multiple processors like [gemini](./src/simulflow/processors/google.clj)
