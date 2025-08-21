@@ -14,20 +14,58 @@
       {:description "OpenAI model identifier"
        :error/message "Must be a valid OpenAI model"
        :default "gpt-4o-mini"}
-      [;; GPT-4 Models
-       "gpt-4"
-       "gpt-4-32k"
-       "gpt-4-1106-preview" ;; GPT-4 Turbo
-       "gpt-4-vision-preview" ;; GPT-4 Vision
+      [;; GPT-4o Models (2024-2025)
+       :gpt-4o
+       :chatgpt-4o-latest
+       :gpt-4o-mini
+       :gpt-4o-audio-preview
+       :gpt-4o-audio-preview-2024-12-17
+       :gpt-4o-audio-preview-2024-10-01
+       :gpt-4o-mini-audio-preview
+       :gpt-4o-mini-audio-preview-2024-12-17
+
+       ;; GPT-4.1 Models (2025)
+       :gpt-4.1
+       :gpt-4.1-mini
+       :gpt-4.1-nano
+       :gpt-4.1-2025-04-14
+       :gpt-4.1-mini-2025-04-14
+       :gpt-4.1-nano-2025-04-14
+
+       ;; GPT-5 Models (2025)
+       :gpt-5
+       :gpt-5-mini
+       :gpt-5-nano
+       :gpt-5-chat-latest
+       :gpt-5-2025-08-07
+       :gpt-5-mini-2025-08-07
+       :gpt-5-nano-2025-08-07
+
+       ;; GPT-4 Turbo Models
+       :gpt-4-turbo
+       :gpt-4-turbo-2024-04-09
+       :gpt-4-1106-preview
+       :gpt-4-0125-preview
+       :gpt-4-turbo-preview
+
+       ;; GPT-4 Models
+       :gpt-4
+       :gpt-4-32k
+       :gpt-4-vision-preview
+
        ;; GPT-3.5 Models
-       "gpt-3.5-turbo"
-       "gpt-3.5-turbo-16k"
-       "gpt-3.5-turbo-1106"
+       :gpt-3.5-turbo
+       :gpt-3.5-turbo-16k
+       :gpt-3.5-turbo-1106
+       :gpt-3.5-turbo-instruct
+
+       ;; O-series Models (2025)
+       :o3-2025-04-16
+       :o3-pro
+       :o4-mini-2025-04-16
        ;; Base Models
-       "babbage-002"
-       "davinci-002"
-       ;; Include your custom model
-       "gpt-4o-mini"])]
+       :babbage-002
+       :davinci-002])]
    [:llm/temperature {:optional true}
     [:float
      {:description "Sampling temperature (0-2)"
