@@ -4,6 +4,7 @@
    [clojure.core.async.flow :as flow]
    [simulflow.async :refer [vthread-loop]]
    [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
    [simulflow.transport.protocols :as tp]
    [simulflow.utils.audio :refer [open-line!]]
    [simulflow.utils.core :as u]
@@ -21,15 +22,33 @@
             :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
             :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
 
+(def RealtimeOutConfig
+  [:map
+   [:audio.out/chan
+    {:description "Core async channel to put audio data. The data is raw byte array or serialzed if a serializer is provided"}
+    schema/CoreAsyncChannel]
+   [:audio.out/duration-ms
+    {:description "Duration in ms of each chunk that will be streamed to output"
+     :default 20}
+    :int]
+   [:audio.out/sending-interval
+    {:description "Sending interval for each audio chunk. This is used to send chunks in a realtime manner in order to facilitate interruption. Default is half of :audio.out/duration-ms"}
+    :int]
+   [:activity-detection/silence-threshold-ms
+    {:description "Silence detection threshold in milliseconds. When the silence threshold is reached, the processor emits ::frame/bot-speech-stop frames. Default is 4x :audio.out/duration-ms."
+     :optional true}
+    :int]
+   [:transport/serializer
+    {:description "Frame serializer used to serialize frames before sending them on the :audio.out/chan"
+     :optional true}
+    schema/FrameSerializer]])
+
 (def realtime-out-describe
   {:ins {:in "Channel for audio output frames"
          :sys-in "Channel for system messages"}
    :outs {:out "Channel for non-system frames"
           :sys-out "Channel for bot speech status frames (system frames)"}
-   :params {:audio.out/chan "Core async channel to put audio data. The data is raw byte array or serialzed if a serializer is active"
-            :audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
-            :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
-            :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
+   :params (schema/->describe-parameters RealtimeOutConfig)})
 
 (defn realtime-speakers-out-init!
   [{:audio.out/keys [duration-ms sending-interval]
@@ -81,16 +100,19 @@
      ;; Initial business logic state (managed in transform)
      ::speaking? false
      ::next-send-time (u/mono-time)
-     ::duration-ms duration
-     ::sending-interval sending-interval
-     ::silence-threshold silence-threshold
+     :audio.out/duration-ms duration
+     :audio.out/sending-interval sending-interval
+     :activity-detection/silence-threshold-ms silence-threshold
      ::audio-line-atom audio-line-atom}))
 
 (defn realtime-out-init!
-  [{:audio.out/keys [duration-ms chan sending-interval]
-    :activity-detection/keys [silence-threshold-ms]}]
+  [params]
   (let [;; Configuration
-        duration (or duration-ms 20)
+        parsed-params (schema/parse-with-defaults RealtimeOutConfig params)
+        {:audio.out/keys [duration-ms chan sending-interval]
+         :activity-detection/keys [silence-threshold-ms]} parsed-params
+
+        duration duration-ms
         sending-interval (or sending-interval duration)
         silence-threshold (or silence-threshold-ms (* 8 duration))
 
@@ -126,15 +148,15 @@
         (recur)))
 
     ;; Return state with minimal setup
-    {::flow/in-ports {:timer-out timer-out-ch}
-     ::flow/out-ports {:timer-in timer-in-ch
-                       :audio-write audio-write-ch}
-     ;; Initial business logic state (managed in transform)
-     ::speaking? false
-     ::last-send-time 0
-     ::duration-ms duration
-     ::sending-interval sending-interval
-     ::silence-threshold silence-threshold}))
+    (into parsed-params
+          {::flow/in-ports {:timer-out timer-out-ch}
+           ::flow/out-ports {:timer-in timer-in-ch
+                             :audio-write audio-write-ch}
+           ;; Initial business logic state (managed in transform)
+           ::speaking? false
+           ::last-send-time 0
+           :audio.out/sending-interval sending-interval
+           :activity-detection/silence-threshold-ms silence-threshold})))
 
 (defn realtime-out-transition
   [{::flow/keys [in-ports out-ports] :as state} transition]
@@ -161,7 +183,8 @@
   "Pure function to process an audio frame and determine state changes.
    Returns [updated-state output-map] for the given state, frame, and current time."
   [{:keys [transport/serializer] :as state
-    ::keys [last-send-time sending-interval]
+    ::keys [last-send-time]
+    :audio.out/keys [sending-interval]
     :or {last-send-time 0}} frame now]
   (let [should-emit-start? (not (::speaking? state))
         maybe-next-send (+ last-send-time sending-interval)
@@ -203,7 +226,7 @@
          (:timer/tick frame))
     (let [silence-duration (- (:timer/timestamp frame) (::last-send-time state 0))
           should-emit-stop? (and (::speaking? state)
-                                 (> silence-duration (::silence-threshold state)))
+                                 (> silence-duration (:activity-detection/silence-threshold-ms state)))
 
           updated-state (if should-emit-stop?
                           (assoc state ::speaking? false)
