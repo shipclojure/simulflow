@@ -171,9 +171,12 @@
 (defn -main
   "Main entry point for text chat demo"
   [& args]
-  (let [config (cond-> {}
-                 (some #(= % "--debug") args) (assoc :debug? true)
+  (let [debug? (some #(= % "--debug") args)
+        config (cond-> {}
+                 debug? (assoc :debug? true)
                  (some #(= % "--scenario") args) (assoc :scenario? true))]
+    (when debug?
+      (t/set-min-level! :debug))
     (start-text-chat! config)))
 
 (comment
