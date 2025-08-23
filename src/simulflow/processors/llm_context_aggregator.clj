@@ -343,9 +343,7 @@
   ([] {:ins {:in "Channel for llm text chunks"}
        :outs {:out "Channel for assembled speak frames"}})
   ([_] {:acc nil})
-  ([state transition]
-   (when (= transition ::flow/stop))
-   ;; No cleanup needed for this processor
+  ([state _transition]
    state)
   ([{:keys [acc]} _ msg]
    (when (frame/llm-text-chunk? msg)
