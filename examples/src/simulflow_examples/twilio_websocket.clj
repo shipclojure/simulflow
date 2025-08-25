@@ -109,7 +109,7 @@
 
         :llm {:proc llm/openai-llm-process
               :args {:openai/api-key (secret [:openai :new-api-sk])
-                     :llm/model "gpt-4o-mini"}}
+                     :llm/model :gpt-4.1-mini}}
 
         :assistant-context-assembler {:proc context/assistant-context-assembler
                                       :args {:debug? false}}

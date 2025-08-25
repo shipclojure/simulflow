@@ -210,3 +210,27 @@ CLOSED: [2025-02-05 Wed 08:34]
 :LOGBOOK:
 CLOCK: [2025-01-29 Wed 18:03]--[2025-01-29 Wed 18:10] =>  0:07
 :END:
+
+* Differences between pipecat and simulflow
+:PROPERTIES:
+:ARCHIVE_TIME: 2025-08-23 Sat 09:58
+:ARCHIVE_FILE: ~/workspace/simulflow/TODO.org
+:ARCHIVE_OLPATH: Add pipeline interruptions
+:ARCHIVE_CATEGORY: TODO
+:ARCHIVE_ITAGS: mvp
+:END:
+1. (I think) simulflow TTS processors whould keep a =:pipeline/interrupted?=
+   state because when the processor receives a =speak-frame=, it sends it on the
+   websocket connection to the actual TTS provider that may send one or more
+   events back that need to be accumulated to construct the full audio
+   eequivalent of the text from the =speak-frame=. Therefore we keep the
+   =pipeline/interrupted?= flag so when new data is received on the websocket
+   the processor drops them.
+2. We need a way to clear the "playback queue". Currently the playback queue is
+   represented by the [[file:src/simulflow/transport/out.clj::audio-write-ch (a/chan 1024)\]][audio-write-channel]] defined. There is a [[file:src/simulflow/async.clj::(defn drain-channel!][drain-channel!]]
+   function which will work but we need to introduce two channels to communicate
+   with the [[file:src/simulflow/transport/out.clj::(vthread-loop \[\]][process running in a vthread]] that sends audio to out. One for
+   commands to drain audio, and one on which to take audio from (the current
+   existing one)
+3. Pipecat uses a bidirectional queue system between processors:
+Transport in <-> Transcriptor <-> Context Aggregator <-> LLM <-> TTS <-> a

@@ -12,6 +12,234 @@
 * TODO [#A] Implement background noise filtering with [[https://docs.pipecat.ai/guides/features/krisp][krisp.ai]]
 
 * TODO [#A] Add pipeline interruptions                                  :mvp:
+Our task for today is to finalize the interruption flow to work correctly. Don't
+edit anything, we just want to plan the implementation. The interruption flow
+consists of this:
+- if the user speaks, aka a user-speech-start frame is emitted, the transport
+  realtime output is interrupted from sending out realtime out frames
+  At the same time, transport-out (realtime out process) discards new
+  raw-audio-out frames until it receives a user-speech-stop frame
+- the llm process (openai.clj for example) when it receives a user-speech-start
+  frame, if there is a in-flight request for generating responses, that request
+  should be discarded - here we need to plan ahead for request interruption as
+  that is not yet supported. We use hato which is a clojure wrapper over the
+  Java 11 HTTP Client
+
+- the text-to-speech process needs to drop its audio buffer if it is
+  accumulating an audio response, and also maintain a :pipeline/interrupted?
+  state. New results from the websocket connection will be dropped while
+  :pipeline/interrupted? is true. This flag is toggled true on
+  :user-speech-start and ends on :user-speech-stop frames
+
+  Actually sorry, it is not on :user-speech-stop/start frames but on
+=::control-interrupt-start= =::control-interrupt-stop= that these things occur.
+
+- simulflow uses a [[file:src/simulflow/processors/llm_context_aggregator.clj::(defn- llm-sentence-assembler-impl][sentence assembler]] that assembles streaming llm tokens until
+  it has a full sentence and sends it forward as a speak frame. Usually this
+  goes to the TTS process and to the context aggregator. This process also needs
+  to drop all accumulated buffer for a partial sentence and not assemble anymore
+  when pipeline is interrupted
+
+- [[file:src/simulflow/processors/llm_context_aggregator.clj::(def context-aggregator][Context aggregator]] takes all speak frames and keeps a full ledger of the
+  conversation so far. The trouble is that the context aggregator appends a new
+  LLM sentence without any concern if the user heard it. (audio equivalent of
+  that sentence was played back to the user). Text to speech processors like
+  Elevenlabs return also char timing information. Simulflow maintains this info
+  with [[file:src/simulflow/frame.clj::(def XiAlignment \[:map][vendor specific frames]]. Currently, they are not used in processing. As an
+  example, they were used by a user of simulflow to track when a specific
+  sentence was said. We could normalize the char alignment into a standard
+  format and make audio chunking at least fit specific chars. This way, the
+  transport out could emit a "heard" frame - a frame that denotes that specific
+  word was heard by the user so it can be safely appended to the context even if
+  the full sentence wasn't heard.
+
+Here's another description of this process from the perspective of another
+popular realtime ai orchestration platform: pipecat
+
+** How pipecat handles interruptions
+
+In pipecat, transport contains both [[file:~/workspace/pipecat/src/pipecat/transports/base_input.py::class BaseInputTransport(FrameProcessor):][in]] & out. When audio comes in, each chunk is
+sent to a VAD analizer like Silero and optionally a Smart turn detection model.
+Based on these analyzers the BaseTransportInput keeps a =speaking= flag. If
+there is a smart turn detector, it's logic for wether the user is
+speaking/stopped speaking will take precedence, otherwise the VAD will be the
+source of truth.
+
+When the VAD state changes, (ex: speaking -> not speaking), the pipeline emits
+=VADUserStartedSpeakingFrame=/=VADUserStoppedSpeakingFrame=. This happens
+regardless in order to have good observation on the pipeline.
+
+The transport input has a role into starting interruptions *if* there isn't a
+interruption strategy created. If one or more *interruption* strategies exists,
+the triggering of the interruption logic is defered to use UserContextAggregator
+that has access to the current transcriptions coming in.
+
+Interruption strategies differ from normal VAD or Turn Taking because they can
+implement custom logic like: Interrupt the user only if the user said 3 words.
+The context aggregator will send a =BotInterrupt= frame to transport in which
+will send a =StartInterruptionFrame=.
+
+*** Interruption flow in pipecat (very similar conceptually for simulflow)
+
+1. When either the BaseTransportInput or the UserContextAggregator deems an
+interruption should start, they emit a frame to do so. BaseTransportInput emits
+a =StartInterruptionFrame= and UserContextAggregator emits a
+=BotInterruptionFrame= which is sent to the BaseTransportInput who upon
+receiving this frame, emits a =StartInterruptionFrame=. This frame does the
+following:
+   - Tells the LLM to cancel in-flight requests and current streaming tokens
+   - Tells TTS processors to cancel in-flight reqeusts and clear their accumulators
+   - Tells TransportOut to stop sending AudioOut frames and clear the current
+     playback queue
+   - (Possibly) tells BotContextAggregator to drop current sentence assembled or
+     just cut it short as the user only heard a part of it.
+
+2. The pipeline is now in a interrupted state (relevant for TransportOut because
+   it drops any new AudioOut frames until it receives a =StopInterruptionFrame=)
+
+3. When user is deemed to have stopped speaking (by either VAD or Turn taking
+   model) a =UserStoppedSpeaking= frame is sent. Which will trigger a
+   =StopInterruptionFrame= if the pipeline supports interuption. This frame will
+   either be sent by the TransportBaseInput.
+
+   Important mention here: The LLM, TTS don't keep a =speaking= flag in this
+   period as they don't care about this state. They only drop their current
+   activity when a =StartInterruptionFrame= is received but don't handle a
+   =StopInterruptionFrame= at all.
+
+** Differences between pipecat and simulflow
+1. (I think) simulflow TTS processors whould keep a =:pipeline/interrupted?=
+   state because when the processor receives a =speak-frame=, it sends it on the
+   websocket connection to the actual TTS provider that may send one or more
+   events back that need to be accumulated to construct the full audio
+   eequivalent of the text from the =speak-frame=. Therefore we keep the
+   =pipeline/interrupted?= flag so when new data is received on the websocket
+   the processor drops them.
+2. We need a way to clear the "playback queue". Currently the playback queue is
+   represented by the [[file:src/simulflow/transport/out.clj::audio-write-ch (a/chan 1024)\]][audio-write-channel]] defined. There is a [[file:src/simulflow/async.clj::(defn drain-channel!][drain-channel!]]
+   function which will work but we need to introduce two channels to communicate
+   with the [[file:src/simulflow/transport/out.clj::(vthread-loop \[\]][process running in a vthread]] that sends audio to out. One for
+   commands to drain audio, and one on which to take audio from (the current
+   existing one)
+3. Pipecat uses a bidirectional queue system between processors:
+Transport in <-> Transcriptor <-> Context Aggregator <-> LLM <-> TTS <->
+Transport out
+
+Processors send frames either forward or backward (upstream or downstream). They
+also have two different queues on each direction, to account for normal frames
+and system frames, because you want system frames (like interrupt-start) to be
+handled immediately, even if on the queue you have more frames to handle.
+
+This system makes it easy to send system frames and be sure they are received by
+all interested processors. The downside is that all processors need to process
+all frames, by at a minimum sending them to the next process in the defined
+direction.
+
+Simulflow defines processes in a directed graph that can have cycles, so as a
+user you need to define exactly the connections needed for processors to
+interract correctly.
+
+This is more efficient, in the sense that processors need to handle only the
+frames they care about and don't have to worry about sending frames forward
+however this complicates system frames propagation. and you end up with large
+edge definitions. Example:
+#+begin_src clojure
+  (defn phone-flow
+    "This example showcases a voice AI agent for the phone. Phone audio is usually
+    encoded as MULAW at 8kHz frequency (sample rate) and it is mono (1 channel)."
+    [{:keys [llm-context extra-procs in out extra-conns language vad-analyser]
+      :or {llm-context {:messages [{:role "system"
+                                    :content "You are a helpful assistant "}]}
+           extra-procs {}
+           language :en
+           extra-conns []}}]
+    (let [chunk-duration-ms 20]
+      {;; procs are the processes involved in the pipeline. They are nodes in the graph
+       :procs
+       (u/deep-merge
+         {:transport-in {:proc transport-in/twilio-transport-in
+                         :args {:transport/in-ch in
+                                :vad/analyser vad-analyser}}
+          :transcriptor {:proc asr/deepgram-processor
+                         :args {:transcription/api-key (secret [:deepgram :api-key])
+                                :transcription/interim-results? true
+                                :transcription/punctuate? false
+                                :transcription/vad-events? false
+                                :transcription/smart-format? true
+                                :transcription/model :nova-2
+                                :transcription/utterance-end-ms 1000
+                                :transcription/language language}}
+          :context-aggregator {:proc context/context-aggregator
+                               :args {:llm/context llm-context
+                                      :aggregator/debug? false}}
+
+          :llm {:proc llm/openai-llm-process
+                :args {:openai/api-key (secret [:openai :new-api-sk])
+                       :llm/model :gpt-4.1-mini}}
+
+          :assistant-context-assembler {:proc context/assistant-context-assembler
+                                        :args {:debug? false}}
+
+          :llm-sentence-assembler {:proc context/llm-sentence-assembler}
+          :tts {:proc tts/elevenlabs-tts-process
+                :args {:elevenlabs/api-key (secret [:elevenlabs :api-key])
+                       :elevenlabs/model-id "eleven_flash_v2_5"
+                       :elevenlabs/voice-id (secret [:elevenlabs :voice-id])
+                       :voice/stability 0.5
+                       :voice/similarity-boost 0.8
+                       :voice/use-speaker-boost? true
+                       :pipeline/language language
+                       :audio.out/sample-rate 8000
+                       :audio.out/encoding :ulaw}}
+          :audio-splitter {:proc transport/audio-splitter
+                           :args {:audio.out/duration-ms chunk-duration-ms
+                                  :audio.out/sample-size-bits 8}}
+          :transport-out {:proc transport-out/realtime-out-processor
+                          :args {:audio.out/chan out
+                                 :audio.out/sending-interval chunk-duration-ms}}
+          :activity-monitor {:proc activity-monitor/process
+                             :args {::activity-monitor/timeout-ms 5000}}}
+         extra-procs)
+
+       ;; :conns are the edges of the graph. The :out, :in, :sys-out, :sys-in are
+       ;; the channels each processor defines. They are described in the 0 arity
+       ;; version of the processor or the describe function
+       :conns (concat
+                [[[:transport-in :out] [:transcriptor :in]]
+
+                 [[:transcriptor :out] [:context-aggregator :in]]
+                 [[:transport-in :sys-out] [:context-aggregator :sys-in]]
+                 [[:transport-in :sys-out] [:transport-out :sys-in]]
+                 [[:context-aggregator :out] [:llm :in]]
+
+                 ;; Aggregate full context
+                 [[:llm :out] [:assistant-context-assembler :in]]
+                 [[:assistant-context-assembler :out] [:context-aggregator :in]]
+
+                 ;; Assemble sentence by sentence for fast speech
+                 [[:llm :out] [:llm-sentence-assembler :in]]
+                 [[:llm-sentence-assembler :out] [:tts :in]]
+
+                 [[:tts :out] [:audio-splitter :in]]
+
+                 [[:audio-splitter :out] [:transport-out :in]]
+
+                 ;; Activity detection
+                 [[:transport-out :sys-out] [:activity-monitor :sys-in]]
+                 [[:transport-in :sys-out] [:activity-monitor :sys-in]]
+                 [[:transcriptor :sys-out] [:activity-monitor :sys-in]]
+                 [[:activity-monitor :out] [:context-aggregator :in]]
+                 [[:activity-monitor :out] [:tts :in]]]
+                extra-conns)}))
+#+end_src
+
+There is a [[file:src/simulflow/processors/system_frame_router.clj::(ns simulflow.processors.system-frame-router][system frame router]] process that can be used but there is a caveat:
+the system frame router, fans out all of the system frames he receives to his
+=:sys-out= channel but all the processors that define an edge from his output,
+need to ensure to not send system frames forward because it will cause an
+infinite loop. Just to be mentioned, all processors that emit system frames,
+will receive back the same system frame from the system route simply by the
+nature of the setup.
 
 ** TODO Make assistant context aggregator support interrupt :mvp:
 * TODO Add support for first message greeting in the pipeline :mvp:
