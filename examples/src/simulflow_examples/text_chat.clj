@@ -3,9 +3,8 @@
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
-   [simulflow-examples.scenario-example :as scenario-example]
-   [simulflow.processors.google :as google]
    [simulflow.processors.llm-context-aggregator :as context]
+   [simulflow.processors.openai :as openai]
    [simulflow.scenario-manager :as sm]
    [simulflow.secrets :refer [secret]]
    [simulflow.transport.text-in :as text-in]
@@ -70,8 +69,9 @@
                             :args {:llm/context context
                                    :aggregator/debug? debug?}}
        ;; Generate LLM responses with streaming
-       :llm {:proc google/google-llm-process
-             :args {:google/api-key (secret [:google :api-key])}}
+       :llm {:proc openai/openai-llm-process
+             :args {:openai/api-key (secret [:openai :api-key])
+                    :llm/model :gpt-4.1-mini}}
        ;; Handle assistant message assembly for context
        :assistant-context-assembler {:proc context/assistant-context-assembler
                                      :args {:debug? debug?}}
