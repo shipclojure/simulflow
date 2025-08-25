@@ -153,23 +153,6 @@
      :on-close (fn [_ws code reason]
                  (t/log! {:level :debug :id :elevenlabs} ["Websocket connection closed" "Code:" code "Reason:" reason]))}))
 
-(defn elevenlabs-tts-transform
-  "Modular transform function using pure helper functions"
-  [state in-name msg]
-  (cond
-    ;; Handle WebSocket messages (JSON accumulation and parsing)
-    (= in-name ::ws-read)
-    (process-websocket-message state msg (:now state))
-
-    ;; Handle speak frames (convert to WebSocket messages)
-    (frame/speak-frame? msg)
-    (do (t/log! {:level :debug :id :elevenlabs :data msg :msg "Got speak-frame"})
-        [state {::ws-write [(process-speak-frame msg)]}])
-
-    ;; Default case - no action
-    :else
-    [state]))
-
 (def elevenlabs-tts-describe
   {:ins {:sys-in "Channel for system messages that take priority"
          :in "Channel for audio input frames (from transport-in) "}
@@ -220,6 +203,31 @@
     (doseq [port (concat (vals in-ports) (vals out-ports))]
       (a/close! port)))
   state)
+
+(defn elevenlabs-tts-transform
+  "Modular transform function using pure helper functions"
+  [state in-name msg]
+  (cond
+    ;; Handle WebSocket messages (JSON accumulation and parsing)
+    (and (= in-name ::ws-read)
+         (not (:pipeline/interrupted? state)))
+    (process-websocket-message state msg (:now state))
+
+    ;; Handle speak frames (convert to WebSocket messages)
+    (and (frame/speak-frame? msg)
+         (not (:pipeline/interrupted? state)))
+    (do (t/log! {:level :debug :id :elevenlabs :data msg :msg "Got speak-frame"})
+        [state {::ws-write [(process-speak-frame msg)]}])
+
+    (frame/control-interrupt-start? msg)
+    [(assoc state ::accumulator "" :pipeline/interrupted? true)]
+
+    (frame/control-interrupt-stop? msg)
+    [(assoc state :pipeline/interrupted? false)]
+
+    ;; Default case - no action
+    :else
+    [state]))
 
 (defn elevenlabs-tts-process-fn
   ([] elevenlabs-tts-describe)
