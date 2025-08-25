@@ -2,7 +2,6 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
-   [simulflow.utils.core :as u]
    [simulflow.utils.openai :as uai]))
 
 (def test-api-key "test-api-key-miiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiin")
@@ -217,7 +216,11 @@
           (doseq [[state output] valid-results]
             (is (= state {}))
             (is (= (count (:out output)) 1))
-            (is (frame/llm-tool-call-chunk? (first (:out output))))))))))
+            (is (frame/llm-tool-call-chunk? (first (:out output))))))))
+    (testing "pipeline interruption handling"
+      (testing "Sends :command/interrupt-request command on control-interrupt-start"
+        (is (= (uai/transform-llm-processor {} :sys-in (frame/control-interrupt-start true) :openai/api-key :api/completions-url)
+               [{} {:llm-write [{:command/kind :command/interrupt-request}]}]))))))
 
 (deftest transition-llm-processor-test
   (testing "closes channels on stop transition"

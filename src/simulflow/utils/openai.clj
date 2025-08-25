@@ -69,43 +69,62 @@
                                      (pos? (count tools)) (assoc :tools tools)))}))
 
 ;; Common processor functions
-
-(defn handle-response
+(defn vthread-pipe-response-with-interrupt
   "Common function to handle streaming response from LLM"
-  [in-ch out-ch]
+  [{:keys [in-ch out-ch interrupt-chan on-end]}]
   (vthread-loop []
-    (when-let [chunk (a/<!! in-ch)]
-      (a/>!! out-ch chunk)
-      (recur))))
+    (if-let [[chunk c] (a/alts!! [in-ch interrupt-chan])]
+      (when (= c in-ch)
+        (a/>!! out-ch chunk)
+        (recur))
+      ;; No more data or interruption, call on-end and exit
+      (when (fn? on-end)
+        (on-end)))))
 
 (defn init-llm-processor!
   "Common initialization function for OpenAI-compatible LLM processors"
   [schema params log-id]
   (let [parsed-config (schema/parse-with-defaults schema params)
         llm-write (a/chan 100)
-        llm-read (a/chan 1024)]
+        llm-read (a/chan 1024)
+        interrupt-ch (a/chan 10)
+        request-in-progress? (atom false)]
     (vthread-loop []
       (when-let [command (a/<!! llm-write)]
         (try
           (t/log! {:level :debug :id log-id :data command} "Processing request command")
-          (assert (= (:command/kind command) :command/sse-request)
-                  "LLM processor only supports SSE request commands")
+          (assert (#{:command/sse-request :command/interrupt-request} command)
+                  "LLM processor only supports SSE request or interrupt request commands")
           ;; Execute the command and handle the streaming response
-          (handle-response (command/handle-command command) llm-read)
+          (cond
+            (= command :command/sse-request)
+            (do
+              (reset! request-in-progress? true)
+              (vthread-pipe-response-with-interrupt {:in-ch (command/handle-command command)
+                                                     :out-ch llm-read
+                                                     :interrupt-ch interrupt-ch
+                                                     :on-end #(reset! request-in-progress? false)}))
+
+            (= command :command/interrupt-request)
+            (when @request-in-progress?
+              (a/>!! interrupt-ch command)))
           (catch Exception e
             (t/log! {:level :error :id log-id :error e} "Error processing command")))
         (recur)))
 
     (merge parsed-config
            {::flow/in-ports {::llm-read llm-read}
-            ::flow/out-ports {::llm-write llm-write}})))
+            ::flow/out-ports {::llm-write llm-write}
+            ::interrupt-ch interrupt-ch})))
 
 (defn transition-llm-processor
   "Common transition function for LLM processors"
   [{::flow/keys [in-ports out-ports] :as state} transition]
   (when (= transition ::flow/stop)
     (doseq [port (concat (vals in-ports) (vals out-ports))]
-      (a/close! port)))
+      (a/close! port))
+    (when-let [c (::interrupt-ch state)]
+      (a/close! c)))
   state)
 
 (defn transform-handle-llm-response
@@ -128,8 +147,8 @@
 
 (defn transform-llm-context
   "Common function to transform LLM context into SSE request"
-  [state context api-key-key completions-url-key]
-  (let [context-data (:frame/data context)
+  [state context-frame api-key-key completions-url-key]
+  (let [context-data (:frame/data context-frame)
         {:llm/keys [model]} state
         api-key (get state api-key-key)
         completions-url (get state completions-url-key)
@@ -154,6 +173,9 @@
 
     (frame/llm-context? msg)
     (transform-llm-context state msg api-key-key completions-url-key)
+
+    (frame/control-interrupt-start? msg)
+    [state {:llm-write [{:command/kind :command/interrupt-request}]}]
 
     :else
     [state {}]))
