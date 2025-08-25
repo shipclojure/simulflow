@@ -52,24 +52,18 @@
         (if (and (not (vad/transition? vad-state))
                  (not= vad-state prev-vad-state))
           (if (= vad-state :vad.state/speaking)
-            (let [system-frames (into [(frame/vad-user-speech-start true)
-                                       (frame/user-speech-start true)]
-                                      (remove nil? [(when supports-interrupt? (frame/control-interrupt-start true))]))
-                  output {:out [msg]
-                          :sys-out system-frames}]
-              [new-state output])
-            (let [system-frames (into [(frame/vad-user-speech-stop true)
-                                       (frame/user-speech-stop true)]
-                                      (remove nil? [(when supports-interrupt? (frame/control-interrupt-stop true))]))
-                  output {:out [msg]
-                          :sys-out system-frames}]
-              [new-state output]))
-          [new-state {:out [msg]}]))
-      [state {:out [msg]}])
+            [new-state (frame/send msg (frame/vad-user-speech-start true)
+                                   (frame/user-speech-start true)
+                                   (when supports-interrupt? (frame/control-interrupt-start true)))]
+            [new-state (frame/send msg (frame/vad-user-speech-stop true)
+                                   (frame/user-speech-stop true)
+                                   (when supports-interrupt? (frame/control-interrupt-stop true)))])
+          [new-state (frame/send msg)]))
+      [state (frame/send msg)])
 
     (frame/bot-interrupt? msg)
     (if supports-interrupt?
-      [state {:sys-out [(frame/control-interrupt-start true)]}]
+      [state (frame/send (frame/control-interrupt-start true))]
       [state])
 
     :else
@@ -94,13 +88,13 @@
           out-frames (partial merge-with into output)]
       (condp = (:event data)
         "start" [state (if-let [stream-sid (:streamSid data)]
-                         (out-frames {:sys-out [(frame/system-config-change
-                                                  (u/without-nils {:twilio/stream-sid stream-sid
-                                                                   :twilio/call-sid (get-in data [:start :callSid])
-                                                                   :transport/serializer (when send-twilio-serializer?
-                                                                                           (make-twilio-serializer
-                                                                                             stream-sid
-                                                                                             :convert-audio? (:serializer/convert-audio? state false)))}))]})
+                         (out-frames (frame/send (frame/system-config-change
+                                                   (u/without-nils {:twilio/stream-sid stream-sid
+                                                                    :twilio/call-sid (get-in data [:start :callSid])
+                                                                    :transport/serializer (when send-twilio-serializer?
+                                                                                            (make-twilio-serializer
+                                                                                              stream-sid
+                                                                                              :convert-audio? (:serializer/convert-audio? state false)))}))))
                          (out-frames {}))]
         "media"
         (let [audio-frame (frame/audio-input-raw (-> data
@@ -111,7 +105,7 @@
           (base-input-transport-transform state in audio-frame))
 
         "close"
-        [state (out-frames {:sys-out [(frame/system-stop true)]})]
+        [state (out-frames (frame/send (frame/system-stop true)))]
         [state]))
     (base-input-transport-transform state in input)))
 
