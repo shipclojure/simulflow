@@ -1,10 +1,12 @@
 (ns simulflow.processors.llm-context-aggregator-test
   (:require
    [clojure.core.async :as a]
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
    [simulflow.mock-data :as mock]
-   [simulflow.processors.llm-context-aggregator :as sut]))
+   [simulflow.processors.llm-context-aggregator :as sut]
+   [taoensso.telemere :as t]))
 
 (deftest concat-context-test
   (testing "concat-context"
@@ -527,3 +529,359 @@
                    (:request data)))
             (is (true? (get-in data [:properties :run-llm?])))
             (is (fn? (get-in data [:properties :on-update])))))))))
+
+(deftest llm-sentence-assembler-test
+  (testing "llm-sentence-assembler-transform"
+    (testing "normal sentence assembly without interruption"
+      (testing "assembles complete sentences from text chunks"
+        ;; Use real assemble-sentence function, no mocking
+        (let [initial-state {::sut/accumulator "Hello"}
+              text-chunk (frame/llm-text-chunk " world.")
+              [new-state {:keys [out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          ;; Should complete sentence and reset accumulator
+          (is (= "" (::sut/accumulator new-state)))
+          (is (= 1 (count out)))
+          (is (frame/speak-frame? (first out)))
+          (is (= "Hello world." (:frame/data (first out))))))
+
+      (testing "accumulates partial sentences"
+        ;; Test with text that doesn't end a sentence
+        (let [initial-state {::sut/accumulator "Hello"}
+              text-chunk (frame/llm-text-chunk " there")
+              [new-state output] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          ;; Should accumulate without producing output
+          (is (= "Hello there" (::sut/accumulator new-state)))
+          (is (nil? output))))
+
+      (testing "handles empty accumulator"
+        (let [initial-state {::sut/accumulator ""}
+              text-chunk (frame/llm-text-chunk "Hello")
+              [new-state output] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          (is (= "Hello" (::sut/accumulator new-state)))
+          (is (nil? output))))
+
+      (testing "handles nil accumulator"
+        (let [initial-state {::sut/accumulator nil}
+              text-chunk (frame/llm-text-chunk "Hello")
+              [new-state output] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          (is (= "Hello" (::sut/accumulator new-state)))
+          (is (nil? output))))
+
+      (testing "completes sentences with exclamation marks"
+        (let [initial-state {::sut/accumulator "Hello world"}
+              text-chunk (frame/llm-text-chunk "!")
+              [new-state {:keys [out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          (is (= "" (::sut/accumulator new-state)))
+          (is (= 1 (count out)))
+          (is (frame/speak-frame? (first out)))
+          (is (= "Hello world!" (:frame/data (first out))))))
+
+      (testing "completes sentences with question marks"
+        (let [initial-state {::sut/accumulator "How are you"}
+              text-chunk (frame/llm-text-chunk "?")
+              [new-state {:keys [out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          (is (= "" (::sut/accumulator new-state)))
+          (is (= 1 (count out)))
+          (is (frame/speak-frame? (first out)))
+          (is (= "How are you?" (:frame/data (first out)))))))
+
+    (testing "interruption handling"
+      (testing "control-interrupt-start clears accumulator and sets interrupted state"
+        (let [initial-state {::sut/accumulator "Hello there, how can"
+                             :some-other-key "preserved"}
+              interrupt-frame (frame/control-interrupt-start true)
+              [new-state output] (sut/llm-sentence-assembler-transform initial-state :sys-in interrupt-frame)]
+
+          ;; Should clear accumulator and set interrupted state
+          (is (= "" (::sut/accumulator new-state)))
+          (is (= true (:pipeline/interrupted? new-state)))
+          (is (= "preserved" (:some-other-key new-state))) ; Other state preserved
+          (is (= {} output))))
+
+      (testing "control-interrupt-start with empty accumulator"
+        (let [initial-state {::sut/accumulator ""
+                             :some-other-key "preserved"}
+              interrupt-frame (frame/control-interrupt-start true)
+              [new-state output] (sut/llm-sentence-assembler-transform initial-state :sys-in interrupt-frame)]
+
+          (is (= "" (::sut/accumulator new-state)))
+          (is (= true (:pipeline/interrupted? new-state)))
+          (is (= "preserved" (:some-other-key new-state)))
+          (is (= {} output))))
+
+      (testing "control-interrupt-stop clears interrupted state"
+        (let [initial-state {:pipeline/interrupted? true
+                             ::sut/accumulator "some data"
+                             :some-other-key "preserved"}
+              stop-frame (frame/control-interrupt-stop true)
+              [new-state output] (sut/llm-sentence-assembler-transform initial-state :sys-in stop-frame)]
+
+          ;; Should clear interrupted state but preserve other state
+          (is (= false (:pipeline/interrupted? new-state)))
+          (is (= "some data" (::sut/accumulator new-state))) ; Accumulator preserved
+          (is (= "preserved" (:some-other-key new-state)))
+          (is (= {} output))))
+
+      (testing "processes llm-text-chunks normally when not interrupted"
+        ;; Use real function - test with partial sentence
+        (let [initial-state {::sut/accumulator "Hello"
+                             :pipeline/interrupted? false}
+              text-chunk (frame/llm-text-chunk " world")
+              [new-state _output] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          (is (= "Hello world" (::sut/accumulator new-state)))
+          (is (= false (:pipeline/interrupted? new-state)))))
+
+      (testing "drops llm-text-chunks when interrupted"
+        (let [initial-state {::sut/accumulator "Hello"
+                             :pipeline/interrupted? true}
+              text-chunk (frame/llm-text-chunk " world")
+              [new-state output] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          ;; State should remain unchanged when interrupted
+          (is (= "Hello" (::sut/accumulator new-state)))
+          (is (= true (:pipeline/interrupted? new-state)))
+          (is (= {} output))))
+
+      (testing "processes llm-text-chunks when interrupted? is nil (falsy)"
+        ;; Test with real function - use partial sentence
+        (let [initial-state {::sut/accumulator "Hello"
+                             :pipeline/interrupted? nil}
+              text-chunk (frame/llm-text-chunk " world")
+              [new-state output] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+
+          ;; Should process normally since nil is falsy
+          (is (= "Hello world" (::sut/accumulator new-state)))
+          (is (nil? output)))))
+
+    (testing "interruption state transitions"
+      (testing "interrupt -> resume -> process cycle"
+        ;; Use real assemble-sentence function throughout
+        (let [initial-state {::sut/accumulator "Hello there"}
+              ;; 1. Interrupt starts - should clear accumulator and set interrupted
+              [interrupted-state _] (sut/llm-sentence-assembler-transform
+                                      initial-state :sys-in (frame/control-interrupt-start true))]
+
+          (is (= "" (::sut/accumulator interrupted-state)))
+          (is (= true (:pipeline/interrupted? interrupted-state)))
+
+          ;; 2. During interruption, text chunks are dropped
+          (let [text-chunk (frame/llm-text-chunk "ignored text")
+                [still-interrupted _] (sut/llm-sentence-assembler-transform
+                                        interrupted-state :in text-chunk)]
+            (is (= "" (::sut/accumulator still-interrupted)))
+            (is (= true (:pipeline/interrupted? still-interrupted)))
+
+            ;; 3. Interrupt stops - should clear interrupted state
+            (let [[resumed-state _] (sut/llm-sentence-assembler-transform
+                                      still-interrupted :sys-in (frame/control-interrupt-stop true))]
+              (is (= "" (::sut/accumulator resumed-state)))
+              (is (= false (:pipeline/interrupted? resumed-state)))
+
+              ;; 4. After resuming, text chunks are processed again
+              (let [new-text-chunk (frame/llm-text-chunk "New sentence.")
+                    [final-state {:keys [out]}] (sut/llm-sentence-assembler-transform
+                                                  resumed-state :in new-text-chunk)]
+                (is (= "" (::sut/accumulator final-state)))
+                (is (= false (:pipeline/interrupted? final-state)))
+                (is (= 1 (count out)))
+                (is (frame/speak-frame? (first out)))
+                (is (= "New sentence." (:frame/data (first out)))))))))
+
+      (testing "multiple interrupt commands are idempotent"
+        (let [initial-state {::sut/accumulator "some text"}
+
+              ;; First interrupt
+              [state1 _] (sut/llm-sentence-assembler-transform
+                           initial-state :sys-in (frame/control-interrupt-start true))
+
+              ;; Second interrupt (should not change state further)
+              [state2 _] (sut/llm-sentence-assembler-transform
+                           state1 :sys-in (frame/control-interrupt-start true))]
+
+          (is (= "" (::sut/accumulator state1)))
+          (is (= true (:pipeline/interrupted? state1)))
+
+          (is (= "" (::sut/accumulator state2)))
+          (is (= true (:pipeline/interrupted? state2)))))
+
+      (testing "stop interrupt when not interrupted is safe"
+        (let [initial-state {:pipeline/interrupted? false
+                             ::sut/accumulator "preserved text"
+                             :some-data "also preserved"}
+              [new-state output] (sut/llm-sentence-assembler-transform
+                                   initial-state :sys-in (frame/control-interrupt-stop true))]
+
+          (is (= false (:pipeline/interrupted? new-state)))
+          (is (= "preserved text" (::sut/accumulator new-state)))
+          (is (= "also preserved" (:some-data new-state)))
+          (is (= {} output)))))
+
+    (testing "edge cases and error conditions"
+      (testing "unknown input port is ignored"
+        (let [initial-state {::sut/accumulator "preserved"}
+              [new-state output] (sut/llm-sentence-assembler-transform
+                                   initial-state :unknown-port "unknown-message")]
+
+          (is (= "preserved" (::sut/accumulator new-state)))
+          (is (= {} output))))
+
+      (testing "non-text-chunk frames are ignored"
+        (let [initial-state {::sut/accumulator "preserved"}
+              other-frame (frame/user-speech-start true)
+              [new-state output] (sut/llm-sentence-assembler-transform
+                                   initial-state :in other-frame)]
+
+          (is (= "preserved" (::sut/accumulator new-state)))
+          (is (= {} output))))
+
+      (testing "nil text chunk data is handled gracefully"
+        ;; Use real function - nil will be converted to string by assemble-sentence
+        (let [initial-state {::sut/accumulator "Hello"}
+              nil-chunk-frame {:frame/type :simulflow.frame/llm-text-chunk
+                               :frame/data nil}
+              [new-state output] (sut/llm-sentence-assembler-transform
+                                   initial-state :in nil-chunk-frame)]
+
+          ;; Real assemble-sentence will handle nil by converting to string
+          (is (= "Hello" (::sut/accumulator new-state))) ; nil becomes empty string
+          (is (= {} output))))
+
+      (testing "empty text chunk is processed normally"
+        ;; Use real function - empty string doesn't end sentence
+        (let [initial-state {::sut/accumulator "Hello"}
+              empty-chunk (frame/llm-text-chunk "")
+              [new-state output] (sut/llm-sentence-assembler-transform
+                                   initial-state :in empty-chunk)]
+
+          (is (= "Hello" (::sut/accumulator new-state)))
+          (is (nil? output))))
+
+      (testing "state keys are preserved during operations"
+        ;; Use real function with partial sentence
+        (let [initial-state {::sut/accumulator "Hello"
+                             :pipeline/interrupted? false
+                             :custom-key "custom-value"
+                             :another-key 42}
+              text-chunk (frame/llm-text-chunk " world")
+              [new-state _] (sut/llm-sentence-assembler-transform
+                              initial-state :in text-chunk)]
+
+          ;; Custom keys should be preserved
+          (is (= "custom-value" (:custom-key new-state)))
+          (is (= 42 (:another-key new-state)))
+          (is (= false (:pipeline/interrupted? new-state)))
+          (is (= "Hello world" (::sut/accumulator new-state))))))
+
+    (testing "logging behavior verification"
+      (testing "logs discarded partial sentences on interrupt"
+        (let [logged-messages (atom [])
+              initial-state {::sut/accumulator "This is a partial sentence that will be disc"}]
+
+          ;; Mock the logging function to capture log messages
+          (with-redefs [t/log!
+                        (fn [log-map message]
+                          (swap! logged-messages conj {:log-map log-map :message message}))]
+
+            (let [[new-state _] (sut/llm-sentence-assembler-transform
+                                  initial-state :sys-in (frame/control-interrupt-start true))]
+
+              ;; Verify state changes
+              (is (= "" (::sut/accumulator new-state)))
+              (is (= true (:pipeline/interrupted? new-state)))
+
+              ;; Verify logging occurred
+              (is (= 1 (count @logged-messages)))
+              (let [{:keys [log-map message]} (first @logged-messages)]
+                (is (= :debug (:level log-map)))
+                (is (= :sentence-assembler (:id log-map)))
+                (is (str/includes? message "Interrupted"))
+                (is (str/includes? message "Discarding partial sentence"))
+                (is (str/includes? message "This is a partial sentence that will be disc")))))))
+
+      (testing "does not log when accumulator is empty on interrupt"
+        (let [logged-messages (atom [])
+              initial-state {::sut/accumulator ""}]
+
+          (with-redefs [t/log!
+                        (fn [log-map message]
+                          (swap! logged-messages conj {:log-map log-map :message message}))]
+
+            (sut/llm-sentence-assembler-transform
+              initial-state :sys-in (frame/control-interrupt-start true))
+
+            ;; Should not log when accumulator is empty
+            (is (= 0 (count @logged-messages))))))
+
+      (testing "logs sentence assembly"
+        (let [logged-messages (atom [])]
+
+          (with-redefs [t/log!
+                        (fn [log-map message-vec]
+                          (swap! logged-messages conj {:log-map log-map :message-vec message-vec}))]
+
+            ;; Use real assemble-sentence - complete a sentence
+            (let [initial-state {::sut/accumulator "Almost complete"}
+                  text-chunk (frame/llm-text-chunk ".")
+                  [new-state {:keys [out]}] (sut/llm-sentence-assembler-transform
+                                              initial-state :in text-chunk)]
+
+              ;; Verify sentence was assembled
+              (is (= "" (::sut/accumulator new-state)))
+              (is (= 1 (count out)))
+              (is (= "Almost complete." (:frame/data (first out))))
+
+              ;; Verify logging occurred
+              (is (= 1 (count @logged-messages)))
+              (let [{:keys [log-map message-vec]} (first @logged-messages)]
+                (is (= :trace (:level log-map)))
+                (is (= :sentence-assembler (:id log-map)))
+                (is (= ["New sentence assembled: " "Almost complete."] message-vec))))))))
+
+    (testing "real sentence assembly behavior"
+      ;; Test with actual u/assemble-sentence function (no mocking)
+      (testing "handles complex sentences correctly"
+        (let [initial-state {::sut/accumulator ""}
+
+              ;; Build up a sentence word by word
+              [state1 out1] (sut/llm-sentence-assembler-transform
+                              initial-state :in (frame/llm-text-chunk "The U.S.A. is"))
+              [state2 out2] (sut/llm-sentence-assembler-transform
+                              state1 :in (frame/llm-text-chunk " a great"))
+              [state3 {:keys [out]}] (sut/llm-sentence-assembler-transform
+                                       state2 :in (frame/llm-text-chunk " country!"))]
+
+          ;; First two chunks should accumulate (no sentence end detected)
+          (is (nil? out1))
+          (is (nil? out2))
+
+              ;; Third chunk with exclamation should complete sentence
+          (is (= 1 (count out)))
+          (is (frame/speak-frame? (first out)))
+          (is (= "The U.S.A. is a great country!" (:frame/data (first out))))
+          (is (= "" (::sut/accumulator state3)))))
+
+      (testing "handles multiple sentence types"
+        ;; Test period
+        (let [[_state {:keys [out]}] (sut/llm-sentence-assembler-transform
+                                       {::sut/accumulator "Hello"} :in (frame/llm-text-chunk " world."))]
+          (is (= 1 (count out)))
+          (is (= "Hello world." (:frame/data (first out)))))
+
+        ;; Test question mark
+        (let [[_state {:keys [out]}] (sut/llm-sentence-assembler-transform
+                                       {::sut/accumulator "How are"} :in (frame/llm-text-chunk " you?"))]
+          (is (= 1 (count out)))
+          (is (= "How are you?" (:frame/data (first out)))))
+
+        ;; Test exclamation
+        (let [[_state {:keys [out]}] (sut/llm-sentence-assembler-transform
+                                       {::sut/accumulator "Great"} :in (frame/llm-text-chunk " job!"))]
+          (is (= 1 (count out)))
+          (is (= "Great job!" (:frame/data (first out)))))))))

@@ -337,22 +337,51 @@
 
       :else [state])))
 
+(defn llm-sentence-assembler-transform
+  [state _ msg]
+  (cond
+    ;; Handle interruption start - clear partial sentence
+    (frame/control-interrupt-start? msg)
+    (let [partial-sentence (::accumulator state)]
+      (when (seq partial-sentence)
+        (t/log! {:level :debug :id :sentence-assembler}
+                (str "[Interrupted] Discarding partial sentence: " (subs partial-sentence 0 (min 50 (count partial-sentence))) "...")))
+      [(-> state
+           (assoc ::accumulator "")
+           (assoc :pipeline/interrupted? true))
+       {}])
+
+    ;; Handle interruption end
+    (frame/control-interrupt-stop? msg)
+    [(assoc state :pipeline/interrupted? false) {}]
+
+    ;; Only process LLM text chunks when not interrupted
+    (and (frame/llm-text-chunk? msg) (not (:pipeline/interrupted? state)))
+    (let [{:keys [sentence accumulator]} (u/assemble-sentence (::accumulator state) (:frame/data msg))]
+      (if sentence
+        (do
+          (t/log! {:level :trace :id :sentence-assembler} ["New sentence assembled: " sentence])
+          [(assoc state ::accumulator accumulator) {:out [(frame/speak-frame sentence)]}])
+        [(assoc state ::accumulator accumulator)]))
+
+    ;; Drop LLM chunks during interruption
+    (and (frame/llm-text-chunk? msg) (:pipeline/interrupted? state))
+    [state {}]
+
+    :else [state {}]))
+
 (defn- llm-sentence-assembler-impl
   "Takes in llm-text-chunk frames and returns a full sentence. Useful for
   generating speech sentence by sentence, instead of waiting for the full LLM message."
-  ([] {:ins {:in "Channel for llm text chunks"}
-       :outs {:out "Channel for assembled speak frames"}})
-  ([_] {:acc nil})
+  ([] {:ins {:in "Channel for llm text chunks"
+             :sys-in "Channel for system messages"}
+       :outs {:out "Channel for assembled speak frames"
+              :sys-out "Channel for system frames"}})
+  ([_] {::accumulator nil})
   ([state _transition]
    state)
-  ([{:keys [acc]} _ msg]
-   (when (frame/llm-text-chunk? msg)
-     (let [{:keys [sentence accumulator]} (u/assemble-sentence acc (:frame/data msg))]
-       (if sentence
-         (do
-           (t/log! {:level :trace :id :sentence-assembler} ["AI: " sentence])
-           [{:acc accumulator} {:out [(frame/speak-frame sentence)]}])
-         [{:acc accumulator}])))))
+  ([state in msg]
+   (llm-sentence-assembler-transform state in msg)))
 
 ;; =============================================================================
 ;; Processors
