@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file. This change
 - Support for latest openai models (gpt5, gpt4.1, o series and more) See [openai.clj](./src/simulflow/processors/openai.clj) for the schema definition
 - **Twilio transport in** Added extra parameter `transport/send-twilio-serializer?` to prevent it from including a `:transport/serializer` in the `::frame/system-config-change` issued
 - **Realtime out transport** Extra parameter for `transport/serializer` as initial argument to the processor
+- **Sentence assembler**: Added pipeline interruption support. The processor will drop partial accumulator sentences and go into interrupted mode when a `::frame/control-inerrupt-start` is received. All new llm-chunks received while in the interrupted state are dropped and the processor resumes assembling sentences on receiving a `::frame/control-interrupt-stop`
+- **Elevenlabs TTS**: Added pipeline interruption support. The processor will drop partial generated audio and go into interrupted mode when a `::frame/control-inerrupt-start` is received. All new speak-frames received while in the interrupted state are dropped and the processor resumes on receiving a `::frame/control-interrupt-stop`
+- **LLM Processors (Openai and Google)**: Added pipeline interruption support. The processor will cancel in-flight request for inference when receiving a `::frame/control-inerrupt-start`.
 
 ### Changed
 - Moved most of the llm logic from [openai processor](./src/simulflow/processors/openai.clj) to an utils folder to be used by multiple processors like [gemini](./src/simulflow/processors/google.clj)
