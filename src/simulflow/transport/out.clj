@@ -50,145 +50,118 @@
           :sys-out "Channel for bot speech status frames (system frames)"}
    :params (schema/->describe-parameters RealtimeOutConfig)})
 
-(defn realtime-speakers-out-init!
-  [{:audio.out/keys [duration-ms sending-interval]
-    :activity-detection/keys [silence-threshold-ms]}]
-  (let [;; Configuration
-        duration (or duration-ms 20)
-        sending-interval (or sending-interval (/ duration 2))
-        silence-threshold (or silence-threshold-ms (* 4 duration))
+;; Helper functions for DRY init implementations
 
-        ;; Audio line state - will be opened on first frame
-        audio-line-atom (atom nil)
+(defn- setup-transport-channels
+  "Sets up the common channel infrastructure for transport-out processors"
+  []
+  {:timer-in-ch (chan 1024)
+   :timer-out-ch (chan 1024)
+   :audio-write-ch (chan 1024)
+   :command-ch (chan 1024)})
 
-        ;; Channels following activity monitor pattern
-        timer-in-ch (chan 1024)
-        timer-out-ch (chan 1024)
-        audio-write-ch (chan 1024)
-        command-ch (chan 1024)]
+(defn- start-timer-process!
+  "Starts the timer process that sends periodic ticks"
+  [timer-out-ch]
+  (vthread-loop []
+    (let [check-interval 1000] ; Check every second for speech timeout
+      (<!! (timeout check-interval))
+      (>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
+      (recur))))
 
-    ;; Minimal timer process - just sends timing events (like activity monitor)
-    (vthread-loop []
-      (let [check-interval 1000] ; Check every second for speech timeout
-        (<!! (timeout check-interval))
-        (>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
-        (recur)))
+(defn- handle-command
+  "Handles command channel messages (drain-queue, etc.)"
+  [command audio-write-ch]
+  (case (:command/kind command)
+    :command/drain-queue (do
+                           (async/drain-channel! audio-write-ch)
+                           (t/log! {:level :debug :id :transport-out} "Drained audio queue"))
+    nil)) ; Unknown command
 
-    ;; Audio writer process - handles only audio I/O side effects, lazy line opening, and stopping playback
-    (vthread-loop []
-      ;; using :priority true to always prefer command-ch in case both audio-write and command chans have value
-      (let [[val port] (a/alts!! [command-ch audio-write-ch] :priority true)]
-        (when val
-          (cond
-            (= port command-ch)
-            (case (:command/kind val)
-              :command/drain-queue (do
-                                     (async/drain-channel! audio-write-ch)
-                                     (t/log! {:level :debug :id :transport-out} "Drained audio queue"))
-              ;; unknown command
-              nil)
+(defn- handle-timing
+  "Common timing logic for audio commands"
+  [command]
+  (let [current-time (u/mono-time)
+        delay-until (:delay-until command 0)
+        wait-time (max 0 (- delay-until current-time))]
+    (when (pos? wait-time)
+      (<!! (timeout wait-time)))))
 
-            (= port audio-write-ch)
-            (when (= (:command/kind val) :command/write-audio)
-              (let [current-time (u/mono-time)
-                    delay-until (:delay-until val 0)
-                    wait-time (max 0 (- delay-until current-time))
-                    sample-rate (:sample-rate val 16000) ; Fallback to 16000 Hz
+(defn- get-or-create-line!
+  "Gets existing audio line or creates new one for speakers"
+  [audio-line-atom sample-rate]
+  (or @audio-line-atom
+      (let [new-line (open-line! :source (sampled/audio-format sample-rate 16))]
+        (reset! audio-line-atom new-line)
+        new-line)))
 
-                    ;; Open line if not already opened
-                    line (or @audio-line-atom
-                             (let [new-line (open-line! :source (sampled/audio-format sample-rate 16))]
-                               (reset! audio-line-atom new-line)
-                               new-line))]
-                (when (pos? wait-time)
-                  (<!! (timeout wait-time)))
+(defn- speakers-writer-factory
+  "Creates a writer function for speakers transport"
+  [_]
+  (let [audio-line-atom (atom nil)]
+    {:audio-line-atom audio-line-atom
+     :audio-writer (fn [command]
+                     (when (= (:command/kind command) :command/write-audio)
+                       (handle-timing command)
+                       (let [sample-rate (:sample-rate command 16000)
+                             line (get-or-create-line! audio-line-atom sample-rate)]
+                         (sound/write! (:data command) line 0))))}))
 
-                (sound/write! (:data val) line 0)))
-            :else
-            nil)
-          (recur))))
-
-    ;; Return state with minimal setup
-    {::flow/in-ports {::timer-out timer-out-ch}
-     ::flow/out-ports {::timer-in timer-in-ch
-                       ::command command-ch
-                       ::audio-write audio-write-ch}
-     ;; Initial business logic state (managed in transform)
-     ::speaking? false
-     ::next-send-time (u/mono-time)
-     :audio.out/duration-ms duration
-     :audio.out/sending-interval sending-interval
-     :activity-detection/silence-threshold-ms silence-threshold
-     ::audio-line-atom audio-line-atom}))
-
-(defn realtime-out-init!
+(defn- channel-writer-factory
+  "Creates a writer function for channel-based transport"
   [params]
-  (let [;; Configuration
-        parsed-params (schema/parse-with-defaults RealtimeOutConfig params)
-        {:audio.out/keys [duration-ms chan sending-interval]
+  (let [output-chan (:audio.out/chan params)]
+    {:audio-writer (fn [command]
+                     (when (= (:command/kind command) :command/write-audio)
+                       (handle-timing command)
+                       (t/log! {:data {:command :write-audio
+                                       :delay-until (:delay-until command 0)
+                                       :current-time (u/mono-time)
+                                       :wait-time (max 0 (- (:delay-until command 0) (u/mono-time)))}
+                                :level :debug
+                                :sample 0.05
+                                :id :realtime-out})
+                       (>!! output-chan (:data command))))}))
+
+(defn- base-transport-out-init!
+  "Base initialization function for transport-out processors.
+   Takes writer-factory function, with params last for partial application."
+  [writer-factory params]
+  (let [parsed-params (schema/parse-with-defaults RealtimeOutConfig params)
+        {:audio.out/keys [duration-ms sending-interval]
          :activity-detection/keys [silence-threshold-ms]} parsed-params
-
-        duration duration-ms
-        sending-interval (or sending-interval duration)
-        silence-threshold (or silence-threshold-ms (* 8 duration))
-
-        ;; Channels following activity monitor pattern
-        timer-in-ch (a/chan 1024)
-        timer-out-ch (a/chan 1024)
-        audio-write-ch (a/chan 1024)
-        command-ch (a/chan 1024)]
-
-    ;; Minimal timer process - just sends timing events (like activity monitor)
+        sending-interval (or sending-interval duration-ms)
+        silence-threshold (or silence-threshold-ms (* 8 duration-ms))
+        channels (setup-transport-channels)
+        {:keys [timer-in-ch timer-out-ch audio-write-ch command-ch]} channels
+        {:keys [audio-writer audio-line-atom]} (writer-factory params)]
+    (start-timer-process! timer-out-ch)
+    ;; Audio writer process with priority-based command handling
     (vthread-loop []
-      (let [check-interval 1000] ; Check every second for speech timeout
-        (<!! (timeout check-interval))
-        (>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
-        (recur)))
-
-    ;; Audio writer process - handles only audio I/O side effects and stopping playback
-    (vthread-loop []
-      ;; using :priority true to always prefer command-ch in case both audio-write and command chans have value
       (let [[val port] (a/alts!! [command-ch audio-write-ch] :priority true)]
         (when val
           (cond
             (= port command-ch)
-            (case (:command/kind val)
-              :command/drain-queue (do
-                                     (async/drain-channel! audio-write-ch)
-                                     (t/log! {:level :debug :id :transport-out} "Drained audio queue"))
-              ;; unknown command
-              nil)
-
+            (handle-command val audio-write-ch)
             (= port audio-write-ch)
-            (when (= (:command/kind val) :command/write-audio)
-              (let [current-time (u/mono-time)
-                    delay-until (:delay-until val 0)
-                    wait-time (max 0 (- delay-until current-time))]
-                (t/log! {:data {:command :write-audio
-                                :delay-until (:delay-until val 0)
-                                :current-time current-time
-                                :wait-time wait-time}
-                         :level :debug
-                         :sample 0.05
-                         :id :realtime-out})
-                (when (pos? wait-time)
-                  (<!! (timeout wait-time)))
-                (>!! chan (:data val))))
-            :else
-            nil)
+            (audio-writer val))
           (recur))))
+    (merge parsed-params
+           {::speaking? false
+            ::last-send-time 0
+            :audio.out/sending-interval sending-interval
+            :activity-detection/silence-threshold-ms silence-threshold
+            ::flow/in-ports {::timer-out timer-out-ch}
+            ::flow/out-ports {::timer-in timer-in-ch
+                              ::command command-ch
+                              ::audio-write audio-write-ch}}
+           (when audio-line-atom {::audio-line-atom audio-line-atom}))))
 
-    ;; Return state with minimal setup
-    (into parsed-params
-          {::flow/in-ports {::timer-out timer-out-ch}
-           ::flow/out-ports {::timer-in timer-in-ch
-                             ::command command-ch
-                             ::audio-write audio-write-ch}
-           ;; Initial business logic state (managed in transform)
-           ::speaking? false
-           ::last-send-time 0
-           :audio.out/sending-interval sending-interval
-           :activity-detection/silence-threshold-ms silence-threshold})))
+(def realtime-speakers-out-init!
+  (partial base-transport-out-init! speakers-writer-factory))
+
+(def realtime-out-init!
+  (partial base-transport-out-init! channel-writer-factory))
 
 (defn realtime-out-transition
   [{::flow/keys [in-ports out-ports] :as state} transition]
@@ -199,11 +172,6 @@
         (sound/stop! line)
         (sampled/flush! line)
         (close! line)))
-    ;; Legacy: close direct audio line (for old code)
-    (when-let [line (::audio-line state)]
-      (sound/stop! line)
-      (sampled/flush! line)
-      (close! line))
     (doseq [port (concat (vals in-ports) (vals out-ports))]
       (a/close! port)))
   state)
@@ -270,16 +238,16 @@
     (frame/system-config-change? frame)
     (if-let [new-serializer (:transport/serializer (:frame/data frame))]
       [(assoc state :transport/serializer new-serializer) {}]
-      [state {}])
+      [state])
 
     (frame/control-interrupt-start? frame)
     [(assoc state :pipeline/interrupted? true) {::command [{:command/kind :command/drain-queue}]}]
 
     (frame/control-interrupt-stop? frame)
-    [(assoc state :pipeline/interrupted? false) {}]
+    [(assoc state :pipeline/interrupted? false)]
 
     ;; Default case
-    :else [state {}]))
+    :else [state]))
 
 (defn realtime-out-fn
   "Processor fn that sends audio chunks to output channel in a realtime manner"
