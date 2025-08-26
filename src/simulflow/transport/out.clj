@@ -64,7 +64,8 @@
         ;; Channels following activity monitor pattern
         timer-in-ch (chan 1024)
         timer-out-ch (chan 1024)
-        audio-write-ch (chan 1024)]
+        audio-write-ch (chan 1024)
+        command-ch (chan 1024)]
 
     ;; Minimal timer process - just sends timing events (like activity monitor)
     (vthread-loop []
@@ -73,30 +74,45 @@
         (>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
         (recur)))
 
-    ;; Audio writer process - handles only audio I/O side effects and lazy line opening
+    ;; Audio writer process - handles only audio I/O side effects, lazy line opening, and stopping playback
     (vthread-loop []
-      (when-let [audio-command (<!! audio-write-ch)]
-        (when (= (:command audio-command) :write-audio)
-          (let [current-time (u/mono-time)
-                delay-until (:delay-until audio-command 0)
-                wait-time (max 0 (- delay-until current-time))
-                sample-rate (:sample-rate audio-command 16000) ; Fallback to 16000 Hz
+      ;; using :priority true to always prefer command-ch in case both audio-write and command chans have value
+      (let [[val port] (a/alts!! [command-ch audio-write-ch] :priority true)]
+        (when val
+          (cond
+            (= port command-ch)
+            (case (:command/kind val)
+              :command/drain-queue (do
+                                     (async/drain-channel! audio-write-ch)
+                                     (t/log! {:level :debug :id :transport-out} "Drained audio queue"))
+              ;; unknown command
+              nil)
 
-                ;; Open line if not already opened
-                line (or @audio-line-atom
-                         (let [new-line (open-line! :source (sampled/audio-format sample-rate 16))]
-                           (reset! audio-line-atom new-line)
-                           new-line))]
-            (when (pos? wait-time)
-              (<!! (timeout wait-time)))
+            (= port audio-write-ch)
+            (when (= (:command/kind val) :command/write-audio)
+              (let [current-time (u/mono-time)
+                    delay-until (:delay-until val 0)
+                    wait-time (max 0 (- delay-until current-time))
+                    sample-rate (:sample-rate val 16000) ; Fallback to 16000 Hz
 
-            (sound/write! (:data audio-command) line 0)))
-        (recur)))
+                    ;; Open line if not already opened
+                    line (or @audio-line-atom
+                             (let [new-line (open-line! :source (sampled/audio-format sample-rate 16))]
+                               (reset! audio-line-atom new-line)
+                               new-line))]
+                (when (pos? wait-time)
+                  (<!! (timeout wait-time)))
+
+                (sound/write! (:data val) line 0)))
+            :else
+            nil)
+          (recur))))
 
     ;; Return state with minimal setup
-    {::flow/in-ports {:timer-out timer-out-ch}
-     ::flow/out-ports {:timer-in timer-in-ch
-                       :audio-write audio-write-ch}
+    {::flow/in-ports {::timer-out timer-out-ch}
+     ::flow/out-ports {::timer-in timer-in-ch
+                       ::command command-ch
+                       ::audio-write audio-write-ch}
      ;; Initial business logic state (managed in transform)
      ::speaking? false
      ::next-send-time (u/mono-time)
@@ -129,7 +145,7 @@
         (>!! timer-out-ch {:timer/tick true :timer/timestamp (u/mono-time)})
         (recur)))
 
-    ;; Audio writer process - handles only audio I/O side effects
+    ;; Audio writer process - handles only audio I/O side effects and stopping playback
     (vthread-loop []
       ;; using :priority true to always prefer command-ch in case both audio-write and command chans have value
       (let [[val port] (a/alts!! [command-ch audio-write-ch] :priority true)]
@@ -260,10 +276,10 @@
     [(assoc state :pipeline/interrupted? true) {::command [{:command/kind :command/drain-queue}]}]
 
     (frame/control-interrupt-stop? frame)
-    [(assoc state :pipeline/interrupted? false)]
+    [(assoc state :pipeline/interrupted? false) {}]
 
     ;; Default case
-    :else [state]))
+    :else [state {}]))
 
 (defn realtime-out-fn
   "Processor fn that sends audio chunks to output channel in a realtime manner"
