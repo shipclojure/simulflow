@@ -229,8 +229,8 @@
           ;; Initialize speakers state (simulating what init! would create)
           initial-speakers-state {::out/speaking? false
                                   ::out/last-send-time 0
-                                  ::out/sending-interval sending-interval
-                                  ::out/silence-threshold 200
+                                  :audio.out/sending-interval sending-interval
+                                  :activity-detection/silence-threshold-ms 200
                                   :transport/serializer nil}
 
           ;; =============================================================================
@@ -303,7 +303,7 @@
                   (str "Chunk " (:chunk-index result) " should not emit events"))))))
 
       (testing "Audio write commands are generated correctly"
-        (let [audio-writes (mapcat #(get-in % [:output :audio-write]) @results)]
+        (let [audio-writes (mapcat #(get-in % [:output ::out/audio-write]) @results)]
 
           ;; Verify we have the right number of audio writes
           (is (= 10 (count audio-writes))
@@ -321,7 +321,7 @@
         ;; In this test, we're verifying that the timing mechanism works
         ;; The exact delays depend on when chunks are processed, but
         ;; the important thing is that each chunk gets a delay-until value
-        (let [audio-writes (mapcat #(get-in % [:output :audio-write]) @results)
+        (let [audio-writes (mapcat #(get-in % [:output ::out/audio-write]) @results)
               delay-times (mapv :delay-until audio-writes)]
 
           (is (every? #(> % pipeline-start-time) (rest delay-times))
@@ -341,7 +341,7 @@
 
       (testing "Audio data integrity through pipeline"
         ;; Verify that all audio data makes it through
-        (let [audio-writes (mapcat #(get-in % [:output :audio-write]) @results)
+        (let [audio-writes (mapcat #(get-in % [:output ::out/audio-write]) @results)
               reconstructed-data (byte-array (apply concat (map :data audio-writes)))]
 
           ;; The reconstructed data should match the original

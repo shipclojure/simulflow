@@ -76,7 +76,7 @@
                    :activity-detection/silence-threshold-ms 200}
             [new-state output] (sut/base-realtime-out-transform state :sys-in (frame/control-interrupt-stop true))]
         (is (false? (:pipeline/interrupted? new-state)))
-        (is (nil? output))))
+        (is (empty? output))))
 
     (testing "audio-output frames are dropped when the pipeline is interrupted"
       (let [state {::sut/speaking? false :audio.out/sending-interval 25 :pipeline/interrupted? true}
@@ -84,7 +84,7 @@
             [new-state output] (sut/base-realtime-out-transform state :in frame)]
 
         (is (= state new-state))
-        (is (nil? output))))))
+        (is (empty? output))))))
 
 (deftest test-realtime-speakers-out-describe
   (testing "describe function returns correct structure"
