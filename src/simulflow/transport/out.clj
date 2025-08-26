@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as a :refer [<!! >!! chan timeout]]
    [clojure.core.async.flow :as flow]
+   [malli.util :as mu]
    [simulflow.async :as async :refer [vthread-loop]]
    [simulflow.frame :as frame]
    [simulflow.schema :as schema]
@@ -13,20 +14,8 @@
    [uncomplicate.clojure-sound.sampled :as sampled]
    [uncomplicate.commons.core :refer [close!]]))
 
-(def realtime-speakers-out-describe
-  {:ins {:in "Channel for audio output frames"
-         :sys-in "Channel for system messages"}
-   :outs {:out "Channel for non-system frames"
-          :sys-out "Channel for bot speech status frames (system frames)"}
-   :params {:audio.out/duration-ms "Duration in ms of each chunk that will be streamed to output"
-            :audio.out/sending-interval "Sending interval for each audio chunk. Default is half of :audio.out/duration-ms"
-            :activity-detection/silence-threshold-ms "Silence detection threshold in milliseconds. Default is 4x duration-ms."}})
-
-(def RealtimeOutConfig
+(def BaseOutConfig
   [:map
-   [:audio.out/chan
-    {:description "Core async channel to put audio data. The data is raw byte array or serialzed if a serializer is provided"}
-    schema/CoreAsyncChannel]
    [:audio.out/duration-ms
     {:description "Duration in ms of each chunk that will be streamed to output"
      :default 20}
@@ -42,6 +31,19 @@
     {:description "Frame serializer used to serialize frames before sending them on the :audio.out/chan"
      :optional true}
     schema/FrameSerializer]])
+
+(def RealtimeOutConfig
+  (mu/merge BaseOutConfig
+            [:map [:audio.out/chan
+                   {:description "Core async channel to put audio data. The data is raw byte array or serialzed if a serializer is provided"}
+                   schema/CoreAsyncChannel]]))
+
+(def realtime-speakers-out-describe
+  {:ins {:in "Channel for audio output frames"
+         :sys-in "Channel for system messages"}
+   :outs {:out "Channel for non-system frames"
+          :sys-out "Channel for bot speech status frames (system frames)"}
+   :params (schema/->describe-parameters BaseOutConfig)})
 
 (def realtime-out-describe
   {:ins {:in "Channel for audio output frames"
@@ -126,8 +128,8 @@
 (defn- base-transport-out-init!
   "Base initialization function for transport-out processors.
    Takes writer-factory function, with params last for partial application."
-  [writer-factory params]
-  (let [parsed-params (schema/parse-with-defaults RealtimeOutConfig params)
+  [writer-factory schema params]
+  (let [parsed-params (schema/parse-with-defaults schema params)
         {:audio.out/keys [duration-ms sending-interval]
          :activity-detection/keys [silence-threshold-ms]} parsed-params
         sending-interval (or sending-interval duration-ms)
@@ -158,10 +160,10 @@
            (when audio-line-atom {::audio-line-atom audio-line-atom}))))
 
 (def realtime-speakers-out-init!
-  (partial base-transport-out-init! speakers-writer-factory))
+  (partial base-transport-out-init! speakers-writer-factory BaseOutConfig))
 
 (def realtime-out-init!
-  (partial base-transport-out-init! channel-writer-factory))
+  (partial base-transport-out-init! channel-writer-factory RealtimeOutConfig))
 
 (defn realtime-out-transition
   [{::flow/keys [in-ports out-ports] :as state} transition]
