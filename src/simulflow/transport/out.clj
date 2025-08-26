@@ -2,7 +2,7 @@
   (:require
    [clojure.core.async :as a :refer [<!! >!! chan timeout]]
    [clojure.core.async.flow :as flow]
-   [simulflow.async :refer [vthread-loop]]
+   [simulflow.async :as async :refer [vthread-loop]]
    [simulflow.frame :as frame]
    [simulflow.schema :as schema]
    [simulflow.transport.protocols :as tp]
@@ -119,7 +119,8 @@
         ;; Channels following activity monitor pattern
         timer-in-ch (a/chan 1024)
         timer-out-ch (a/chan 1024)
-        audio-write-ch (a/chan 1024)]
+        audio-write-ch (a/chan 1024)
+        command-ch (a/chan 1024)]
 
     ;; Minimal timer process - just sends timing events (like activity monitor)
     (vthread-loop []
@@ -130,28 +131,43 @@
 
     ;; Audio writer process - handles only audio I/O side effects
     (vthread-loop []
-      (when-let [audio-command (<!! audio-write-ch)]
-        (when (= (:command audio-command) :write-audio)
-          (let [current-time (u/mono-time)
-                delay-until (:delay-until audio-command 0)
-                wait-time (max 0 (- delay-until current-time))]
-            (t/log! {:data {:command :write-audio
-                            :delay-until (:delay-until audio-command 0)
-                            :current-time current-time
-                            :wait-time wait-time}
-                     :level :debug
-                     :sample 0.05
-                     :id :realtime-out})
-            (when (pos? wait-time)
-              (<!! (timeout wait-time)))
-            (>!! chan (:data audio-command))))
-        (recur)))
+      ;; using :priority true to always prefer command-ch in case both audio-write and command chans have value
+      (let [[val port] (a/alts!! [command-ch audio-write-ch] :priority true)]
+        (when val
+          (cond
+            (= port command-ch)
+            (case (:command/kind val)
+              :command/drain-queue (do
+                                     (async/drain-channel! audio-write-ch)
+                                     (t/log! {:level :debug :id :transport-out} "Drained audio queue"))
+              ;; unknown command
+              nil)
+
+            (= port audio-write-ch)
+            (when (= (:command/kind val) :command/write-audio)
+              (let [current-time (u/mono-time)
+                    delay-until (:delay-until val 0)
+                    wait-time (max 0 (- delay-until current-time))]
+                (t/log! {:data {:command :write-audio
+                                :delay-until (:delay-until val 0)
+                                :current-time current-time
+                                :wait-time wait-time}
+                         :level :debug
+                         :sample 0.05
+                         :id :realtime-out})
+                (when (pos? wait-time)
+                  (<!! (timeout wait-time)))
+                (>!! chan (:data val))))
+            :else
+            nil)
+          (recur))))
 
     ;; Return state with minimal setup
     (into parsed-params
-          {::flow/in-ports {:timer-out timer-out-ch}
-           ::flow/out-ports {:timer-in timer-in-ch
-                             :audio-write audio-write-ch}
+          {::flow/in-ports {::timer-out timer-out-ch}
+           ::flow/out-ports {::timer-in timer-in-ch
+                             ::command command-ch
+                             ::audio-write audio-write-ch}
            ;; Initial business logic state (managed in transform)
            ::speaking? false
            ::last-send-time 0
@@ -206,23 +222,23 @@
         audio-frame (if serializer
                       (tp/serialize-frame serializer frame)
                       audio-data)
-        audio-command {:command :write-audio
+        audio-command {:command/kind :command/write-audio
                        :data audio-frame
                        :delay-until next-send-time
                        :sample-rate sample-rate}]
 
     [updated-state (-> (frame/send (when should-emit-start? (frame/bot-speech-start true)))
-                       (assoc :audio-write [audio-command]))]))
+                       (assoc ::audio-write [audio-command]))]))
 
 (defn base-realtime-out-transform
   [{::keys [now] :as state
     :or {now (u/mono-time)}} input-port frame]
   (cond
     ;; Handle incoming audio frames - core business logic moved here
-    (frame/audio-output-raw? frame)
+    (and (frame/audio-output-raw? frame) (not (:pipeline/interrupted? state)))
     (process-realtime-out-audio-frame state frame now)
 
-    (and (= input-port :timer-out)
+    (and (= input-port ::timer-out)
          (:timer/tick frame))
     (let [silence-duration (- (:timer/timestamp frame) (::last-send-time state 0))
           should-emit-stop? (and (::speaking? state)
@@ -240,8 +256,14 @@
       [(assoc state :transport/serializer new-serializer) {}]
       [state {}])
 
+    (frame/control-interrupt-start? frame)
+    [(assoc state :pipeline/interrupted? true) {::command [{:command/kind :command/drain-queue}]}]
+
+    (frame/control-interrupt-stop? frame)
+    [(assoc state :pipeline/interrupted? false)]
+
     ;; Default case
-    :else [state {}]))
+    :else [state]))
 
 (defn realtime-out-fn
   "Processor fn that sends audio chunks to output channel in a realtime manner"

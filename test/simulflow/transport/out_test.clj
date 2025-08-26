@@ -19,8 +19,8 @@
       (is (= current-time (::sut/last-send-time new-state)))
       (is (= 1 (count (:sys-out output))))
       (is (frame/bot-speech-start? (first (:sys-out output))))
-      (is (= 1 (count (:audio-write output))))
-      (is (= 16000 (:sample-rate (first (:audio-write output)))))))
+      (is (= 1 (count (::sut/audio-write output))))
+      (is (= 16000 (:sample-rate (first (::sut/audio-write output)))))))
 
   (testing "process-realtime-out-audio-frame with different sample rate"
     (let [state {::sut/speaking? false
@@ -29,15 +29,15 @@
           frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 24000})
           current-time 2000
           [new-state output] (sut/process-realtime-out-audio-frame state frame current-time)
-          command (first (:audio-write output))]
-      (is (= (update command :data vec) {:command :write-audio
+          command (first (::sut/audio-write output))]
+      (is (= (update command :data vec) {:command/kind :command/write-audio
                                          :data [1, 2, 3]
                                          :delay-until 2000
                                          :sample-rate 24000}))
 
       (is (true? (::sut/speaking? new-state)))
-      (is (= 1 (count (:audio-write output))))
-      (is (= 24000 (:sample-rate (first (:audio-write output))))))))
+      (is (= 1 (count (::sut/audio-write output))))
+      (is (= 24000 (:sample-rate (first (::sut/audio-write output))))))))
 
 (deftest realtime-out-transform-test
   (testing "transform with audio frame"
@@ -48,18 +48,43 @@
       (is (true? (::sut/speaking? new-state)))
       (is (= 1 (count (:sys-out output))))
       (is (frame/bot-speech-start? (first (:sys-out output))))
-      (is (= 1 (count (:audio-write output))))))
+      (is (= 1 (count (::sut/audio-write output))))))
 
   (testing "transform with timer tick (stop speaking)"
     (let [state {::sut/speaking? true
                  ::sut/last-send-time 1000
                  :activity-detection/silence-threshold-ms 200}
           timer-frame {:timer/tick true :timer/timestamp 1300}
-          [new-state output] (sut/base-realtime-out-transform state :timer-out timer-frame)]
+          [new-state output] (sut/base-realtime-out-transform state ::sut/timer-out timer-frame)]
 
       (is (false? (::sut/speaking? new-state)))
       (is (= 1 (count (:sys-out output))))
-      (is (frame/bot-speech-stop? (first (:sys-out output)))))))
+      (is (frame/bot-speech-stop? (first (:sys-out output))))))
+  (testing "Handling of interruptions"
+    (testing "Sends drain-queue command when an interruption starts"
+      (let [state {::sut/speaking? true
+                   ::sut/last-send-time 1000
+                   :activity-detection/silence-threshold-ms 200}
+            [new-state output] (sut/base-realtime-out-transform state :sys-in (frame/control-interrupt-start true))]
+        (is (true? (:pipeline/interrupted? new-state)))
+        (is (= (first (::sut/command output)) {:command/kind :command/drain-queue}))))
+
+    (testing "Sends drain-queue command when an interruption starts"
+      (let [state {::sut/speaking? false
+                   ::sut/last-send-time 1000
+                   :pipeline/interrupted? true
+                   :activity-detection/silence-threshold-ms 200}
+            [new-state output] (sut/base-realtime-out-transform state :sys-in (frame/control-interrupt-stop true))]
+        (is (false? (:pipeline/interrupted? new-state)))
+        (is (nil? output))))
+
+    (testing "audio-output frames are dropped when the pipeline is interrupted"
+      (let [state {::sut/speaking? false :audio.out/sending-interval 25 :pipeline/interrupted? true}
+            frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})
+            [new-state output] (sut/base-realtime-out-transform state :in frame)]
+
+        (is (= state new-state))
+        (is (nil? output))))))
 
 (deftest test-realtime-speakers-out-describe
   (testing "describe function returns correct structure"
@@ -104,7 +129,7 @@
                  ::sut/last-send-time 1000
                  :activity-detection/silence-threshold-ms 200}
           timer-frame {:timer/tick true :timer/timestamp 1300} ; 300ms silence > 200ms threshold
-          [new-state output] (sut/base-realtime-out-transform state :timer-out timer-frame)]
+          [new-state output] (sut/base-realtime-out-transform state ::sut/timer-out timer-frame)]
 
       (is (false? (::sut/speaking? new-state)))
       (is (= 1 (count (:sys-out output))))
@@ -142,8 +167,8 @@
           frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})]
       (with-redefs [u/mono-time (constantly 1000)]
         (let [[_ output] (sut/base-realtime-out-transform state :in frame)
-              audio-write (first (:audio-write output))]
-          (is (= :write-audio (:command audio-write)))
+              audio-write (first (::sut/audio-write output))]
+          (is (= :command/write-audio (:command/kind audio-write)))
           (is (= [99 99 99] (:frame/data (:data audio-write)))))))) ; Should use serialized data
 
   (testing "transform without serializer"
@@ -154,8 +179,8 @@
           frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})]
       (with-redefs [u/mono-time (constantly 1000)]
         (let [[_ output] (sut/base-realtime-out-transform state :in frame)
-              audio-write (first (:audio-write output))]
-          (is (= :write-audio (:command audio-write)))
+              audio-write (first (::sut/audio-write output))]
+          (is (= :command/write-audio (:command/kind audio-write)))
           (is (= [1 2 3] (vec (:data audio-write)))))))))
 
 (deftest test-realtime-speakers-out-edge-cases
@@ -225,7 +250,7 @@
                            :timer/timestamp (+ (::sut/last-send-time state2) 1000)}
               [state3 output3] (sut/base-realtime-out-transform
                                  (assoc state2 :activity-detection/silence-threshold-ms 500)
-                                 :timer-out timer-frame)]
+                                 ::sut/timer-out timer-frame)]
 
           ;; Verify state progression
           (is (false? (::sut/speaking? initial-state)))
@@ -249,7 +274,7 @@
                  ::sut/now current-time}
           frame (frame/audio-output-raw {:audio (byte-array [1 2 3]) :sample-rate 16000})
           [new-state output] (sut/base-realtime-out-transform state :in frame)
-          audio-write (first (:audio-write output))
+          audio-write (first (::sut/audio-write output))
           [next-state] (sut/base-realtime-out-transform (assoc new-state ::sut/now 1020) :in frame)
           [next-state2] (sut/base-realtime-out-transform (assoc next-state ::sut/now 1025) :in frame)]
 
@@ -278,7 +303,7 @@
 
           ;; Timer tick over threshold
           timer-frame-over {:timer/tick true :timer/timestamp (+ base-time 350)}
-          [state-over output-over] (sut/base-realtime-out-transform state :timer-out timer-frame-over)]
+          [state-over output-over] (sut/base-realtime-out-transform state ::sut/timer-out timer-frame-over)]
 
       ;; Under threshold: still speaking
       (is (true? (::sut/speaking? state-under)))
