@@ -187,7 +187,7 @@
   [{:keys [transport/serializer] :as state
     ::keys [last-send-time]
     :audio.out/keys [sending-interval]
-    :or {last-send-time 0}} frame now]
+    :or {last-send-time 0 sending-interval 20}} frame now]
   (let [should-emit-start? (not (::speaking? state))
         maybe-next-send (+ last-send-time sending-interval)
         next-send-time (if (>= now maybe-next-send) now maybe-next-send)
@@ -240,16 +240,16 @@
     (frame/system-config-change? frame)
     (if-let [new-serializer (:transport/serializer (:frame/data frame))]
       [(assoc state :transport/serializer new-serializer) {}]
-      [state])
+      [state {}])
 
     (frame/control-interrupt-start? frame)
     [(assoc state :pipeline/interrupted? true) {::command [{:command/kind :command/drain-queue}]}]
 
     (frame/control-interrupt-stop? frame)
-    [(assoc state :pipeline/interrupted? false)]
+    [(assoc state :pipeline/interrupted? false) {}]
 
     ;; Default case
-    :else [state]))
+    :else [state {}]))
 
 (defn realtime-out-fn
   "Processor fn that sends audio chunks to output channel in a realtime manner"
