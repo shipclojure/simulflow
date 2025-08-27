@@ -135,13 +135,13 @@
         c (:content d)]
     (cond
       (= msg :done)
-      [state {:out [(frame/llm-full-response-end true)]}]
+      [state (frame/send (frame/llm-full-response-end true))]
 
       tool-call
-      [state {:out [(frame/llm-tool-call-chunk tool-call)]}]
+      [state (frame/send (frame/llm-tool-call-chunk tool-call))]
 
       c
-      [state {:out [(frame/llm-text-chunk c)]}]
+      [state (frame/send (frame/llm-text-chunk c))]
 
       :else [state])))
 

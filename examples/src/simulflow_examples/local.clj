@@ -83,7 +83,7 @@
          ;; Takes llm-context frames and produces new llm-text-chunk & llm-tool-call-chunk frames
          :llm {:proc openai/openai-llm-process
                :args {:openai/api-key (secret [:openai :new-api-sk])
-                      :llm/model "gpt-4o-mini"}}
+                      :llm/model :gpt-4.1-mini}}
 
          ;; llm-text-chunk & llm-tool-call-chunk -> llm-context-messages-append frames
          :assistant-context-assembler {:proc context/assistant-context-assembler

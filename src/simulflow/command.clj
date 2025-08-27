@@ -1,5 +1,6 @@
 (ns simulflow.command
   (:require
+   [clojure.string :as str]
    [hato.client :as http]
    [simulflow.utils.core :refer [content-type json-str without-nils]]
    [simulflow.utils.request :refer [sse-request]]))
@@ -56,7 +57,7 @@
         ;; JSON stringify the body if it's a map/collection and content-type is JSON
         final-body (if (and (or (map? body) (coll? body))
                             (some-> (content-type headers)
-                                    (.contains "application/json")))
+                                    (str/includes? "application/json")))
                      (json-str body)
                      body)]
     (:body (sse-request {:request (without-nils {:url url
