@@ -127,7 +127,7 @@
 
                 ;; Assemble sentence by sentence for fast speech
                 [[:llm :out] [:llm-sentence-assembler :in]]
-                [[:llm-sentence-assembler :out] [:tts :in]]
+                [[:llm-sentence-assembler :sys-out] [:tts :sys-in]]
 
                 [[:tts :out] [:audio-splitter :in]]
                 [[:audio-splitter :out] [:transport-out :in]]

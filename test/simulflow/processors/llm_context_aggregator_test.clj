@@ -1,12 +1,10 @@
 (ns simulflow.processors.llm-context-aggregator-test
   (:require
    [clojure.core.async :as a]
-   [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [simulflow.frame :as frame]
    [simulflow.mock-data :as mock]
-   [simulflow.processors.llm-context-aggregator :as sut]
-   [taoensso.telemere :as t]))
+   [simulflow.processors.llm-context-aggregator :as sut]))
 
 (deftest concat-context-test
   (testing "concat-context"
@@ -537,13 +535,13 @@
         ;; Use real assemble-sentence function, no mocking
         (let [initial-state {::sut/accumulator "Hello"}
               text-chunk (frame/llm-text-chunk " world.")
-              [new-state {:keys [out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+              [new-state {:keys [sys-out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
 
           ;; Should complete sentence and reset accumulator
           (is (= "" (::sut/accumulator new-state)))
-          (is (= 1 (count out)))
-          (is (frame/speak-frame? (first out)))
-          (is (= "Hello world." (:frame/data (first out))))))
+          (is (= 1 (count sys-out)))
+          (is (frame/speak-frame? (first sys-out)))
+          (is (= "Hello world." (:frame/data (first sys-out))))))
 
       (testing "accumulates partial sentences"
         ;; Test with text that doesn't end a sentence
@@ -574,22 +572,22 @@
       (testing "completes sentences with exclamation marks"
         (let [initial-state {::sut/accumulator "Hello world"}
               text-chunk (frame/llm-text-chunk "!")
-              [new-state {:keys [out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+              [new-state {:keys [sys-out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
 
           (is (= "" (::sut/accumulator new-state)))
-          (is (= 1 (count out)))
-          (is (frame/speak-frame? (first out)))
-          (is (= "Hello world!" (:frame/data (first out))))))
+          (is (= 1 (count sys-out)))
+          (is (frame/speak-frame? (first sys-out)))
+          (is (= "Hello world!" (:frame/data (first sys-out))))))
 
       (testing "completes sentences with question marks"
         (let [initial-state {::sut/accumulator "How are you"}
               text-chunk (frame/llm-text-chunk "?")
-              [new-state {:keys [out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
+              [new-state {:keys [sys-out]}] (sut/llm-sentence-assembler-transform initial-state :in text-chunk)]
 
           (is (= "" (::sut/accumulator new-state)))
-          (is (= 1 (count out)))
-          (is (frame/speak-frame? (first out)))
-          (is (= "How are you?" (:frame/data (first out)))))))
+          (is (= 1 (count sys-out)))
+          (is (frame/speak-frame? (first sys-out)))
+          (is (= "How are you?" (:frame/data (first sys-out)))))))
 
     (testing "interruption handling"
       (testing "control-interrupt-start clears accumulator and sets interrupted state"
@@ -686,13 +684,13 @@
 
               ;; 4. After resuming, text chunks are processed again
               (let [new-text-chunk (frame/llm-text-chunk "New sentence.")
-                    [final-state {:keys [out]}] (sut/llm-sentence-assembler-transform
-                                                  resumed-state :in new-text-chunk)]
+                    [final-state {:keys [sys-out]}] (sut/llm-sentence-assembler-transform
+                                                      resumed-state :in new-text-chunk)]
                 (is (= "" (::sut/accumulator final-state)))
                 (is (= false (:pipeline/interrupted? final-state)))
-                (is (= 1 (count out)))
-                (is (frame/speak-frame? (first out)))
-                (is (= "New sentence." (:frame/data (first out)))))))))
+                (is (= 1 (count sys-out)))
+                (is (frame/speak-frame? (first sys-out)))
+                (is (= "New sentence." (:frame/data (first sys-out)))))))))
 
       (testing "multiple interrupt commands are idempotent"
         (let [initial-state {::sut/accumulator "some text"}
@@ -785,38 +783,38 @@
         (let [initial-state {::sut/accumulator ""}
 
               ;; Build up a sentence word by word
-              [state1 out1] (sut/llm-sentence-assembler-transform
-                              initial-state :in (frame/llm-text-chunk "The U.S.A. is"))
-              [state2 out2] (sut/llm-sentence-assembler-transform
-                              state1 :in (frame/llm-text-chunk " a great"))
-              [state3 {:keys [out]}] (sut/llm-sentence-assembler-transform
-                                       state2 :in (frame/llm-text-chunk " country!"))]
+              [state1 sys-out1] (sut/llm-sentence-assembler-transform
+                                  initial-state :in (frame/llm-text-chunk "The U.S.A. is"))
+              [state2 sys-out2] (sut/llm-sentence-assembler-transform
+                                  state1 :in (frame/llm-text-chunk " a great"))
+              [state3 {:keys [sys-out]}] (sut/llm-sentence-assembler-transform
+                                           state2 :in (frame/llm-text-chunk " country!"))]
 
           ;; First two chunks should accumulate (no sentence end detected)
-          (is (nil? out1))
-          (is (nil? out2))
+          (is (nil? sys-out1))
+          (is (nil? sys-out2))
 
               ;; Third chunk with exclamation should complete sentence
-          (is (= 1 (count out)))
-          (is (frame/speak-frame? (first out)))
-          (is (= "The U.S.A. is a great country!" (:frame/data (first out))))
+          (is (= 1 (count sys-out)))
+          (is (frame/speak-frame? (first sys-out)))
+          (is (= "The U.S.A. is a great country!" (:frame/data (first sys-out))))
           (is (= "" (::sut/accumulator state3)))))
 
       (testing "handles multiple sentence types"
         ;; Test period
-        (let [[_state {:keys [out]}] (sut/llm-sentence-assembler-transform
-                                       {::sut/accumulator "Hello"} :in (frame/llm-text-chunk " world."))]
-          (is (= 1 (count out)))
-          (is (= "Hello world." (:frame/data (first out)))))
+        (let [[_state {:keys [sys-out]}] (sut/llm-sentence-assembler-transform
+                                           {::sut/accumulator "Hello"} :in (frame/llm-text-chunk " world."))]
+          (is (= 1 (count sys-out)))
+          (is (= "Hello world." (:frame/data (first sys-out)))))
 
         ;; Test question mark
-        (let [[_state {:keys [out]}] (sut/llm-sentence-assembler-transform
-                                       {::sut/accumulator "How are"} :in (frame/llm-text-chunk " you?"))]
-          (is (= 1 (count out)))
-          (is (= "How are you?" (:frame/data (first out)))))
+        (let [[_state {:keys [sys-out]}] (sut/llm-sentence-assembler-transform
+                                           {::sut/accumulator "How are"} :in (frame/llm-text-chunk " you?"))]
+          (is (= 1 (count sys-out)))
+          (is (= "How are you?" (:frame/data (first sys-out)))))
 
         ;; Test exclamation
-        (let [[_state {:keys [out]}] (sut/llm-sentence-assembler-transform
-                                       {::sut/accumulator "Great"} :in (frame/llm-text-chunk " job!"))]
-          (is (= 1 (count out)))
-          (is (= "Great job!" (:frame/data (first out)))))))))
+        (let [[_state {:keys [sys-out]}] (sut/llm-sentence-assembler-transform
+                                           {::sut/accumulator "Great"} :in (frame/llm-text-chunk " job!"))]
+          (is (= 1 (count sys-out)))
+          (is (= "Great job!" (:frame/data (first sys-out)))))))))

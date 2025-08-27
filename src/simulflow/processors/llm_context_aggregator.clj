@@ -361,7 +361,7 @@
       (if sentence
         (do
           (t/log! {:level :trace :id :sentence-assembler} ["New sentence assembled: " sentence])
-          [(assoc state ::accumulator accumulator) {:out [(frame/speak-frame sentence)]}])
+          [(assoc state ::accumulator accumulator) (frame/send (frame/speak-frame sentence))])
         [(assoc state ::accumulator accumulator)]))
 
     ;; Drop LLM chunks during interruption
@@ -370,14 +370,14 @@
 
     :else [state {}]))
 
-(defn- llm-sentence-assembler-impl
+(defn llm-sentence-assembler-fn
   "Takes in llm-text-chunk frames and returns a full sentence. Useful for
   generating speech sentence by sentence, instead of waiting for the full LLM message."
   ([] {:ins {:in "Channel for llm text chunks"
              :sys-in "Channel for system messages"}
        :outs {:out "Channel for assembled speak frames"
               :sys-out "Channel for system frames"}})
-  ([_] {::accumulator nil})
+  ([_] {::accumulator ""})
   ([state _transition]
    state)
   ([state in msg]
@@ -425,4 +425,4 @@
 (def llm-sentence-assembler
   "Takes in llm-text-chunk frames and returns a full sentence. Useful for
   generating speech sentence by sentence, instead of waiting for the full LLM message."
-  (flow/process #'llm-sentence-assembler-impl))
+  (flow/process #'llm-sentence-assembler-fn))
