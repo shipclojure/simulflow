@@ -5,7 +5,6 @@
   (:require
    [clojure.core.async :as a]
    [clojure.core.async.flow :as flow]
-   [simulflow-examples.local :as local]
    [simulflow.async :refer [vthread-loop]]
    [simulflow.processors.activity-monitor :as activity-monitor]
    [simulflow.processors.deepgram :as deepgram]
@@ -17,7 +16,6 @@
    [simulflow.transport :as transport]
    [simulflow.transport.in :as transport-in]
    [simulflow.transport.out :as transport-out]
-   [simulflow.vad.silero :as silero]
    [taoensso.telemere :as t]))
 
 (def llm-context
@@ -124,29 +122,28 @@
   {:procs flow-processors
    :conns flow-conns})
 
+(def g (flow/create-flow flow-config))
+
+(defonce flow-started? (atom false))
+
 (comment
 
-  (def local-ai (local/make-local-flow {:vad-analyser (silero/create-silero-vad)
-                                        :extra-procs {}}))
-
-  (defonce flow-started? (atom false))
-
   ;; Start local ai flow - starts paused
-  (let [{:keys [report-chan error-chan]} (flow/start local-ai)]
+  (let [{:keys [report-chan error-chan]} (flow/start g)]
     (reset! flow-started? true)
     ;; Resume local ai -> you can now speak with the AI
-    (flow/resume local-ai)
+    (flow/resume g)
     (vthread-loop []
-                  (when @flow-started?
-                    (when-let [[msg c] (a/alts!! [report-chan error-chan])]
-                      (when (map? msg)
-                        (t/log! (cond-> {:level :debug :id (if (= c error-chan) :error :report)}
-                                  (= c error-chan) (assoc :error msg)) msg))
-                      (recur)))))
+      (when @flow-started?
+        (when-let [[msg c] (a/alts!! [report-chan error-chan])]
+          (when (map? msg)
+            (t/log! (cond-> {:level :debug :id (if (= c error-chan) :error :report)}
+                      (= c error-chan) (assoc :error msg)) msg))
+          (recur)))))
 
   ;; Stop the conversation
   (do
-    (flow/stop local-ai)
+    (flow/stop g)
     (reset! flow-started? false))
 
   ,)

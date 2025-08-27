@@ -5,7 +5,7 @@
    [simulflow.vad.core :as vad]
    [taoensso.telemere :as t])
   (:import
-   (ai.onnxruntime OnnxTensor OrtEnvironment OrtSession OrtSession$SessionOptions OrtSession$Result)
+   (ai.onnxruntime OnnxTensor OrtEnvironment OrtSession OrtSession$Result OrtSession$SessionOptions)
    (java.util HashMap)))
 
 ;; Constants

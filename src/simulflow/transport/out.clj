@@ -243,7 +243,9 @@
       [state {}])
 
     (frame/control-interrupt-start? frame)
-    [(assoc state :pipeline/interrupted? true) {::command [{:command/kind :command/drain-queue}]}]
+    (do
+      (t/log! {:msg "[Interrupted] Draining playback queue" :id :transport-out :level :trace})
+      [(assoc state :pipeline/interrupted? true) {::command [{:command/kind :command/drain-queue}]}])
 
     (frame/control-interrupt-stop? frame)
     [(assoc state :pipeline/interrupted? false) {}]

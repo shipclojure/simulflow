@@ -220,10 +220,14 @@
         [state {::ws-write [(process-speak-frame msg)]}])
 
     (frame/control-interrupt-start? msg)
-    [(assoc state ::accumulator "" :pipeline/interrupted? true)]
+    (do
+      (t/log! {:level :debug :id :elevenlabs :data msg :msg "[Interrupted] switching to interrupted state"})
+      [(assoc state ::accumulator "" :pipeline/interrupted? true)])
 
     (frame/control-interrupt-stop? msg)
-    [(assoc state :pipeline/interrupted? false)]
+    (do
+      (t/log! {:level :debug :id :elevenlabs :data msg :msg "[UnInterrupted] switching to normal state"})
+      [(assoc state :pipeline/interrupted? false)])
 
     ;; Default case - no action
     :else

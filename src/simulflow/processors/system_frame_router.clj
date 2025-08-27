@@ -68,7 +68,7 @@
   "Returns true if the flow-config contains the system-frame-router-process"
   [flow-config]
   (reduce-kv (fn [_ _ v]
-               (if (= (:proc v) system-frame-router-process)
+               (if (= (:proc v) system-frame-router)
                  (reduced true)
                  false))
              false
