@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file. This change
 - **Elevenlabs TTS**: Added pipeline interruption support. The processor will drop partial generated audio and go into interrupted mode when a `::frame/control-inerrupt-start` is received. All new speak-frames received while in the interrupted state are dropped and the processor resumes on receiving a `::frame/control-interrupt-stop`
 - **LLM Processors (Openai and Google)**: Added pipeline interruption support. The processor will cancel in-flight request for inference when receiving a `::frame/control-interrupt-start`.
 - **Transport Out (both realtime and speakers out)**: Added pipeline interruption support. The process will drain the playback queue when a `::frame/control-interrupt-start` will start and go into interrupted state in which new `::frame/audio-out-raw` frames will be dropped until a `::frame/control-interrupt-stop` will be received
+- **Transport In (twilio, async and microphone)**: Support for predefined vad processors. Currently the only supported one is `vad.analyser/silero` but hopefully more will come in the future.Example
+```clojure
+{:transport-in {:proc transport-in/microphone-transport-in
+                :args {:vad/analyser :vad.analyser/silero}}} ;; the silero VAD instantiation and cleanup is handled by simulflow
+```
+- **Transport In (twilio, async and microphone**: Moved params parsing to use malli schemas, see the schemas defined [here](./src/simulflow/transport/in.clj).
 
 ### Changed
 - Moved most of the llm logic from [openai processor](./src/simulflow/processors/openai.clj) to an utils folder to be used by multiple processors like [gemini](./src/simulflow/processors/google.clj)

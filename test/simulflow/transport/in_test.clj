@@ -242,7 +242,7 @@
 
   (testing "mic-transport-in-fn describe (0-arity) delegates correctly"
     (let [description (in/mic-transport-in-fn)]
-      (is (= description (in/mic-transport-in-describe))
+      (is (= description in/mic-transport-in-describe)
           "0-arity should delegate to describe function")))
 
   (testing "mic-transport-in-fn transform (3-arity) delegates correctly"

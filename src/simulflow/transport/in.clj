@@ -223,8 +223,7 @@
    :audio-format (sampled/audio-format 16000 16 1)
    :channel-size 1024})
 
-(defn mic-transport-in-describe
-  []
+(def mic-transport-in-describe
   {:outs base-transport-outs
    :params base-input-params})
 
@@ -265,7 +264,7 @@
 
 (defn mic-transport-in-fn
   "Records microphone and sends raw-audio-input frames down the pipeline."
-  ([] (mic-transport-in-describe))
+  ([] mic-transport-in-describe)
   ([params] (mic-transport-in-init! params))
   ([state transition]
    (base-transport-in-transition! state transition))
