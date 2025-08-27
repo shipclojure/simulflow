@@ -5,7 +5,7 @@
    [simulflow.vad.core :as vad]
    [taoensso.telemere :as t])
   (:import
-   (ai.onnxruntime OnnxTensor OrtEnvironment OrtSession$SessionOptions)
+   (ai.onnxruntime OnnxTensor OrtEnvironment OrtSession OrtSession$SessionOptions OrtSession$Result)
    (java.util HashMap)))
 
 ;; Constants
@@ -117,10 +117,10 @@
            opts (create-session-options)
            session (if (and model-path (.exists (io/file model-path)))
                      ;; Use file path if it exists
-                     (.createSession env model-path opts)
+                     (.createSession ^OrtEnvironment env ^String model-path ^OrtSession$SessionOptions opts)
                      ;; Load from resources as byte array
                      (let [model-bytes (load-model-resource (or model-path default-model-resource))]
-                       (.createSession env model-bytes opts)))
+                       (.createSession ^OrtEnvironment env ^bytes model-bytes ^OrtSession$SessionOptions opts)))
            state (atom {:state (make-array Float/TYPE 2 1 128)
                         :context (make-array Float/TYPE 0 0)
                         :last-sr 0
@@ -166,9 +166,9 @@
                                   (.put "input" input-tensor)
                                   (.put "state" state-tensor)
                                   (.put "sr" sr-tensor))]
-                     (with-open [outputs (.run session inputs)]
-                       (let [output (.getValue (.get outputs 0))
-                             new-state (.getValue (.get outputs 1))
+                     (with-open [outputs (.run ^OrtSession session inputs)]
+                       (let [output (.getValue (.get ^OrtSession$Result outputs 0))
+                             new-state (.getValue (.get ^OrtSession$Result outputs 1))
                              new-context (get-last-columns x-with-context context-size)]
                          (swap! state assoc
                                 :state new-state
@@ -179,7 +179,7 @@
                          (aget output 0 0)))))))))
          (close-model! [_]
            (try
-             (.close session)
+             (.close ^OrtSession session)
              (catch Exception e
                (t/log! {:level :warn
                         :id :silero-onnx
