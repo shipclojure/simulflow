@@ -75,7 +75,7 @@
              flow-config))
 
 (defn generate-system-router-connections
-  "Given a flow config map, analyzes each processor's :proc with clojure.datafy/datafy
+  "Given a flow config's processor map, analyzes each processor's :proc with clojure.datafy/datafy
   to check if it has :sys-in and :sys-out channels in its :desc. Returns a vector
   of connection pairs that should be added to connect processors to the system-router.
 
@@ -86,8 +86,8 @@
    [[:producer-with-sys-out :sys-out] [:system-router :sys-in]]
    ;; Router -> system frame consumers
    [[:system-router :sys-out] [:consumer-with-sys-in :sys-in]]]"
-  [flow-config]
-  (let [processor-analyses (for [[proc-name {:keys [proc]}] flow-config
+  [flow-config-processors]
+  (let [processor-analyses (for [[proc-name {:keys [proc]}] flow-config-processors
                                  :when (and proc (not= proc-name :system-router))]
                              (try
                                (let [desc (-> proc datafy/datafy :desc)]

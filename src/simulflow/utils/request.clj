@@ -57,8 +57,8 @@
   (let [close? (:stream/close? params)
         parse-event (or (:parse-event params) parse-openai-event)
         result (http/request (merge request
-                             params
-                             {:as :stream}))
+                               params
+                               {:as :stream}))
         _ (t/log! {:level :trace :msg "SSE Request result" :data result})
         event-stream ^InputStream (:body result)
         buffer-size (calc-buffer-size params)
@@ -84,8 +84,8 @@
                   (do
                     (t/log! {:level :trace :msg "SSE parsed events" :data {:event-count (count es) :events (map #(take 100 %) es)}})
                     (if (every? true? (map #(do
-                                            (t/log! {:level :trace :msg "SSE putting event in channel" :data {:event (take 100 %)}})
-                                            (a/>!! events %)) es))
+                                              (t/log! {:level :trace :msg "SSE putting event in channel" :data {:event (take 100 %)}})
+                                              (a/>!! events %)) es))
                       (recur (drop (apply + (map #(count (.getBytes ^String %)) es))
                                    next-byte-coll))
 
