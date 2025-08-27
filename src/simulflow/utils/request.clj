@@ -7,7 +7,8 @@
    [hato.client :as http]
    [hato.middleware :as hm]
    [simulflow.async :refer [vthread vthread-loop]]
-   [simulflow.utils.core :as u])
+   [simulflow.utils.core :as u]
+   [taoensso.telemere :as t])
   (:import
    (java.io InputStream)))
 
@@ -23,12 +24,19 @@
           (recur))))))
 
 (defn- parse-openai-event [raw-event]
-  (let [data-idx (string/index-of raw-event "{")
+  (let [_ (t/log! {:level :trace :msg "SSE parsing raw event" :data {:raw-event-preview (take 100 raw-event)}})
+        data-idx (string/index-of raw-event "{")
         done-idx (string/index-of raw-event "[DONE]")]
+    (t/log! {:level :trace :msg "SSE parsing indices" :data {:data-idx data-idx :done-idx done-idx}})
     (if done-idx
-      :done
-      (-> (subs raw-event data-idx)
-          (u/parse-if-json :throw-on-error? true)))))
+      (do
+        (t/log! {:level :trace :msg "SSE parsing DONE event"})
+        :done)
+      (let [json-str (subs raw-event data-idx)
+            _ (t/log! {:level :trace :msg "SSE parsing JSON string" :data {:json-preview (take 100 json-str)}})
+            parsed (u/parse-if-json json-str :throw-on-error? true)]
+        (t/log! {:level :trace :msg "SSE parsing result" :data {:parsed-preview (take 100 (str parsed))}})
+        parsed))))
 
 ; Per this discussion: https://community.openai.com/t/clarification-for-max-tokens/19576
 ; if the max_tokens is not provided, the response will try to use all the available
@@ -48,9 +56,11 @@
   [{:keys [request params]}]
   (let [close? (:stream/close? params)
         parse-event (or (:parse-event params) parse-openai-event)
-        event-stream ^InputStream (:body (http/request (merge request
-                                                              params
-                                                              {:as :stream})))
+        result (http/request (merge request
+                             params
+                             {:as :stream}))
+        _ (t/log! {:level :trace :msg "SSE Request result" :data result})
+        event-stream ^InputStream (:body result)
         buffer-size (calc-buffer-size params)
         events (a/chan (a/buffer buffer-size) (map parse-event))]
     (vthread
@@ -58,23 +68,35 @@
         (loop [byte-coll []]
           (let [byte-arr (byte-array (max 1 (.available event-stream)))
                 bytes-read (.read event-stream byte-arr)]
+            (t/log! {:level :trace :msg "SSE read bytes" :data {:bytes-read bytes-read :available (.available event-stream)}})
 
             (if (neg? bytes-read)
 
               ;; Input stream closed, exiting read-loop
-              nil
+              (do
+                (t/log! {:level :trace :msg "SSE stream closed"})
+                nil)
 
               (let [next-byte-coll (concat byte-coll (seq byte-arr))
                     data (slurp (byte-array next-byte-coll))]
+                (t/log! {:level :trace :msg "SSE data chunk" :data {:data-length (count data) :data-preview (take 200 data)}})
                 (if-let [es (not-empty (re-seq event-mask data))]
-                  (if (every? true? (map #(a/>!! events %) es))
-                    (recur (drop (apply + (map #(count (.getBytes ^String %)) es))
-                                 next-byte-coll))
+                  (do
+                    (t/log! {:level :trace :msg "SSE parsed events" :data {:event-count (count es) :events (map #(take 100 %) es)}})
+                    (if (every? true? (map #(do
+                                            (t/log! {:level :trace :msg "SSE putting event in channel" :data {:event (take 100 %)}})
+                                            (a/>!! events %)) es))
+                      (recur (drop (apply + (map #(count (.getBytes ^String %)) es))
+                                   next-byte-coll))
 
-                    ;; Output stream closed, exiting read-loop
-                    nil)
+                      ;; Output stream closed, exiting read-loop
+                      (do
+                        (t/log! {:level :trace :msg "SSE output stream closed during event sending"})
+                        nil)))
 
-                  (recur next-byte-coll))))))
+                  (do
+                    (t/log! {:level :trace :msg "SSE no events found in data chunk"})
+                    (recur next-byte-coll)))))))
         (finally
           (when close?
             (a/close! events))

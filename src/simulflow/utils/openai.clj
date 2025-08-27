@@ -71,19 +71,27 @@
 ;; Common processor functions
 (defn vthread-pipe-response-with-interrupt
   "Common function to handle streaming response from LLM"
-  [{:keys [in-ch out-ch interrupt-chan on-end]}]
+  [{:keys [in-ch out-ch interrupt-ch on-end] :as data}]
+  (t/log! {:msg "Piping out result" :data data :level :trace :id :llm-processor})
   (vthread-loop []
-    (if-let [[chunk c] (a/alts!! [in-ch interrupt-chan])]
-      (when (= c in-ch)
-        (a/>!! out-ch chunk)
-        (recur))
-      ;; No more data or interruption, call on-end and exit
-      (when (fn? on-end)
-        (on-end)))))
+    (let [[val port] (a/alts!! [interrupt-ch in-ch] :priority true)]
+      (t/log! {:level :trace
+               :msg "Piping current val"
+               :data {:val val
+                      :chan (if (= port in-ch) :in-ch :interrupt-ch)}
+               :id :llm-processor})
+
+      (if (and (= port in-ch) val)
+        (do
+          (a/>!! out-ch val)
+          (recur))
+        ;; No more data or interruption, call on-end and exit
+        (when (fn? on-end)
+          (on-end))))))
 
 (defn init-llm-processor!
   "Common initialization function for OpenAI-compatible LLM processors"
-  [schema params log-id]
+  [schema log-id params]
   (let [parsed-config (schema/parse-with-defaults schema params)
         llm-write (a/chan 100)
         llm-read (a/chan 1024)
@@ -92,22 +100,26 @@
     (vthread-loop []
       (when-let [command (a/<!! llm-write)]
         (try
-          (t/log! {:level :debug :id log-id :data command} "Processing request command")
-          (assert (#{:command/sse-request :command/interrupt-request} command)
+          (t/log! {:level :debug :id log-id :data command} "Processing command")
+          (assert (#{:command/sse-request :command/interrupt-request} (:command/kind command))
                   "LLM processor only supports SSE request or interrupt request commands")
           ;; Execute the command and handle the streaming response
-          (cond
-            (= command :command/sse-request)
+          (case (:command/kind command)
+
+            :command/sse-request
             (do
+              (t/log! {:level :debug :id log-id :msg "Making SSE request"})
               (reset! request-in-progress? true)
               (vthread-pipe-response-with-interrupt {:in-ch (command/handle-command command)
                                                      :out-ch llm-read
                                                      :interrupt-ch interrupt-ch
                                                      :on-end #(reset! request-in-progress? false)}))
 
-            (= command :command/interrupt-request)
+            :command/interrupt-request
             (when @request-in-progress?
-              (a/>!! interrupt-ch command)))
+              (a/>!! interrupt-ch command))
+
+            nil)
           (catch Exception e
             (t/log! {:level :error :id log-id :error e} "Error processing command")))
         (recur)))

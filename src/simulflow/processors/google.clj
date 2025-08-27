@@ -67,9 +67,7 @@
    :params (schema/->describe-parameters GoogleLLMConfigSchema)
    :workload :io})
 
-(defn init!
-  [params]
-  (uai/init-llm-processor! GoogleLLMConfigSchema params :gemini))
+(def init! (partial uai/init-llm-processor! GoogleLLMConfigSchema :gemini))
 
 (defn transition
   [state transition]

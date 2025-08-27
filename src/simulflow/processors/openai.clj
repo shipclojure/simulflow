@@ -141,9 +141,7 @@
    :params (schema/->describe-parameters OpenAILLMConfigSchema)
    :workload :io})
 
-(defn init!
-  [params]
-  (uai/init-llm-processor! OpenAILLMConfigSchema params :openai))
+(def init! (partial uai/init-llm-processor! OpenAILLMConfigSchema :openai))
 
 (defn transition
   [state transition]
