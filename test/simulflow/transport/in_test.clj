@@ -134,13 +134,13 @@
         (is (= [state {:sys-out [test-config-change-frame]}]
                (in/twilio-transport-in-transform
                  state
-                 ::in/twilio-in
+                 ::in/in
                  (u/json-str {:event "start"}))))
 
         (testing "Merges frames in the same array if more are generated"
           (let [[new-state {:keys [sys-out]}] (in/twilio-transport-in-transform
                                                 state
-                                                ::in/twilio-in
+                                                ::in/in
                                                 (u/json-str {:event "start"
                                                              :streamSid "hello"}))]
             (is (= state new-state))
@@ -151,7 +151,7 @@
     (let [state {:transport/send-twilio-serializer? false}
           [new-state out] (in/twilio-transport-in-transform
                             state
-                            ::in/twilio-in
+                            ::in/in
                             (u/json-str {:event "start"
                                          :streamSid "hello"}))
           config-change-frame (-> out :sys-out first)

@@ -1,6 +1,13 @@
 #+TITLE: Tasks to do for simulflow
 #+startup: indent content
 
+* DONE Add standard =vad= keywords that are supported by simulflow by default (currently just =silero/vad=)
+CLOSED: [2025-08-27 Wed 13:23]
+:LOGBOOK:
+CLOCK: [2025-08-27 Wed 10:08]--[2025-08-27 Wed 13:23] =>  3:15
+:END:
+
+
 * TODO Change audio utils for conversion into specific encoding change (ulaw->pcm, pcm->ulaw etc) and resampling (same encoding, different sample rate))
 * TODO Standardize serializers/deserializers to have within the pipeline 16kHz PCM audio
 * TODO [#A] Add TTFT metric

@@ -771,7 +771,7 @@
     :max 1.0
     :error/message "Confidence must be between 0.0 and 1.0"}])
 
-(def VADAnalyzerProtocol
+(def VADAnalyserProtocol
   "Schema for objects implementing the VADAnalyzer protocol"
   [:fn
    {:description "Object implementing simulflow.vad.core/VADAnalyzer protocol"

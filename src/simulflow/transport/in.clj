@@ -2,12 +2,15 @@
   (:require
    [clojure.core.async :as a :refer [close!]]
    [clojure.core.async.flow :as flow]
+   [malli.util :as mu]
    [simulflow.async :refer [vthread-loop]]
    [simulflow.frame :as frame]
+   [simulflow.schema :as schema]
    [simulflow.transport.codecs :refer [make-twilio-serializer]]
    [simulflow.utils.audio :as audio]
    [simulflow.utils.core :as u]
    [simulflow.vad.core :as vad]
+   [simulflow.vad.factory :as vad-factory]
    [taoensso.telemere :as t]
    [uncomplicate.clojure-sound.core :as sound]
    [uncomplicate.clojure-sound.sampled :as sampled])
@@ -16,9 +19,27 @@
 
 ;; Base logic for all input transport
 
+(def CommonTransportInputConfig
+  [:map
+   [:vad/analyser {:description "An instance of simulflow.vad.core/VADAnalyser protocol or one of the standard simulflow supported VAD processors to be used on new audio."
+                   :optional true}
+    [:or schema/VADAnalyserProtocol (into [:enum] (keys vad-factory/factory))]]
+   [:vad/args {:description "If `:vad/analyser` is a standard simulflow vad (like silero), these args are used as args to the vad factory"
+               :optional true} [:map]]
+   [:pipeline/supports-interrupt? {:description "Whether the pipeline supports or not interruptions."
+                                   :default false
+                                   :optional true} :boolean]])
+
+(def BaseTransportInputConfig
+  (mu/merge
+    CommonTransportInputConfig
+    [:map
+     [:transport/in-ch
+      {:description "Core async channel to take audio data from. The data is raw byte array or serialzed if a deserializer is provided"}
+      schema/CoreAsyncChannel]]))
+
 (def base-input-params
-  {:vad/analyser "An instance of simulflow.vad.core/VADAnalyser protocol to be used on new audio."
-   :pipeline/supports-interrupt? "Whether the pipeline supports or not interruptions."})
+  (schema/->describe-parameters CommonTransportInputConfig))
 
 (def base-transport-outs {:sys-out "Channel for system messages that have priority"
                           :out "Channel on which audio frames are put"})
@@ -31,6 +52,49 @@
              :msg "Changed vad state"
              :data {:vad/prev-state prev-vad-state
                     :vad/state vad-state}})))
+
+(defn init-vad!
+  [{:vad/keys [analyser] :as params}]
+  (when analyser
+    (cond
+      (satisfies? vad/VADAnalyzer analyser)
+      analyser
+
+      (keyword? analyser)
+      (if-let [make-vad (get vad-factory/factory analyser)]
+        (if (contains? params :vad/args)
+          (make-vad (:vad/args params))
+          (make-vad))
+        (throw (ex-info "Something went wrong initiating :vad/analyser for transport in"
+                        {:params params
+                         :cause ::unknown-vad})))
+
+      :else
+      (throw (ex-info "Something went wrong initiating :vad/analyser for transport in"
+                      {:params params
+                       :cause ::unknown-vad})))))
+
+(defn base-transport-in-init!
+  [schema params]
+  (let [{:transport/keys [in-ch] :as parsed-params} (schema/parse-with-defaults schema params)
+        vad-analyser (init-vad! parsed-params)]
+    (into parsed-params {::flow/in-ports {::in in-ch}
+                         :vad/analyser vad-analyser})))
+
+(defn base-transport-in-transition!
+  [{::flow/keys [in-ports out-ports] :as state} transition]
+  (when (= transition ::flow/stop)
+    (doseq [port (remove nil? (concat (vals in-ports) (vals out-ports)))]
+      (a/close! port))
+    (when-let [close-fn (::close state)]
+      (when (fn? close-fn)
+        (t/log! {:level :info
+                 :id :transport-in} "Closing input")
+        (close-fn)))
+    (when-let [analyser (:vad/analyser state)]
+      (t/log! {:level :debug :id :transport-in :msg "Cleaning up vad analyser"})
+      (vad/cleanup analyser)))
+  state)
 
 (defn base-input-transport-transform
   "Base input transport logic that is used by most transport input processors.
@@ -71,12 +135,35 @@
 
 ;; Twilio transport in
 
+(def TwilioTransportInConfig
+  (mu/merge
+    BaseTransportInputConfig
+    [:map
+     [:twilio/handle-event
+      {:description "[DEPRECATED] Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"
+       :optional true}
+      [:=> [:cat :map] :map]]
+     [:serializer/convert-audio?
+      {:description "If the serializer that is created should convert audio to 8kHz ULAW or not."
+       :optional true
+       :default false} :boolean]
+     [:transport/send-twilio-serializer?
+      {:description "Whether to send a `::frame/system-config-change` with a `twilio-frame-serializer` when a twilio start frame is received. Default true"
+       :optional true
+       :default true} :boolean]]))
+
+(def twilio-transport-in-describe
+  {:outs base-transport-outs
+   :params (schema/->describe-parameters TwilioTransportInConfig)})
+
+(def twilio-transport-in-init! (partial base-transport-in-init! TwilioTransportInConfig))
+
 (defn twilio-transport-in-transform
   [{:twilio/keys [handle-event]
     :transport/keys [send-twilio-serializer?]
     :or {send-twilio-serializer? true}
     :as state} in input]
-  (if (= in ::twilio-in)
+  (if (= in ::in)
     (let [data (u/parse-if-json input)
           output (if (fn? handle-event)
                    (do
@@ -109,23 +196,10 @@
         [state]))
     (base-input-transport-transform state in input)))
 
-(defn twilio-transport-in-init!
-  [{:transport/keys [in-ch] :as state}]
-  (into state
-        {::flow/in-ports {::twilio-in in-ch}}))
-
-(def twilio-transport-in-describe
-  {:outs base-transport-outs
-   :params (into base-input-params
-                 {:transport/in-ch "Channel from which input comes"
-                  :twilio/handle-event "[DEPRECATED] Optional function to be called when a new twilio event is received. Return a map like {cid [frame1 frame2]} to put new frames on the pipeline"
-                  :serializer/convert-audio? "If the serializer that is created should convert audio to 8kHz ULAW or not."
-                  :transport/send-twilio-serializer? "Whether to send a `::frame/system-config-change` with a `twilio-frame-serializer` when a twilio start frame is received. Default true"})})
-
 (defn twilio-transport-in-fn
   ([] twilio-transport-in-describe)
   ([params] (twilio-transport-in-init! params))
-  ([state _] state)
+  ([state trs] (base-transport-in-transition! state trs))
   ([state in msg] (twilio-transport-in-transform state in msg)))
 
 (def twilio-transport-in
@@ -155,8 +229,10 @@
    :params base-input-params})
 
 (defn mic-transport-in-init!
-  [state]
-  (let [{:keys [buffer-size audio-format channel-size]} mic-resource-config
+  [params]
+  (let [parsed-params (schema/parse-with-defaults CommonTransportInputConfig params)
+        vad-analyser (init-vad! parsed-params)
+        {:keys [buffer-size audio-format channel-size]} mic-resource-config
         line (audio/open-line! :target audio-format)
         mic-in-ch (a/chan channel-size)
         buffer (byte-array buffer-size)
@@ -178,23 +254,10 @@
             ;; Brief pause before retrying to prevent tight error loop
             (Thread/sleep 100)))
         (recur)))
-    (into state
-          {::flow/in-ports {::mic-in mic-in-ch}
+    (into parsed-params
+          {::flow/in-ports {::in mic-in-ch}
+           :vad/analyser vad-analyser
            ::close close})))
-
-(defn mic-transport-in-transition
-  [state transition]
-  (when (= transition ::flow/stop)
-    (when-let [close-fn (::close state)]
-      (when (fn? close-fn)
-        (t/log! {:level :info
-                 :id :transport-in} "Closing input")
-        (close-fn)))
-    (when-let [analyser (:vad/analyser state)]
-      (t/log! {:level :debug :id :transport-in :msg "Cleaning up vad analyser"})
-      (vad/cleanup analyser)))
-
-  state)
 
 (defn mic-transport-in-transform
   [state in {:keys [audio-data timestamp]}]
@@ -205,7 +268,7 @@
   ([] (mic-transport-in-describe))
   ([params] (mic-transport-in-init! params))
   ([state transition]
-   (mic-transport-in-transition state transition))
+   (base-transport-in-transition! state transition))
   ([state in msg]
    (mic-transport-in-transform state in msg)))
 
@@ -217,24 +280,12 @@
   {:outs base-transport-outs
    :params (into base-input-params {:transport/in-ch "Channel from which input comes. Input should be byte array"})})
 
-(defn async-transport-in-transition
-  [{::flow/keys [in-ports out-ports] :as state} transition]
-  (when (= transition ::flow/stop)
-    (doseq [port (remove nil? (concat (vals in-ports) (vals out-ports)))]
-      (a/close! port))
-    (when-let [analyser (:vad/analyser state)]
-      (t/log! {:level :debug :id :transport-in :msg "Cleaning up vad analyser"})
-      (vad/cleanup analyser))
-    state))
-
-(defn async-transport-in-init!
-  [{:transport/keys [in-ch] :as state}]
-  (into state {::flow/in-ports {:in in-ch}}))
+(def async-transport-in-init! (partial base-transport-in-init! BaseTransportInputConfig))
 
 (defn async-transport-in-fn
   ([] async-transport-in-describe)
   ([state] (async-transport-in-init! state))
-  ([state transition] (async-transport-in-transition state transition))
+  ([state transition] (base-transport-in-transition! state transition))
   ([state in msg] (base-input-transport-transform state in msg)))
 
 (def async-transport-in-process (flow/process async-transport-in-fn))
