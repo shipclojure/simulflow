@@ -206,11 +206,11 @@
   (testing "mic-transport-in-transition function"
     (let [close-fn (atom false)
           state {::in/close #(reset! close-fn true)}
-          _result (in/mic-transport-in-transition state :clojure.core.async.flow/stop)]
+          _result (in/base-transport-in-transition! state :clojure.core.async.flow/stop)]
       (is @close-fn "Close function should be called on stop transition")
       ;; Test other transitions don't call close
       (reset! close-fn false)
-      (in/mic-transport-in-transition state :clojure.core.async.flow/start)
+      (in/base-transport-in-transition! state :clojure.core.async.flow/start)
       (is (not @close-fn) "Close function should not be called on start transition")))
 
   (testing "mic-transport-in-transform function"
