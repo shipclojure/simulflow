@@ -9,7 +9,7 @@
    [simulflow.frame :as frame]
    [taoensso.telemere :as t]))
 
-(defn system-frame-router
+(defn system-frame-router-fn
   "Creates a system frame router processor.
 
   This processor:
@@ -58,11 +58,11 @@
      ;; Unknown input port or nil frame - no output
      [state {}])))
 
-(def system-frame-router-process
+(def system-frame-router
   "Convenience function that wraps the system-frame-router in a flow/process.
 
   This is the standard way to create the processor for use in flows."
-  (flow/process system-frame-router))
+  (flow/process system-frame-router-fn))
 
 (defn contains-system-router?
   "Returns true if the flow-config contains the system-frame-router-process"
