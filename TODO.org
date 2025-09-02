@@ -1,6 +1,8 @@
 #+TITLE: Tasks to do for simulflow
 #+startup: indent content
 
+* TODO Make new scenario node trigger the activity detection timer as well
+
 * DONE Add standard =vad= keywords that are supported by simulflow by default (currently just =silero/vad=)
 CLOSED: [2025-08-27 Wed 13:23]
 :LOGBOOK:
@@ -8,8 +10,10 @@ CLOCK: [2025-08-27 Wed 10:08]--[2025-08-27 Wed 13:23] =>  3:15
 :END:
 
 
-* TODO Change audio utils for conversion into specific encoding change (ulaw->pcm, pcm->ulaw etc) and resampling (same encoding, different sample rate))
-* TODO Standardize serializers/deserializers to have within the pipeline 16kHz PCM audio
+* DONE Change audio utils for conversion into specific encoding change (ulaw->pcm, pcm->ulaw etc) and resampling (same encoding, different sample rate))
+CLOSED: [2025-09-02 Tue 19:56]
+* DONE Standardize serializers/deserializers to have within the pipeline 16kHz PCM audio
+CLOSED: [2025-09-02 Tue 19:56]
 * TODO [#A] Add TTFT metric
 
 * TODO [#A] Add support for telnyx transport
