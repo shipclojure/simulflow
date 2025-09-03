@@ -148,7 +148,7 @@
   (some #(% frame) user-speech-predicates))
 
 (defn context-aggregator-transform
-  [state _ frame]
+  [state in frame]
   (when (:aggregator/debug? state)
     (t/log! {:level :debug :id :llm-context} {:type (:frame/type frame) :data (:frame/data frame)}))
 
@@ -165,7 +165,8 @@
       ;; context aggregator is the source of truth for the llm context. The
       ;; assistant aggregator will send tool result frames and the user context
       ;; aggregator will send back the assembled new context
-      (frame/llm-tool-call-result? frame)
+      (and (frame/llm-tool-call-result? frame)
+           (= in :tool-read))
       ,(let [tool-result (:frame/data frame)
              {:keys [run-llm? on-update] :or {run-llm? true}} (:properties tool-result)
              _ (when debug? (t/log! {:level :debug :id id} ["TOOL CALL RESULT: " tool-result]))
@@ -206,7 +207,8 @@
       (frame/speak-frame? frame)
       [(update-in state [:llm/context :messages] conj {:role :assistant :content (:frame/data frame)})]
 
-      (user-speech-frame? frame) (user-speech-aggregator-transform state _ frame)
+      (user-speech-frame? frame)
+      (user-speech-aggregator-transform state in frame)
 
       :else [state])))
 

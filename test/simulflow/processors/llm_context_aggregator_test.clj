@@ -155,8 +155,8 @@
                                            :strict true}}]}
               s (assoc sstate :llm/context context)
               new-context (update-in context [:messages] conj tool-result)
-              [new-context-state {:keys [out]}] (sut/context-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
-                                                                                                                     :request tool-request}))
+              [new-context-state {:keys [out]}] (sut/context-aggregator-transform s :tool-read (frame/llm-tool-call-result {:result tool-result
+                                                                                                                            :request tool-request}))
               context-frame (first out)]
           (is (= new-context (:llm/context new-context-state)))
           (is (= new-context (:frame/data context-frame)))
