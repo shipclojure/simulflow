@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file. This change
 - **Examples**: Added example of local microphone AI agent with interruption capability. See [here](./examples/src/simulflow_examples/local_w_interruption_support.clj)
 - **Transport In (twilio, async and microphone)**: Added muting support. When transports receive `mute-input-start`, the input isn't processed further and processing resumes when `mute-input-stop` frame is received. Useful for guided conversations where you don't want the user to speak over the bot, during initial greetings or during function calls.
 - **User Context Aggregator**: Now emits `frame/llm-tool-call-request` when a the llm requests a tool call. This frame can be used to make the agent say something while the tool handler is called, or trigger a mute filter while executing tool call.
+- **User Context Aggregator**: Now emits `frame/llm-tool-call-result` frames when a the result of a tool call is done. This frame can be used to make the agent say something, or trigger a mute filter while executing tool call.
 - **[Mute filter processor](./src/simulflow/filters/mute.clj)**: Added mute processor that mutes user input based on specific strategies
 
 ### Changed
