@@ -51,6 +51,8 @@
    (create-frame :test/frame \"data\")
    (create-frame :test/frame \"data\" {:timestamp 1696492800000})
    (create-frame :test/frame \"data\" {:timestamp #inst \"2024-10-05T05:00:00.000Z\"})"
+  ([type]
+   (create-frame type nil {}))
   ([type data]
    (create-frame type data {}))
   ([type data {:keys [timestamp]}]
@@ -83,6 +85,8 @@
        (def ~name
          ~docstring
          (fn
+           ([]
+            (~name nil {}))
            ([data#]
             (~name data# {}))
            ([data# opts#]
@@ -378,6 +382,28 @@
   "Text input frame for LLM processing"
   {:type ::text-input})
 
+;;
+;; Mute filter frames
+;;
+(defframe mute-input-start
+  "Frame issued when the input in the pipeline should be dropped. Useful when
+  you don't want to process user input. Either when a function call is in
+  progress or when the bot is speaking."
+  {:type ::mute-input-start
+   :schema :any})
+
+(defframe mute-input-stop
+  "Frame issued when the input in the pipeline should be dropped. Useful when
+  you don't want to process user input. Either when a function call is in
+  progress or when the bot is speaking."
+  {:type ::mute-input-stop
+   :schema :any})
+
+;;
+;; System frames
+;;
+;;
+
 (def system-frames #{::system-start
                      ::system-stop
                      ::system-config-change
@@ -391,7 +417,9 @@
                      ::control-interrupt-start
                      ::control-interrupt-stop
                      ::scenario-context-update
-                     ::speak-frame})
+                     ::speak-frame
+                     ::mute-input-start
+                     ::mute-input-stop})
 
 (defn system-frame?
   "Returns true if the frame is a system frame that should be processed immediately"
