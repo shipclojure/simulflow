@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file. This change
 ```
 - **Transport In (twilio, async and microphone**: Moved params parsing to use malli schemas, see the schemas defined [here](./src/simulflow/transport/in.clj).
 - **Examples**: Added example of local microphone AI agent with interruption capability. See [here](./examples/src/simulflow_examples/local_w_interruption_support.clj)
+- **Transport In (twilio, async and microphone)**: Added muting support. When transports receive `mute-input-start`, the input isn't processed further and processing resumes when `mute-input-stop` frame is received. Useful for guided conversations where you don't want the user to speak over the bot, during initial greetings or during function calls.
 
 ### Changed
 - Moved most of the llm logic from [openai processor](./src/simulflow/processors/openai.clj) to an utils folder to be used by multiple processors like [gemini](./src/simulflow/processors/google.clj)
