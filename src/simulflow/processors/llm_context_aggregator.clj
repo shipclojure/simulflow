@@ -172,11 +172,14 @@
              nc (update-in context [:messages] conj (:result tool-result))]
          (when (fn? on-update) (on-update))
          [(assoc state :llm/context nc)
-          ;; Send the context further if :run-llm? is true. :run-llm? is false
-          ;; when the tool call was a scenario transition and we wait for the
-          ;; next scenario-context-update frame before we request a new llm
-          ;; inference
-          (when run-llm? {:out [(frame/llm-context nc)]})])
+          (frame/send
+            ;; Send the context further if :run-llm? is true. :run-llm? is false
+            ;; when the tool call was a scenario transition and we wait for the
+            ;; next scenario-context-update frame before we request a new llm
+            ;; inference
+            (when run-llm? (frame/llm-context nc))
+            ;; send the llm-tool-call-result further in case other processors need it
+            frame)])
 
       (frame/llm-context-messages-append? frame)
       ,(let [{new-messages :messages

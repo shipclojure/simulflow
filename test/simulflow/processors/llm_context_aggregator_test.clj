@@ -162,11 +162,14 @@
           (is (= new-context (:frame/data context-frame)))
 
           (testing "Doesn't send context further if :send-llm? is false"
-            (let [[new-context-state out] (sut/context-aggregator-transform s nil (frame/llm-tool-call-result {:result tool-result
-                                                                                                               :request tool-request
-                                                                                                               :properties {:run-llm? false}}))]
+            (let [tool-result (frame/llm-tool-call-result {:result tool-result
+                                                           :request tool-request
+                                                           :properties {:run-llm? false}})
+                  [new-context-state {:keys [out sys-out]}] (sut/context-aggregator-transform s :tool-read tool-result)]
               (is (= new-context (:llm/context new-context-state)))
-              (is (nil? out))))))
+              (is (nil? out))
+              (testing "Sends original frame further as system frame"
+                (is (= (first sys-out) tool-result)))))))
 
       (testing "Handles system-config-change frames"
         (let [nc {:messages [{:role :system
