@@ -158,6 +158,7 @@
   ([_] nil)
   ([state _] state)
   ([_ in frame]
+   (t/log! {:id :scenario-in :data frame :msg "GOT NEW FRAME" :level :debug})
    (when (= in :scenario-in)
      [nil (frame/send frame)])))
 
