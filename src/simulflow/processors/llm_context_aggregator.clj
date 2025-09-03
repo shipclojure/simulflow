@@ -181,10 +181,12 @@
       (frame/llm-context-messages-append? frame)
       ,(let [{new-messages :messages
               opts :properties} (:frame/data frame)
-             nc (update-in (:llm/context state) [:messages] into new-messages)]
+             nc (update-in (:llm/context state) [:messages] into new-messages)
+             tool-request-message (first (filter #(seq (:tool_calls %)) new-messages))]
          [(assoc state :llm/context nc) (cond-> {}
                                           ;; if it's a tool call, send to the tool-caller to obtain the result
-                                          (:tool-call? opts) (assoc :tool-write [(frame/llm-context nc)])
+                                          (:tool-call? opts) (assoc :tool-write [(frame/llm-context nc)]
+                                                                    :sys-out [(frame/llm-tool-call-request tool-request-message)])
                                           ;; send new context further to the LLM
                                           (:run-llm? opts) (assoc :out [(frame/llm-context nc)]))])
 
@@ -289,7 +291,7 @@
                                         :function-arguments nil
                                         :tool-call-id nil)
 
-        id "assistant-context-assembler"]
+        id :assistant-context-assembler]
     (cond
 
       (frame/llm-full-response-start? frame)

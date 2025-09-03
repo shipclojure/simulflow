@@ -419,7 +419,9 @@
                      ::scenario-context-update
                      ::speak-frame
                      ::mute-input-start
-                     ::mute-input-stop})
+                     ::mute-input-stop
+                     ::llm-tool-call-request
+                     ::llm-tool-call-result})
 
 (defn system-frame?
   "Returns true if the frame is a system frame that should be processed immediately"

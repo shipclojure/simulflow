@@ -258,32 +258,36 @@
                      (get-in (first out) [:frame/data :messages]))))
 
             ;; Case 2: Append with tool call
-            (let [[new-state {:keys [out tool-write]}]
-                  (sut/context-aggregator-transform
-                    state nil
-                    (frame/llm-context-messages-append
-                      {:messages (conj new-messages tool-request)
-                       :properties {:tool-call? true
-                                    :run-llm? false}}))]
+            (testing "Handles tool-call request messages correctly"
+              (let [[new-state {:keys [out tool-write sys-out]}]
+                    (sut/context-aggregator-transform
+                      state nil
+                      (frame/llm-context-messages-append
+                        {:messages (conj new-messages tool-request)
+                         :properties {:tool-call? true
+                                      :run-llm? false}}))
+                    [tool-call-request-frame] sys-out]
 
-              ;; Check state update
-              (is (= [{:role :system :content "Initial context"}
-                      {:role :user :content "Hello"}
-                      {:role :assistant :content "Hi there"}
-                      tool-request]
-                     (get-in new-state [:llm/context :messages])))
+                ;; Check state update
+                (is (= [{:role :system :content "Initial context"}
+                        {:role :user :content "Hello"}
+                        {:role :assistant :content "Hi there"}
+                        tool-request]
+                       (get-in new-state [:llm/context :messages])))
 
-              ;; Check if message was sent to tool-write channel
-              (is (= 1 (count tool-write)))
-              (is (frame/llm-context? (first tool-write)))
-              (is (= [{:role :system :content "Initial context"}
-                      {:role :user :content "Hello"}
-                      {:role :assistant :content "Hi there"}
-                      tool-request]
-                     (get-in (first tool-write) [:frame/data :messages])))
+                ;; Check if message was sent to tool-write channel
+                (is (= 1 (count tool-write)))
+                (is (frame/llm-context? (first tool-write)))
+                (is (= [{:role :system :content "Initial context"}
+                        {:role :user :content "Hello"}
+                        {:role :assistant :content "Hi there"}
+                        tool-request]
+                       (get-in (first tool-write) [:frame/data :messages])))
 
-              ;; Verify no message sent to out channel when only tool-call? is true
-              (is (nil? out)))
+                ;; Verify no message sent to out channel when only tool-call? is true
+                (is (nil? out))
+                (is (frame/llm-tool-call-request? tool-call-request-frame))
+                (is (= (:frame/data tool-call-request-frame) tool-request))))
 
             ;; Case 3: Append with both tool call and run-llm
             (let [[new-state {:keys [out tool-write]}]
