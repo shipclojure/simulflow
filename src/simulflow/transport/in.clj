@@ -100,14 +100,21 @@
   "Base input transport logic that is used by most transport input processors.
   Assumes audio-input-raw frames that come in are 16kHz PCM mono. Conversion to
   this format should be done beforehand."
-  [{:keys [pipeline/supports-interrupt?] :as state} _ msg]
+  [{:keys [pipeline/supports-interrupt? ::muted?] :as state} _ msg]
   (t/log! {:id :transport-in
            :msg "Processing frame"
            :data (:frame/type msg)
            :level :debug
            :sample 0.01})
   (cond
-    (frame/audio-input-raw? msg)
+    (frame/mute-input-start? msg)
+    [(assoc state ::muted? true)]
+
+    (frame/mute-input-stop? msg)
+    [(assoc state ::muted? false)]
+
+    (and (frame/audio-input-raw? msg)
+         (not muted?))
     (if-let [analyser (:vad/analyser state)]
       (let [vad-state (vad/analyze-audio analyser (:frame/data msg))
             prev-vad-state (:vad/state state :vad.state/quiet)

@@ -114,7 +114,20 @@
             [rs {:keys [out sys-out]}] (in/base-input-transport-transform state :in (frame/bot-interrupt true))]
         (is (= rs state))
         (is (nil? out))
-        (is (nil? sys-out))))))
+        (is (nil? sys-out))))
+
+    (testing "Toggles muted state when mute-input-start frame is received"
+      (let [[rs out] (in/base-input-transport-transform {} :sys-in (frame/mute-input-start))]
+        (is (= rs {::in/muted? true}))
+        (is (empty? out))))
+    (testing "Toggles muted state off when mute-input-stop frame is received"
+      (let [[rs out] (in/base-input-transport-transform {::in/muted? true} :sys-in (frame/mute-input-stop))]
+        (is (= rs {::in/muted? false}))
+        (is (empty? out))))
+    (testing "When muted state is active, audio frames aren't processed"
+      (let [[rs out] (in/base-input-transport-transform {::in/muted? true} :in (frame/audio-input-raw (byte-array (range 200))))]
+        (is (= rs {::in/muted? true}))
+        (is (empty? out))))))
 
 ;; =============================================================================
 ;; Twilio Transport Tests
