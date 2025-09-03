@@ -11,7 +11,9 @@
    [simulflow.schema :as schema]
    [simulflow.utils.core :as u]
    [simulflow.utils.request :as request]
-   [taoensso.telemere :as t]))
+   [taoensso.telemere :as t])
+  (:import
+   (clojure.lang ExceptionInfo)))
 
 (def response-chunk-delta
   "Retrieve the delta part of a streaming completion response"
@@ -120,8 +122,12 @@
               (a/>!! interrupt-ch command))
 
             nil)
-          (catch Exception e
-            (t/log! {:level :error :id log-id :error e} "Error processing command")))
+          (catch ExceptionInfo e
+            (t/log! {:level :error :id log-id :error e} "Error processing command")
+            (when (= (:command/kind command) :command/sse-request)
+              (let [data (ex-data e)
+                    body (slurp (:body data))]
+                (t/log! {:level :error :id log-id :data {:body body}} "Error details")))))
         (recur)))
 
     (merge parsed-config
