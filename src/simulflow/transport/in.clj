@@ -101,17 +101,20 @@
   Assumes audio-input-raw frames that come in are 16kHz PCM mono. Conversion to
   this format should be done beforehand."
   [{:keys [pipeline/supports-interrupt? ::muted?] :as state} _ msg]
-  (t/log! {:id :transport-in
-           :msg "Processing frame"
-           :data (:frame/type msg)
-           :level :debug
-           :sample 0.01})
   (cond
     (frame/mute-input-start? msg)
-    [(assoc state ::muted? true)]
+    (do
+      (t/log! {:id :transport-in
+               :level :debug
+               :msg "Muting user input"})
+      [(assoc state ::muted? true)])
 
     (frame/mute-input-stop? msg)
-    [(assoc state ::muted? false)]
+    (do
+      (t/log! {:id :transport-in
+               :level :debug
+               :msg "Unmuting user input"})
+      [(assoc state ::muted? false)])
 
     (and (frame/audio-input-raw? msg)
          (not muted?))
@@ -160,7 +163,8 @@
        :default true} :boolean]]))
 
 (def twilio-transport-in-describe
-  {:outs base-transport-outs
+  {:ins {:sys-in "Channel for system frames"}
+   :outs base-transport-outs
    :params (schema/->describe-parameters TwilioTransportInConfig)})
 
 (def twilio-transport-in-init! (partial base-transport-in-init! TwilioTransportInConfig))
@@ -231,7 +235,8 @@
    :channel-size 1024})
 
 (def mic-transport-in-describe
-  {:outs base-transport-outs
+  {:ins {:sys-in "Channel for system frames"}
+   :outs base-transport-outs
    :params base-input-params})
 
 (defn mic-transport-in-init!
@@ -266,8 +271,10 @@
            ::close close})))
 
 (defn mic-transport-in-transform
-  [state in {:keys [audio-data timestamp]}]
-  (base-input-transport-transform state in (frame/audio-input-raw audio-data {:timestamp timestamp})))
+  [state in msg]
+  (if (= in ::in)
+    (let [{:keys [audio-data timestamp]} msg] (base-input-transport-transform state in (frame/audio-input-raw audio-data {:timestamp timestamp})))
+    (base-input-transport-transform state in msg)))
 
 (defn mic-transport-in-fn
   "Records microphone and sends raw-audio-input frames down the pipeline."
@@ -283,7 +290,8 @@
 ;; Async transport in - Feed audio input frames through a core.async channel
 
 (def async-transport-in-describe
-  {:outs base-transport-outs
+  {:ins {:sys-in "Channel for system frames"}
+   :outs base-transport-outs
    :params (into base-input-params {:transport/in-ch "Channel from which input comes. Input should be byte array"})})
 
 (def async-transport-in-init! (partial base-transport-in-init! BaseTransportInputConfig))

@@ -88,4 +88,4 @@
   ([state in msg]
    (transform state in msg)))
 
-(def processor (flow/process processor-fn))
+(def process (flow/process processor-fn))

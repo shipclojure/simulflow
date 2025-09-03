@@ -230,7 +230,7 @@
     (let [test-audio-data (byte-array [1 2 3 4])
           test-timestamp (Date.)
           input-data {:audio-data test-audio-data :timestamp test-timestamp}
-          [new-state output] (in/mic-transport-in-transform {} :in input-data)]
+          [new-state output] (in/mic-transport-in-transform {} ::in/in input-data)]
 
       (is (= {} new-state)) ; State unchanged
       (is (contains? output :out))
@@ -244,11 +244,20 @@
   (testing "mic-transport-in-transform preserves frame metadata"
     (let [test-timestamp (Date.)
           input-data {:audio-data (byte-array [5 6 7 8]) :timestamp test-timestamp}
-          [_ output] (in/mic-transport-in-transform {} :in input-data)
+          [_ output] (in/mic-transport-in-transform {} ::in/in input-data)
           frame (first (:out output))]
 
       (is (= :simulflow.frame/audio-input-raw (:frame/type frame)))
       (is (= test-timestamp (:frame/ts frame)))))
+
+  (testing "Mute functionality works as expected"
+    (let [[muted-state] (in/mic-transport-in-transform {} :sys-in (frame/mute-input-start))]
+      (is (true? (::in/muted? muted-state)))
+      (let [[unmuted-state] (in/mic-transport-in-transform muted-state :sys-in (frame/mute-input-stop))]
+        (is (false? (::in/muted? unmuted-state))))
+      (let [[s r] (in/mic-transport-in-transform {::in/muted? true} ::in/in {:audio-data (byte-array (range 20)) :timestamp test-timestamp})]
+        (is (empty? r))
+        (is (= s {::in/muted? true})))))
 
   ;; =============================================================================
   ;; Multi-arity Function Tests (For Compatibility)
