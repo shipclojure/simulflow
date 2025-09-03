@@ -157,8 +157,9 @@
        :outs {:sys-out "Channel where system frames will be put (follows app convention)"}})
   ([_] nil)
   ([state _] state)
-  ([_ _ frame]
-   [nil (frame/send frame)]))
+  ([_ in frame]
+   (when (= in :scenario-in)
+     [nil (frame/send frame)])))
 
 (comment
   (scenario-manager
