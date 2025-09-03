@@ -148,7 +148,7 @@
           (reset! initialized? true)
           (set-node s (:initial-node scenario-config)))))))
 
-(defn scenario-in-process
+(defn scenario-in-fn
   "Process that acts as a input for the scenario manager into the flow. This
   process will direct specific frames to specific outs. Example: speak-frame
   will be directed to :speak-out channel (should be connected to a text to
@@ -161,6 +161,8 @@
    (t/log! {:id :scenario-in :data frame :msg "GOT NEW FRAME" :level :debug})
    (when (= in :scenario-in)
      [nil (frame/send frame)])))
+
+(def scenario-in-process (flow/process scenario-in-fn))
 
 (comment
   (scenario-manager
