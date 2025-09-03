@@ -3,6 +3,8 @@
 
 * TODO Make new scenario node trigger the activity detection timer as well
 
+* TODO Create Mute Filter processor that makes transport in mute the user based on certain conditions
+
 * DONE Add standard =vad= keywords that are supported by simulflow by default (currently just =silero/vad=)
 CLOSED: [2025-08-27 Wed 13:23]
 :LOGBOOK:
@@ -253,6 +255,29 @@ will receive back the same system frame from the system route simply by the
 nature of the setup.
 
 ** TODO Make assistant context aggregator support interrupt :mvp:
+
+** Adding to context only what the user has heard before interruption happened.
+
+We'll need to keep a =context-id= or =sentence-id= for each resulting
+=audio-out-raw= frame from TTS service. The original =sentence-id= will be kept on
+each =audio-out-raw= resulting from [[file:src/simulflow/transport.clj::(def audio-splitter][audio splitter]] to provide realtime.
+
+The TTS processor will output a word-timestamp frame with the same =sentence-id=
+so it can be matched when playback happens.
+
+The [[file:src/simulflow/transport/out.clj::(def realtime-out-processor][transport-out]] processor will receive the realtime =audio-out-raw= frames and
+keep the =sentence-id= in local state until it has been played back:
+1. Depending which one comes it first:  =word-timestamp= frame or the
+   =audio-out-raw=, the state will keep a map of ={sentence-id:
+   {word-timestamps started-playback?}}=
+2. When the first audio frame is played back, started-playback? is turned to true
+3. A new command will be added: =:command/output-words=. The handler from the
+   init processor will receive the =word-timestamp= data and wait based on the
+   computed end time of each word to send back to the transform a =word-played=
+   msg which will output a =WordPlayedFrame= or a =word-heard= that has the
+   =sentence-id=, =word= and if it marks the sentence end.
+4. The LLMSentenc
+
 * TODO Add support for first message greeting in the pipeline :mvp:
 * TODO Add support for [[https://github.com/fixie-ai/ultravox][ultravox]]
 

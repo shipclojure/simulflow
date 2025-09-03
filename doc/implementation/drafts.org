@@ -46,7 +46,8 @@ refactored.
 
 * Audio in transport
 
-** TODO Provide a transport in processor that just takes a in channel and receives in frames on it (might be there already)
+** DONE Provide a transport in processor that just takes a in channel and receives in frames on it (might be there already)
+CLOSED: [2025-09-03 Wed 09:46]
 
 * Interruptions - Make the pipeline interruptible either through VAD or Smart Turn detecton
 
